@@ -61,6 +61,10 @@ export const toggleFilterType = action((extension: string) => {
   })
 }, 'filters.toggleType')
 
+export const clearFilterTypes = action(() => {
+  filterTypes.set(new Set<string>())
+}, 'filters.clearTypes')
+
 export const clearFilters = action(() => {
   filterTypes.set(new Set<string>())
   filterSizeMin.set(0)

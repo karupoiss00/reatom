@@ -1,8 +1,14 @@
-import { gridColumns, gridGap, imageGrid, viewMode, visibleIndexMap } from '../model'
+import {
+  bindLoupeDismiss,
+  gridColumns,
+  imageGrid,
+  viewMode,
+  visibleIndexMap,
+} from '../model'
 import { bindRefs, packAttr } from '../themeAttrs'
-import { GRID_GAP_VALUES } from '../types'
 import { FolderImageTree, PreviewBoundImage } from './FolderImageTree'
 import { GridImage } from './GridImage'
+import { GridLoupe } from './GridLoupe'
 import { SearchIcon } from './Icons'
 import { ImageList } from './ImageList'
 import { ImageTable } from './ImageTable'
@@ -28,29 +34,33 @@ const gridEntryCss = `
   ${packAttr.is(
     'polaroid',
     `
-      [data-mod5='1'] > [data-gap='medium'],
-      [data-mod5='1'] > [data-gap='large'],
-      [data-mod5='1'] > [data-gap='xl'] {
+      [data-mod5='1'] > [data-gap='medium']:not([data-density='tiny']):not([data-density='micro']),
+      [data-mod5='1'] > [data-gap='large']:not([data-density='tiny']):not([data-density='micro']),
+      [data-mod5='1'] > [data-gap='xl']:not([data-density='tiny']):not([data-density='micro']) {
         transform: rotate(-0.55deg);
       }
-      [data-mod5='3'] > [data-gap='medium'],
-      [data-mod5='3'] > [data-gap='large'],
-      [data-mod5='3'] > [data-gap='xl'] {
+      [data-mod5='3'] > [data-gap='medium']:not([data-density='tiny']):not([data-density='micro']),
+      [data-mod5='3'] > [data-gap='large']:not([data-density='tiny']):not([data-density='micro']),
+      [data-mod5='3'] > [data-gap='xl']:not([data-density='tiny']):not([data-density='micro']) {
         transform: rotate(0.65deg);
       }
       [data-mod6='1'] > [data-gap]::before,
       [data-mod6='4'] > [data-gap]::before {
         content: '';
         position: absolute;
-        top: 3px;
+        top: clamp(1px, calc(var(--item-size, 220px) * 0.02), 3px);
         left: 50%;
-        width: 68px;
-        height: 17px;
+        width: min(calc(var(--item-size, 220px) * 0.4), 68px);
+        height: min(calc(var(--item-size, 220px) * 0.1), 17px);
         background: linear-gradient(105deg, rgba(255,255,255,.25), transparent 42%), var(--polaroid-tape);
         box-shadow: 0 2px 3px rgba(49, 38, 28, 0.18);
         opacity: 0.94;
         pointer-events: none;
         z-index: 3;
+      }
+      [data-mod6='1'] > [data-gap][data-density='micro']::before,
+      [data-mod6='4'] > [data-gap][data-density='micro']::before {
+        display: none;
       }
       [data-mod6='1'] > [data-gap]::before {
         transform: translateX(-50%) rotate(-4deg);
@@ -88,18 +98,19 @@ const NoImagesMessage = () => (
 
 export const ImageGrid = () => (
   <div
-    ref={bindRefs(imageGrid.ref, packAttr.inherit)}
+    ref={bindRefs(imageGrid.ref, packAttr.inherit, () => bindLoupeDismiss())}
     attr:data-view-mode={viewMode}
+    attr:data-density={imageGrid.density}
     css:columns={() => {
       const mode = viewMode()
       if (mode === 'list' || mode === 'table') return '1, minmax(0, 1fr)'
 
-      const cols = gridColumns()
-      return cols === 0
-        ? 'auto-fill, minmax(min(200px, 100%), 1fr)'
-        : `${cols}, minmax(0, 1fr)`
+      if (gridColumns() === 0) return 'auto-fill, minmax(min(200px, 100%), 1fr)'
+
+      return `${imageGrid.columnCount()}, minmax(0, 1fr)`
     }}
-    css:gap={() => `${GRID_GAP_VALUES[gridGap()]}px`}
+    css:gap={() => `${imageGrid.effectiveGap()}px`}
+    css:item-size={() => `${imageGrid.itemSize()}px`}
     css={`
       display: grid;
       grid-template-columns: repeat(var(--columns));
@@ -142,5 +153,6 @@ export const ImageGrid = () => (
         </div>
       )
     }}
+    <GridLoupe />
   </div>
 )

@@ -1,13 +1,17 @@
 import { focusableCardAttrs } from '../a11y'
 import { resolveImageOrientationStyle } from '../image-engine/orientation'
+import { splitFileNameForTruncation } from '../imageFormat'
 import type { ImageModel } from '../model'
 import {
   gridGap,
+  hideLoupe,
   ignoreExifOrientation,
   imageFit,
+  imageGrid,
   openLightbox,
   showFileSizes,
   showImageNames,
+  showLoupe,
 } from '../model'
 import { ImageFavoriteButton, ImageSelectButton } from './ImageControls'
 
@@ -18,6 +22,10 @@ const overlayControlCss = `
   border-radius: var(--overlay-control-radius);
   -webkit-backdrop-filter: var(--overlay-control-backdrop, none);
   backdrop-filter: var(--overlay-control-backdrop, none);
+  &[data-ui] svg {
+    width: min(var(--_icon-size), calc(var(--overlay-control-size) * 0.62));
+    height: min(var(--_icon-size), calc(var(--overlay-control-size) * 0.62));
+  }
 `
 
 export const GridImage = ({ image }: { image: ImageModel }) => {
@@ -52,6 +60,7 @@ export const GridImage = ({ image }: { image: ImageModel }) => {
       {...focusableCardAttrs(openLabel, () => openLightbox(image))}
       attr:data-selected={image.selected}
       attr:data-gap={gridGap}
+      attr:data-density={imageGrid.density}
       css={`
         position: relative;
         min-width: 0;
@@ -66,7 +75,7 @@ export const GridImage = ({ image }: { image: ImageModel }) => {
         cursor: pointer;
         transition: all 0.2s ease;
         content-visibility: auto;
-        contain-intrinsic-size: 220px;
+        contain-intrinsic-size: var(--item-size, 220px);
 
         &:focus-visible {
           outline: 3px solid var(--focus-ring);
@@ -97,15 +106,41 @@ export const GridImage = ({ image }: { image: ImageModel }) => {
           border-width: 0;
           border-radius: 0;
         }
+        &[data-density='compact'] {
+          --overlay-control-size: 24px;
+          --overlay-control-inset: 6px;
+        }
+        &[data-density='tiny'] {
+          --overlay-control-size: 20px;
+          --overlay-control-inset: 4px;
+        }
+        &[data-density='micro'] {
+          --overlay-control-size: 16px;
+          --overlay-control-inset: 2px;
+        }
+        &[data-density='micro']:not(:hover):not(:focus-within)
+          [data-ui-slot='overlay']:is(
+            [aria-pressed='false'],
+            [role='checkbox'][aria-checked='false']
+          ) {
+          opacity: 0;
+        }
         [data-ui-slot='overlay'] {
-          background: var(--overlay-slot-bg);
-          color: var(--overlay-slot-color);
-          border-color: var(--overlay-slot-border);
           -webkit-backdrop-filter: var(--overlay-slot-filter, none);
           backdrop-filter: var(--overlay-slot-filter, none);
         }
       `}
       on:click={() => openLightbox(image)}
+      on:pointerenter={(event) => {
+        if (event.pointerType !== 'mouse') return
+        showLoupe(image, event.currentTarget)
+      }}
+      on:pointerleave={() => hideLoupe()}
+      on:focus={(event) => {
+        if (!event.currentTarget.matches(':focus-visible')) return
+        showLoupe(image, event.currentTarget, { immediate: true })
+      }}
+      on:blur={() => hideLoupe()}
     >
       <div
         css:image-fit={imageFit}
@@ -140,10 +175,8 @@ export const GridImage = ({ image }: { image: ImageModel }) => {
           slot="overlay"
           css={`
             position: absolute;
-            top: 8px;
-            left: 8px;
-            width: 24px;
-            height: 24px;
+            top: var(--overlay-control-inset, 8px);
+            left: var(--overlay-control-inset, 8px);
             ${overlayControlCss}
           `}
         />
@@ -153,18 +186,19 @@ export const GridImage = ({ image }: { image: ImageModel }) => {
           slot="overlay"
           css={`
             position: absolute;
-            top: 8px;
-            right: 8px;
-            width: 28px;
-            height: 28px;
+            top: var(--overlay-control-inset, 8px);
+            right: var(--overlay-control-inset, 8px);
             ${overlayControlCss}
           `}
         />
       </div>
 
       {() => {
+        const density = imageGrid.density()
+        if (density === 'tiny' || density === 'micro') return null
+
         const showName = showImageNames()
-        const showSize = showFileSizes()
+        const showSize = showFileSizes() && density !== 'compact'
         if (!showName && !showSize) return null
         return (
           <div
@@ -195,7 +229,20 @@ export const GridImage = ({ image }: { image: ImageModel }) => {
                   text-overflow: ellipsis;
                 `}
               >
-                {imageName}
+                <span
+                  data-name
+                  css="display: inline-flex; max-width: 100%; min-width: 0; vertical-align: top;"
+                >
+                  <span
+                    data-name-head
+                    css="min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                  >
+                    {() => splitFileNameForTruncation(imageName()).head}
+                  </span>
+                  <span data-name-tail css="flex-shrink: 0; white-space: pre;">
+                    {() => splitFileNameForTruncation(imageName()).tail}
+                  </span>
+                </span>
               </div>
             )}
             {showSize && (

@@ -53,17 +53,37 @@ const blueSelected = {
   shadow: 'none',
 }
 
+const coralActionHover = {
+  foreground: '#ffffff',
+  background: 'color-mix(in srgb, var(--polaroid-coral) 86%, #31261c)',
+  border: 'color-mix(in srgb, var(--polaroid-coral) 86%, #31261c)',
+  shadow: 'none',
+}
+
+const coralActionPress = {
+  foreground: '#ffffff',
+  background: 'color-mix(in srgb, var(--polaroid-coral) 74%, #31261c)',
+  border: 'color-mix(in srgb, var(--polaroid-coral) 74%, #31261c)',
+  shadow: 'none',
+}
+
 export const polaroidControlOverrides = {
   app: {
+    action: {
+      hover: coralActionHover,
+      press: coralActionPress,
+      selectedHover: coralActionHover,
+      selectedPress: coralActionPress,
+    },
     quiet: {
-      selected: coralSelected,
+      selected: blueSelected,
       selectedHover: {
-        ...coralSelected,
-        background: 'color-mix(in srgb, var(--polaroid-coral) 82%, #fffaf2)',
+        ...blueSelected,
+        background: 'color-mix(in srgb, var(--polaroid-blue) 82%, #fffaf2)',
       },
       selectedPress: {
-        ...coralSelected,
-        background: 'color-mix(in srgb, var(--polaroid-coral) 70%, #31261c)',
+        ...blueSelected,
+        background: 'color-mix(in srgb, var(--polaroid-blue) 70%, #31261c)',
       },
     },
     choice: {
@@ -77,6 +97,19 @@ export const polaroidControlOverrides = {
         background: 'color-mix(in srgb, var(--polaroid-blue) 70%, #31261c)',
       },
     },
+    switch: {
+      rest: { border: 'var(--border-strong)' },
+      selected: blueSelected,
+      selectedHover: {
+        ...blueSelected,
+        background: 'color-mix(in srgb, var(--polaroid-blue) 82%, #fffaf2)',
+      },
+      selectedPress: {
+        ...blueSelected,
+        background: 'color-mix(in srgb, var(--polaroid-blue) 70%, #31261c)',
+      },
+      switch: { knob: '#fffaf2', knobChecked: '#fffaf2' },
+    },
   },
   viewer: {
     action: viewer,
@@ -86,19 +119,19 @@ export const polaroidControlOverrides = {
   overlay: {
     rest: {
       foreground: '#31261c',
-      background: 'var(--panel-bg)',
-      border: 'var(--border)',
-      shadow: 'none',
+      background: '#fffaf2',
+      border: 'rgba(49, 38, 28, 0.18)',
+      shadow: '0 1px 3px rgba(49, 38, 28, 0.24)',
     },
     hover: {
       foreground: '#31261c',
-      background: 'var(--hover-bg)',
+      background: '#f6ecdc',
       border: 'var(--polaroid-coral)',
-      shadow: 'none',
+      shadow: '0 1px 3px rgba(49, 38, 28, 0.24)',
     },
     press: {
       foreground: '#31261c',
-      background: 'var(--active-bg)',
+      background: '#ecdfca',
       border: 'var(--polaroid-coral)',
       shadow: 'none',
     },

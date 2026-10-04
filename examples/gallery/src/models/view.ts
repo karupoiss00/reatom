@@ -35,17 +35,19 @@ export const gridColumns = atom(4, 'gridColumns').extend(
   withLocalStorage('gallery.gridColumns'),
 )
 
-const readEffectiveGridColumns = () => gridColumns() || imageGrid.columnCount()
+const readEffectiveGridColumns = () => imageGrid.columnCount()
 
 export const decreaseGridColumns = action(
   () => gridColumns.set(Math.max(readEffectiveGridColumns() - 1, 1)),
   'view.decreaseGridColumns',
 )
 
-export const increaseGridColumns = action(
-  () => gridColumns.set(Math.min(readEffectiveGridColumns() + 1, 100)),
-  'view.increaseGridColumns',
-)
+export const increaseGridColumns = action(() => {
+  const maxColumns = imageGrid.maxColumnCount()
+  const current = readEffectiveGridColumns()
+  if (current >= maxColumns) return
+  gridColumns.set(Math.min(current + 1, maxColumns))
+}, 'view.increaseGridColumns')
 
 const gridColumnPresets = [0, 2, 3, 4, 6, 8, 12]
 
@@ -133,8 +135,8 @@ export const setGridGap = action((gap: GridGap) => {
 }, 'view.setGridGap')
 
 export const gridColumnsLabel = computed(() => {
-  const columns = gridColumns()
-  return columns === 0 ? 'auto' : String(columns)
+  if (gridColumns() === 0) return 'auto'
+  return String(imageGrid.columnCount())
 }, 'view.grid.columnsLabel')
 
 export const decreaseImagePreviewSize = action(() => {

@@ -1,7 +1,7 @@
 import { ChoiceButton, IconButton } from '../design-system'
 import type { ImageModel } from '../model'
 import { selectImage } from '../model'
-import { CheckIcon, HeartIcon } from './Icons'
+import { CheckIcon, CheckboxIcon, HeartIcon } from './Icons'
 
 export const ImageSelectButton = ({
   image,
@@ -26,7 +26,7 @@ export const ImageSelectButton = ({
     size="icon"
     css={css}
   >
-    {() => (image.selected() ? <CheckIcon /> : null)}
+    {() => (image.selected() ? <CheckIcon /> : <CheckboxIcon />)}
   </ChoiceButton>
 )
 

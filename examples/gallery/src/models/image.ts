@@ -25,6 +25,7 @@ import {
   lightboxSizedImageWindowIds,
   lightboxZoom,
 } from './lightboxState'
+import { loupeImageId, loupeThumbnailTarget } from './loupe'
 import { developRawFullSize, ignoreExifOrientation } from './preferences'
 import { activeThumbnailTarget } from './view'
 
@@ -111,13 +112,19 @@ export function reatomGalleryImage(imageSource: ImageFile): GalleryImageModel {
     return Math.max(target.width, target.height)
   }, `${name}.developMaxDimension`)
 
+  const loupeThumbnailTargetSize = computed(() => {
+    const activeTarget = activeThumbnailTarget()
+    if (loupeImageId() !== imageSource.id) return activeTarget
+    return Math.max(activeTarget, loupeThumbnailTarget())
+  }, `${name}.loupeThumbnailTargetSize`)
+
   imageModel = reatomImage(imageSource.fileHandle, name, {
     filename: imageSource.name,
     initialFileInfo: imageSource.fileInfo,
     readIgnoreExifOrientation: () => ignoreExifOrientation(),
     readDevelopRaw: () => developRawFullSize(),
     previewLoadPriority,
-    thumbnailTargetSize: activeThumbnailTarget,
+    thumbnailTargetSize: loupeThumbnailTargetSize,
     readDisplayTarget: () => displayTargetSize(),
     readSizedImageActive: () => sizedImageActive(),
     readBitmapDecodePriority: () => bitmapDecodePriority(),

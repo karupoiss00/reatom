@@ -4,7 +4,8 @@ import { context } from '@reatom/core'
 import { expect, userEvent } from 'storybook/test'
 
 import { mockEmptyFolder, mockFolderTree } from '../__fixtures__/mockData'
-import { lightboxOpen } from '../model'
+import { Button } from '../design-system'
+import { gridColumns, lightboxOpen } from '../model'
 import { StoryWrapper } from '../shared/StoryWrapper'
 import { createMyself, type Locator } from '../shared/test'
 import { loadGalleryState } from '../shared/testSetup'
@@ -95,6 +96,49 @@ export const NestedControlKeyboard: Story = {
     await expect(card).toHaveAttribute('data-selected', 'true')
     const lightboxWasOpened = context.start(() => lightboxOpen())
     await expect(lightboxWasOpened).toBe(false)
+  },
+}
+
+export const DenseGridKeyboardLoupe: Story = {
+  render: () => {
+    loadGalleryState({ tree: mockFolderTree })
+    gridColumns.set(12)
+    return (
+      <StoryWrapper>
+        <div style="padding: 20px; width: 600px;">
+          <Button label="Before grid" appearance="quiet" onClick={() => {}} />
+          <ImageGrid />
+        </div>
+      </StoryWrapper>
+    )
+  },
+  play: async () => {
+    try {
+      const card = await I.see((canvas) =>
+        canvas.findByRole('button', { name: 'Open Hiring plan.jpg' }),
+      )
+      await expect(card).toHaveAttribute('data-density', 'micro')
+      await expect(card.querySelector('[data-caption]')).toBeNull()
+
+      const beforeGrid = await I.see((canvas) =>
+        canvas.findByRole('button', { name: 'Before grid' }),
+      )
+      beforeGrid.focus()
+      const { userEvent: trustedUserEvent } = await import('vitest/browser')
+      await trustedUserEvent.tab()
+      await waitForFrame()
+      await expect(document.activeElement?.getAttribute('aria-label')).toBe(
+        card.getAttribute('aria-label'),
+      )
+
+      const loupe = document.getElementById('gallery-loupe')
+      await expect(loupe).toHaveAttribute('data-open', 'true')
+      await expect(loupe?.querySelector('[data-loupe-name]')).toHaveTextContent(
+        'Hiring plan.jpg',
+      )
+    } finally {
+      localStorage.removeItem('gallery.gridColumns')
+    }
   },
 }
 

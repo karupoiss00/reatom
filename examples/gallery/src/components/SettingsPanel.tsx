@@ -7,6 +7,7 @@ import {
   gridGap,
   ignoreExifOrientation,
   imageFit,
+  imageGrid,
   keepLightboxView,
   setGridGap,
   showFileSizes,
@@ -81,7 +82,7 @@ const ThemePackButton = ({
     </span>
     <span css="display: grid; gap: 2px;">
       <span css="font-size: 13px; font-weight: 700;">{label}</span>
-      <span css="font-size: 11px; color: var(--text-muted);">
+      <span css="font-size: 11px; color: inherit; opacity: 0.72;">
         {description}
       </span>
     </span>
@@ -135,153 +136,154 @@ export const SettingsPanel = () => (
       }
     `}
   >
-      <SectionTitle text="Grid Columns" />
-      <div
+    <SectionTitle text="Grid Columns" />
+    <div
+      css={`
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      `}
+    >
+      <input
+        type="range"
+        min="0"
+        attr:max={() => String(imageGrid.maxColumnCount())}
+        step="1"
+        aria-label="Grid columns"
+        model:valueAsNumber={gridColumns}
         css={`
-          display: flex;
-          align-items: center;
-          gap: 12px;
+          flex: 1;
+          accent-color: var(--accent);
+        `}
+      />
+      <span
+        css={`
+          font-size: 13px;
+          color: var(--text-secondary);
+          min-width: 32px;
+          text-align: center;
         `}
       >
-        <input
-          type="range"
-          min="0"
-          max="12"
-          step="1"
-          aria-label="Grid columns"
-          model:valueAsNumber={gridColumns}
-          css={`
-            flex: 1;
-            accent-color: var(--accent);
-          `}
+        {gridColumnsLabel}
+      </span>
+    </div>
+
+    <SectionTitle text="Grid Gap" />
+    <div
+      css={`
+        display: grid;
+        grid-auto-flow: column;
+        grid-auto-columns: minmax(0, 1fr);
+        gap: calc(6px + var(--shadow-clearance, 0px));
+      `}
+    >
+      {GAP_OPTIONS.map((gap) => (
+        <ChoiceButton
+          label={gap}
+          selected={() => gridGap() === gap}
+          onClick={() => setGridGap(gap)}
+          bracket
+          css="padding-inline: 6px; min-width: 0;"
         />
-        <span
-          css={`
-            font-size: 13px;
-            color: var(--text-secondary);
-            min-width: 32px;
-            text-align: center;
-          `}
-        >
-          {gridColumnsLabel}
-        </span>
-      </div>
+      ))}
+    </div>
 
-      <SectionTitle text="Grid Gap" />
-      <div
-        css={`
-          display: flex;
-          flex-wrap: wrap;
-          gap: calc(6px + var(--shadow-clearance, 0px));
-        `}
-      >
-        {GAP_OPTIONS.map((gap) => (
-          <ChoiceButton
-            label={gap}
-            selected={() => gridGap() === gap}
-            onClick={() => setGridGap(gap)}
-            bracket
-            css="padding: 8px 14px;"
+    <SectionTitle text="Image Fit" />
+    <div
+      css={`
+        display: grid;
+        grid-auto-flow: column;
+        grid-auto-columns: minmax(0, 1fr);
+        gap: calc(6px + var(--shadow-clearance, 0px));
+      `}
+    >
+      {FIT_OPTIONS.map((fit) => (
+        <ChoiceButton
+          label={fit}
+          selected={() => imageFit() === fit}
+          onClick={() => imageFit.change(fit)}
+          bracket
+          css="padding-inline: 6px; min-width: 0;"
+        />
+      ))}
+    </div>
+
+    <SectionTitle text="UI Options" />
+    <Switch
+      label="Show Image Names"
+      checked={showImageNames}
+      onToggle={showImageNames.toggle}
+    />
+    <Switch
+      label="Show File Sizes"
+      checked={showFileSizes}
+      onToggle={showFileSizes.toggle}
+    />
+    <Switch
+      label="Ignore EXIF Orientation"
+      checked={ignoreExifOrientation}
+      onToggle={ignoreExifOrientation.toggle}
+    />
+    <Switch
+      label="Develop RAW at Full Size"
+      checked={developRawFullSize}
+      onToggle={developRawFullSize.toggle}
+    />
+
+    <SectionTitle text="Lightbox Navigation" />
+    <Switch
+      label="Wrap at Folder Ends"
+      checked={wrapFolderNavigation}
+      onToggle={wrapFolderNavigation.toggle}
+    />
+    <Switch
+      label="Keep Zoom While Navigating"
+      checked={keepLightboxView}
+      onToggle={keepLightboxView.toggle}
+    />
+    <Switch
+      label="Show Folder Scrubber"
+      checked={showLightboxScrubber}
+      onToggle={showLightboxScrubber.toggle}
+    />
+
+    <SectionTitle text="Theme" />
+    <div
+      css={`
+        display: flex;
+        gap: calc(6px + var(--shadow-clearance, 0px));
+        margin-bottom: calc(12px + var(--shadow-clearance, 0px));
+      `}
+    >
+      <ThemeModeButton mode="light" label="Light" />
+      <ThemeModeButton mode="dark" label="Dark" />
+      <ThemeModeButton mode="system" label="System" />
+    </div>
+    {() =>
+      themePack() === 'glass' && (
+        <div>
+          <Switch
+            label="Animate Glass Background"
+            checked={glassBackgroundAnimation}
+            onToggle={glassBackgroundAnimation.toggle}
           />
-        ))}
-      </div>
+          <p css="font-size: 12px; color: var(--text-secondary); margin: 0 0 12px;">
+            Uses more power. Pauses when the tab is hidden and respects reduced
+            motion.
+          </p>
+        </div>
+      )
+    }
 
-      <SectionTitle text="Image Fit" />
-      <div
-        css={`
-          display: flex;
-          flex-wrap: wrap;
-          gap: calc(6px + var(--shadow-clearance, 0px));
-        `}
-      >
-        {FIT_OPTIONS.map((fit) => (
-          <ChoiceButton
-            label={fit}
-            selected={() => imageFit() === fit}
-            onClick={() => imageFit.change(fit)}
-            bracket
-            css="padding: 8px 14px;"
-          />
-        ))}
-      </div>
-
-      <SectionTitle text="UI Options" />
-      <Switch
-        label="Show Image Names"
-        checked={showImageNames}
-        onToggle={showImageNames.toggle}
-      />
-      <Switch
-        label="Show File Sizes"
-        checked={showFileSizes}
-        onToggle={showFileSizes.toggle}
-      />
-      <Switch
-        label="Ignore EXIF Orientation"
-        checked={ignoreExifOrientation}
-        onToggle={ignoreExifOrientation.toggle}
-      />
-      <Switch
-        label="Develop RAW at Full Size"
-        checked={developRawFullSize}
-        onToggle={developRawFullSize.toggle}
-      />
-
-      <SectionTitle text="Lightbox Navigation" />
-      <Switch
-        label="Wrap at Folder Ends"
-        checked={wrapFolderNavigation}
-        onToggle={wrapFolderNavigation.toggle}
-      />
-      <Switch
-        label="Keep Zoom While Navigating"
-        checked={keepLightboxView}
-        onToggle={keepLightboxView.toggle}
-      />
-      <Switch
-        label="Show Folder Scrubber"
-        checked={showLightboxScrubber}
-        onToggle={showLightboxScrubber.toggle}
-      />
-
-      <SectionTitle text="Theme" />
-      {() =>
-        themePack() === 'glass' && (
-          <div>
-            <Switch
-              label="Animate Glass Background"
-              checked={glassBackgroundAnimation}
-              onToggle={glassBackgroundAnimation.toggle}
-            />
-            <p css="font-size: 12px; color: var(--text-secondary); margin: 0 0 12px;">
-              Uses more power. Pauses when the tab is hidden and respects
-              reduced motion.
-            </p>
-          </div>
-        )
-      }
-
-      <div css="display: grid; gap: calc(8px + var(--shadow-clearance, 0px));">
-        {THEME_PACKS.map((pack) => (
-          <ThemePackButton
-            value={pack.value}
-            label={pack.label}
-            description={pack.description}
-            swatches={pack.swatches}
-          />
-        ))}
-      </div>
-
-      <div
-        css={`
-          display: flex;
-          gap: calc(6px + var(--shadow-clearance, 0px));
-          margin-top: calc(10px + var(--shadow-clearance, 0px));
-        `}
-      >
-        <ThemeModeButton mode="light" label="Light" />
-        <ThemeModeButton mode="dark" label="Dark" />
-        <ThemeModeButton mode="system" label="System" />
-      </div>
+    <div css="display: grid; gap: calc(8px + var(--shadow-clearance, 0px));">
+      {THEME_PACKS.map((pack) => (
+        <ThemePackButton
+          value={pack.value}
+          label={pack.label}
+          description={pack.description}
+          swatches={pack.swatches}
+        />
+      ))}
+    </div>
   </Panel>
 )

@@ -21,3 +21,13 @@ export const formatImageCount = (count: number): string => {
   if (count === 0) return ''
   return count === 1 ? '1 image' : `${count} images`
 }
+
+export const splitFileNameForTruncation = (
+  name: string,
+): { head: string; tail: string } => {
+  const dotIndex = name.lastIndexOf('.')
+  const tail =
+    dotIndex > 0 ? name.slice(Math.max(0, dotIndex - 4)) : name.slice(-6)
+  if (name.length <= tail.length + 4) return { head: name, tail: '' }
+  return { head: name.slice(0, name.length - tail.length), tail }
+}

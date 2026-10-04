@@ -167,7 +167,7 @@ export const controlRecipeCss = () => `
     height: var(--_icon-size);
   }
 
-  [data-ui="button"][data-ui-slot="overlay"] {
+  [data-ui="button"][data-ui-slot="overlay"][data-ui-surface] {
     --_fg: var(--ui-overlay-rest-fg);
     --_bg: var(--ui-overlay-rest-bg);
     --_border: var(--ui-overlay-rest-border);

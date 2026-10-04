@@ -343,6 +343,21 @@ export const CheckIcon = () => (
   </svg:svg>
 )
 
+export const CheckboxIcon = () => (
+  <svg:svg
+    viewBox="0 0 24 24"
+    css={iconSizeCss}
+    fill="none"
+    stroke="currentColor"
+    attr:stroke-width="1.8"
+    attr:stroke-linecap="round"
+    attr:stroke-linejoin="round"
+    attr:aria-hidden="true"
+  >
+    <svg:rect x="4.5" y="4.5" width="15" height="15" rx="3" />
+  </svg:svg>
+)
+
 export const DownloadIcon = () => (
   <svg:svg
     viewBox="0 0 24 24"

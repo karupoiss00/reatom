@@ -3,6 +3,7 @@ import { action, effect, onEvent } from '@reatom/core'
 import { isNativeActivationTarget } from '../a11y'
 import { clearSelection, selectAllImages, selectedImages } from './collection'
 import { closeLightbox, lightboxOpen, navigateLightbox } from './lightbox'
+import { hideLoupe, loupeOpen } from './loupe'
 import { filterPanelOpen, settingsPanelOpen } from './panels'
 import { cycleThemePack, toggleResolvedThemeMode } from './preferences'
 import { slideshowPlaying } from './slideshow'
@@ -40,6 +41,10 @@ export const handleKeyboardShortcut = action((event: KeyboardEvent) => {
     }
     if (settingsPanelOpen()) {
       settingsPanelOpen.set(false)
+      return
+    }
+    if (loupeOpen()) {
+      hideLoupe({ immediate: true })
       return
     }
     return

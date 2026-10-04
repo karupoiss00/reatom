@@ -30,6 +30,8 @@ import {
   activeFilterCount,
   filterPanelOpen,
   settingsPanelOpen,
+  toggleFilterPanel,
+  toggleSettingsPanel,
 } from './panelState'
 
 export const Toolbar = () => (
@@ -377,7 +379,7 @@ export const Toolbar = () => (
         }}
         title="Filters"
         expanded={filterPanelOpen}
-        onClick={() => filterPanelOpen.set((s) => !s)}
+        onClick={() => toggleFilterPanel()}
         css="position: relative;"
       >
         <FilterIcon />
@@ -411,7 +413,7 @@ export const Toolbar = () => (
       <IconButton
         label="Settings"
         expanded={settingsPanelOpen}
-        onClick={() => settingsPanelOpen.set((s) => !s)}
+        onClick={() => toggleSettingsPanel()}
       >
         <SettingsIcon />
       </IconButton>

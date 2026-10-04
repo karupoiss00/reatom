@@ -42,19 +42,19 @@ export const bauhausControlOverrides = {
   },
   overlay: {
     rest: {
-      foreground: '#20211f',
+      foreground: 'var(--text-primary)',
       background: 'var(--panel-bg)',
       border: 'var(--border)',
       shadow: 'none',
     },
     hover: {
-      foreground: '#20211f',
+      foreground: 'var(--text-primary)',
       background: 'var(--hover-bg)',
       border: 'var(--border)',
       shadow: 'none',
     },
     press: {
-      foreground: '#20211f',
+      foreground: 'var(--text-primary)',
       background: 'var(--active-bg)',
       border: 'var(--border)',
       shadow: 'none',

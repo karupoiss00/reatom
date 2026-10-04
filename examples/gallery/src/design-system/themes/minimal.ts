@@ -77,20 +77,20 @@ const viewer = {
 const overlay = {
   rest: {
     foreground: 'var(--text-primary)',
-    background: 'var(--bg-primary)',
-    border: 'var(--border)',
+    background: 'transparent',
+    border: 'transparent',
     shadow: 'none',
   },
   hover: {
     foreground: 'var(--text-primary)',
     background: 'var(--hover-bg)',
-    border: 'var(--border)',
+    border: 'transparent',
     shadow: 'none',
   },
   press: {
     foreground: 'var(--text-primary)',
     background: 'var(--active-bg)',
-    border: 'var(--border)',
+    border: 'transparent',
     shadow: 'none',
   },
   selected: {

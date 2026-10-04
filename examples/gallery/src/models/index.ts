@@ -25,6 +25,7 @@ export type {
 } from './contracts'
 export {
   activeFilterCount,
+  clearFilterTypes,
   clearFilters,
   filterSizeMax,
   filterSizeMaxKb,
@@ -144,6 +145,14 @@ export {
   startLightboxPan,
 } from './lightboxSession'
 export {
+  bindLoupeDismiss,
+  hideLoupe,
+  loupeImage,
+  loupePosition,
+  loupeVisible,
+  showLoupe,
+} from './loupe'
+export {
   folderBreadcrumbSegments,
   folderTreeIsAllSelected,
   folderTreeSidebarVisible,
@@ -153,6 +162,8 @@ export {
   filterPanelOpen,
   imageInfoPanelOpen,
   settingsPanelOpen,
+  toggleFilterPanel,
+  toggleSettingsPanel,
 } from './panels'
 export {
   cycleThemePack,

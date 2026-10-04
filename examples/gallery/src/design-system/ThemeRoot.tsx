@@ -68,6 +68,7 @@ const themeBoundaryCss = `
   --chrome-end-inset: 0px;
   --app-panel-inset: 0px;
   --panel-end-gap: 0px;
+  --overlay-control-size: 28px;
 
   &[data-theme-pack='glass'] {
     --overlay-control-size: 30px;
@@ -94,18 +95,22 @@ const themeBoundaryCss = `
   }
   @media (prefers-contrast: more), (forced-colors: active) {
     &[data-theme-pack='glass'] {
-      --overlay-slot-bg: Canvas;
-      --overlay-slot-color: CanvasText;
-      --overlay-slot-border: CanvasText;
       --overlay-slot-filter: none;
       --overlay-control-backdrop: none;
+      [data-ui-slot='overlay'] {
+        background: Canvas;
+        color: CanvasText;
+        border-color: CanvasText;
+      }
     }
   }
   @media (prefers-reduced-transparency: reduce) {
     &[data-theme-pack='glass'] {
-      --overlay-slot-bg: #2f2f2f;
       --overlay-slot-filter: none;
       --overlay-control-backdrop: none;
+      [data-ui-slot='overlay'] {
+        background: #2f2f2f;
+      }
     }
   }
 

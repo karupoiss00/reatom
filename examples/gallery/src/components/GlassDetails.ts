@@ -160,7 +160,8 @@ export const glassDetailsCss = `
     #gallery-pathbar { padding: 0 var(--header-inline-pad) 12px; border: 0; background: none; backdrop-filter: none; gap: 10px; }
     main { padding: 4px 6px 8px; margin: 0; background: transparent; border: 0; box-shadow: none; border-radius: 0; }
     [data-gap] {
-      border-radius: 16px; padding: 0; border: 0;
+      border-radius: clamp(4px, calc(var(--item-size, 220px) * 0.073), 16px);
+      padding: 0; border: 0;
       background: #ffffff0c; box-shadow: 0 3px 10px #23232316;
     }
     [data-gap][data-gap='none'] { border: 0; border-radius: 0; }
