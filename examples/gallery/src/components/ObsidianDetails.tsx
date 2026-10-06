@@ -1,31 +1,26 @@
 import { selectedCount } from '../model'
-import { packAttr } from '../themeAttrs'
+import { pack } from '../themeVars'
 
 export const ObsidianFooter = () => (
   <footer
     aria-label="Obsidian status"
-    ref={packAttr.inherit}
     css={`
       display: none;
-      ${packAttr.is(
-        'obsidian',
-        `
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 16px;
-          padding: 12px 26px;
-          flex-shrink: 0;
-          background: var(--bg-secondary);
-          color: var(--text-muted);
-          border-top: 1px solid var(--border);
-          font-size: 9px;
-          letter-spacing: 0.08em;
-        `,
-      )}
+      ${pack.container('obsidian')} {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 12px 26px;
+        flex-shrink: 0;
+        background: var(--bg-secondary);
+        color: var(--text-muted);
+        border-top: 1px solid var(--border);
+        font-size: 9px;
+        letter-spacing: 0.08em;
+      }
     `}
   >
-
     <span>
       <b aria-hidden="true">◇</b> Obsidian <i>/</i> Local collection
     </span>

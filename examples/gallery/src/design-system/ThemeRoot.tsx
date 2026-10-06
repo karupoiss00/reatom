@@ -28,6 +28,7 @@ import {
   clearDocumentThemeVars,
 } from './documentStyles'
 import { resolveThemeCssVars } from './themes/registry'
+import { mode as modeVar, pack as packVar } from '../themeVars'
 import { OPTIONAL_DECORATIVE_TOKEN_KEYS } from './themeTypes'
 
 const clearedOptionalTokens = Object.fromEntries(
@@ -238,6 +239,8 @@ export const ThemeRoot = ({
         if (bindDocument) clearDocumentThemeVars()
       }
     }}
+    {...packVar.provide(() => resolvePack(pack))}
+    {...modeVar.provide(() => resolveMode(mode))}
     attr:data-theme-pack={() => resolvePack(pack)}
     attr:data-theme-mode={() => resolveMode(mode)}
     attr:data-glass-animation={glassBackgroundAnimation}

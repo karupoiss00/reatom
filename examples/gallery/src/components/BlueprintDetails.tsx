@@ -1,29 +1,25 @@
 import { selectedCount, viewMode, visibleIndexMap } from '../model'
-import { packAttr } from '../themeAttrs'
+import { pack } from '../themeVars'
 
 export const BlueprintFooter = () => (
   <footer
     aria-label="Blueprint status"
-    ref={packAttr.inherit}
     css={`
       display: none;
-      ${packAttr.is(
-        'blueprint',
-        `
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          gap: 20px;
-          padding: 12px 26px;
-          flex-shrink: 0;
-          min-height: 41px;
-          background: var(--toolbar-bg);
-          border-top: 1px solid var(--border-strong);
-          font-size: 9px;
-          letter-spacing: 0.08em;
-          color: var(--text-secondary);
-        `,
-      )}
+      ${pack.container('blueprint')} {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 20px;
+        padding: 12px 26px;
+        flex-shrink: 0;
+        min-height: 41px;
+        background: var(--toolbar-bg);
+        border-top: 1px solid var(--border-strong);
+        font-size: 9px;
+        letter-spacing: 0.08em;
+        color: var(--text-secondary);
+      }
     `}
   >
     <span>

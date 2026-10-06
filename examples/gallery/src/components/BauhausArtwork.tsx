@@ -1,10 +1,8 @@
-import { packAttr } from '../themeAttrs'
+import { pack } from '../themeVars'
 
 const emptyArtCss = `
   display: none;
-  ${packAttr.is(
-    'bauhaus',
-    `
+  ${pack.container('bauhaus')} {
       display: block;
       position: absolute;
       inset: 24px 0 24px 55%;
@@ -103,30 +101,24 @@ const emptyArtCss = `
           left: 5%;
         }
       }
-    `,
-  )}
+  }
 `
 
 const eyebrowCss = `
   display: none;
-  ${packAttr.is(
-    'bauhaus',
-    `
+  ${pack.container('bauhaus')} {
       display: block;
       font-size: 11px;
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.18em;
       color: var(--text-primary);
-    `,
-  )}
+  }
 `
 
 const sidebarPrintCss = `
   display: none;
-  ${packAttr.is(
-    'bauhaus',
-    `
+  ${pack.container('bauhaus')} {
       display: flex;
       flex-direction: column;
       gap: 18px;
@@ -135,8 +127,7 @@ const sidebarPrintCss = `
       padding-top: 56px;
       user-select: none;
       color: var(--text-primary);
-    `,
-  )}
+  }
 `
 
 const printShapesCss = `
@@ -167,21 +158,19 @@ const printShapesCss = `
 
 export const BauhausEmptyArt = () => (
   <>
-    <div attr:aria-hidden="true" ref={packAttr.inherit} css={emptyArtCss}>
+    <div attr:aria-hidden="true" css={emptyArtCss}>
       <span />
       <span />
       <span />
       <span />
       <span>FORM / COLOR / LIGHT</span>
     </div>
-    <span ref={packAttr.inherit} css={eyebrowCss}>
-      A space for seeing.
-    </span>
+    <span css={eyebrowCss}>A space for seeing.</span>
   </>
 )
 
 export const BauhausSidebarPrint = () => (
-  <div attr:aria-hidden="true" ref={packAttr.inherit} css={sidebarPrintCss}>
+  <div attr:aria-hidden="true" css={sidebarPrintCss}>
     <div css={printShapesCss}>
       <span />
       <span />

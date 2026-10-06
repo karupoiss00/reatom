@@ -5,7 +5,7 @@ import {
   viewMode,
   visibleIndexMap,
 } from '../model'
-import { bindRefs, packAttr } from '../themeAttrs'
+import { pack } from '../themeVars'
 import { FolderImageTree, PreviewBoundImage } from './FolderImageTree'
 import { GridImage } from './GridImage'
 import { GridLoupe } from './GridLoupe'
@@ -14,9 +14,7 @@ import { ImageList } from './ImageList'
 import { ImageTable } from './ImageTable'
 
 const gridEntryCss = `
-  ${packAttr.is(
-    'bauhaus',
-    `
+  ${pack.container('bauhaus')} {
       [data-mod3] {
         --print-color: var(--bauhaus-red);
         --print-shape: circle(50%);
@@ -29,11 +27,8 @@ const gridEntryCss = `
         --print-color: var(--bauhaus-yellow);
         --print-shape: polygon(50% 0, 100% 100%, 0 100%);
       }
-    `,
-  )}
-  ${packAttr.is(
-    'polaroid',
-    `
+    }
+  ${pack.container('polaroid')} {
       [data-mod5='1'] > [data-gap='medium']:not([data-density='tiny']):not([data-density='micro']),
       [data-mod5='1'] > [data-gap='large']:not([data-density='tiny']):not([data-density='micro']),
       [data-mod5='1'] > [data-gap='xl']:not([data-density='tiny']):not([data-density='micro']) {
@@ -68,8 +63,7 @@ const gridEntryCss = `
       [data-mod6='4'] > [data-gap]::before {
         transform: translateX(-50%) rotate(5deg);
       }
-    `,
-  )}
+    }
 `
 
 const NoImagesMessage = () => (
@@ -98,7 +92,14 @@ const NoImagesMessage = () => (
 
 export const ImageGrid = () => (
   <div
-    ref={bindRefs(imageGrid.ref, packAttr.inherit, () => bindLoupeDismiss())}
+    ref={(element) => {
+      const unbindGrid = imageGrid.ref(element)
+      const unbindDismiss = bindLoupeDismiss()
+      return () => {
+        unbindGrid()
+        unbindDismiss()
+      }
+    }}
     attr:data-view-mode={viewMode}
     attr:data-density={imageGrid.density}
     css:columns={() => {

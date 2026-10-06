@@ -13,7 +13,7 @@ import {
   viewMode,
   themePack,
 } from '../model'
-import { packAttr } from '../themeAttrs'
+import { pack } from '../themeVars'
 import {
   FilterIcon,
   GalleryMarkIcon,
@@ -114,68 +114,72 @@ export const Toolbar = () => (
           `}
         >
           <span
-            ref={packAttr.inherit}
             css={`
               display: none;
-              ${packAttr.is('polaroid', 'display: inline-flex;')}
+              ${pack.container('polaroid')} {
+                display: inline-flex;
+              }
             `}
           >
             <InstantCameraIcon />
           </span>
           <span
-            ref={packAttr.inherit}
             css={`
               display: inline-flex;
-              ${packAttr.is('polaroid', 'display: none;')}
+              ${pack.container('polaroid')} {
+                display: none;
+              }
             `}
           >
             <GalleryMarkIcon />
           </span>
         </span>
         <span
-          ref={packAttr.inherit}
           css={`
             display: none;
-            ${packAttr.is('polaroid', 'display: inline;')}
+            ${pack.container('polaroid')} {
+              display: inline;
+            }
           `}
         >
           Instant
         </span>
         <span
-          ref={packAttr.inherit}
           css={`
             display: none;
-            ${packAttr.is('blueprint', 'display: inline;')}
+            ${pack.container('blueprint')} {
+              display: inline;
+            }
           `}
         >
           Blueprint
         </span>
         <span
-          ref={packAttr.inherit}
           css={`
             display: none;
-            ${packAttr.is('obsidian', 'display: inline;')}
+            ${pack.container('obsidian')} {
+              display: inline;
+            }
           `}
         >
           Obsidian
         </span>
         <span
-          ref={packAttr.inherit}
           css={`
             display: none;
-            ${packAttr.is('minimal', 'display: inline;')}
+            ${pack.container('minimal')} {
+              display: inline;
+            }
           `}
         >
           Minimal
         </span>
         <span
-          ref={packAttr.inherit}
           css={`
             display: inline;
-            ${packAttr.is('polaroid', 'display: none;')}
-            ${packAttr.is('blueprint', 'display: none;')}
-            ${packAttr.is('obsidian', 'display: none;')}
-            ${packAttr.is('minimal', 'display: none;')}
+            ${pack.container('polaroid', 'blueprint', 'obsidian', 'minimal')} {
+              display: none;
+            }
           `}
         >
           Gallery
