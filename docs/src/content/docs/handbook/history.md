@@ -5,12 +5,14 @@ description: The history of Reatom
 
 ## Zen
 
+Those rules we following while building public API of Reatom.
+
 - **Primitives outperform frameworks**
 - **Composition beats configuration**
 - **Explicit specifics, implicit generics**
 - **Compatibility worth complexity**
-
-<!-- Our long term goal it is to add "Easy to use, hard to misuse" (To fall into the pit of success), but it is really hard to archive -->
+- **Easy to use, hard to misuse**
+- **Hardest solved, rest resolved**
 
 ## Goal
 
@@ -19,7 +21,7 @@ The main goal of Reatom is to be the best universal state manager for any kind o
 ## Evolution
 
 Reatom is built for the long haul.
-We dropped our first Long Term Support (LTS) version (v1) in [December 2019](https://github.com/reatom/reatom/releases/tag/v1.0). And it was supported for a half of decade. We are always open to is sues and PRs for older versions, if it will help you!
+We dropped our first Long Term Support (LTS) version (v1) in [December 2019](https://github.com/reatom/reatom/releases/tag/v1.0). It was supported for half a decade. We are always open to issues and PRs for older versions, if it helps you!
 
 We have [a lot of contributors](https://github.com/reatom/reatom/graphs/contributors) working on different packages. We are trying to build a super stable and predictable ecosystem. To achieve this, we welcome you to put your package into our monorepo and check the [contribution](/contributing) guidelines.
 
@@ -27,23 +29,23 @@ We have [a lot of contributors](https://github.com/reatom/reatom/graphs/contribu
 
 Since the 1k version (`1000`), Reatom uses epoch-based versioning inspired [by Antfu's post](https://antfu.me/posts/epoch-semver). The next epoch release (`2000`) will be in 2026-2027 and may include meaningful changes; the whole ecosystem will be migrated together with the core package. The classic major versions (`1001`, `1002`, `1042`) and other minor and patch versions follow standard SemVer and represent small changes in a general epoch context.
 
-## How performant Reatom is?
+## How performant is Reatom?
 
-Reatom has best possible performance according to its features! The more complex your application, the faster Reatom will be compared to competitors.
+Reatom has the best possible performance for its feature set! The more complex your application, the faster Reatom will be compared to competitors.
 
 Check out this [benchmark](https://github.com/artalar/reactive-computed-bench) for complex computations across different state managers.
-Note that Reatom uses immutable data structures and operates in a separate async context, which bring a lot of features, which will take too many overhead with other set of tools. That means the Reatom test covers more features than other state manager tests
+Note that Reatom uses immutable data structures and operates in a separate async context, which brings a lot of features that would add too much overhead with another set of tools. That means the Reatom test covers more features than other state manager tests.
 Still, Reatom performs faster than MobX for mid-range numbers, which is pretty impressive.
 
 Also, remember to check out our [atomization guide](/recipes/atomization).
 
 ### Why not Proxy?
 
-Proxy is a common pattern for working with signals, but it could be pretty messy in a scale. Atomization, as Reatom employs it, offers several advantages over Proxy-based reactivity:
+Proxy is a common pattern for working with signals, but it could be pretty messy at scale. Atomization, as Reatom employs it, offers several advantages over Proxy-based reactivity:
 
 - **Explicit Reactivity**: With atomization, it's always clear what is reactive and what isn't - hover a property and you get a type-hint. Proxies can make reactivity implicit and harder to trace in your codebase.
 - **Simplified Debugging**: Mutable structures, often used with Proxies, are inherently more complex to debug, especially in asynchronous scenarios. Atomization, combined with Reatom's immutable approach, provides a clearer path for inspecting state changes and understanding data flow. You're also less likely to encounter situations requiring a `toJS`-like conversion (common in MobX) to inspect or pass data.
-- **Controlled Performance**: While a direct Proxy interface might seem lightweight, it still heavier than an atom function call. But the real performance challenge arises from the often-uncontrolled creation of reactive structures. Atomization gives you fine-grained control, allowing you to define reactive elements precisely where needed, avoiding unnecessary overhead.
+- **Controlled Performance**: While a direct Proxy interface might seem lightweight, it is still heavier than an atom function call. But the real performance challenge arises from the often-uncontrolled creation of reactive structures. Atomization gives you fine-grained control, allowing you to define reactive elements precisely where needed, avoiding unnecessary overhead.
 
 Also, with `@reatom/zod`, you can create safer reactive structures even shorter than with Proxy.
 
@@ -51,11 +53,11 @@ Also, with `@reatom/zod`, you can create safer reactive structures even shorter 
 
 > Keywords: "package duplication", "deduplication", "dedupe"...
 
-When updating Reatom packages, you may encounter type incompatibilities, unexpected build or runtime errors due to your package manager's deduplication policy. Reatom core package is singleton, it uses internal `STACK` for the frames stack management and other singleton variables and services. However, there are no standards for this type of package, and different package managers may deduplicate them differently.
+When updating Reatom packages, you may encounter type incompatibilities, unexpected build or runtime errors due to your package manager's deduplication policy. The Reatom core package is a singleton: it uses an internal `STACK` for the frames stack management and other singleton variables and services. However, there are no standards for this type of package, and different package managers may deduplicate them differently.
 
 Therefore, we recommend running deduplication manually after updating Reatom packages. For example, if you have installed `@reatom/core` and `@reatom/react`, and you want to update the react adapter to the latest version, use one of the following commands.
 
-NPM has special flag to deduplicate related packages during installation:
+NPM has a special flag to deduplicate related packages during installation:
 
 ```bash
 npm i --prefer-dedupe @reatom/react@latest
@@ -67,7 +69,7 @@ npm i --prefer-dedupe @reatom/react@latest
 yarn add @reatom/react@latest && yarn dedupe "@reatom/*"
 ```
 
-PNPM does not deduplicate packages by default, and there isn't a deduplication command for a specific **set** of packages. You can run `pnpm dedupe @reatom/core`, but for sure you will need to manually remove all installed Reatom packages and install it again:
+PNPM does not deduplicate packages by default, and there isn't a deduplication command for a specific **set** of packages. You can run `pnpm dedupe @reatom/core`, but most likely you will need to manually remove all installed Reatom packages and install them again:
 
 ```sh
 pnpm rm @reatom/core @reatom/react && pnpm i @reatom/core@latest @reatom/react@latest
@@ -89,10 +91,10 @@ Ensure your **entire** toolchain (TypeScript, bundler, test runner) targets `es2
 
 ## Migration from v3
 
-v1000 solves the most annoying problem of v3 - explicit context management. Now, as others signals libraries, Reatom operate context by global variable which is hidden from public API. **But** the ability to create your own custom context and scope your processes is still here! With:
+v1000 solves the most annoying problem of v3 - explicit context management. Now, like other signal libraries, Reatom operates the context through a global variable hidden from the public API. **But** the ability to create your own custom context and scope your processes is still here! With:
 
 - `clearStack()` you can throw away the default context, and add runtime checks that there should be your custom context.
-- `context.start()` you can create your own context, for SSR handler or each test run. You should use it for React `reatomContext.Provider`, but the provider required only if you choose to start with clearStack.
+- `context.start()` you can create your own context, for SSR handler or each test run. You should use it for React `reatomContext.Provider`, but the provider is required only if you choose to start with `clearStack`.
 - `wrap` for context preservation across async boundaries. Check the rules above.
 
 New rules:
