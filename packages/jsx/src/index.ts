@@ -780,6 +780,7 @@ let setProp = (dom: DomApis, element: JSX.Element, key: string, value: any) => {
       set(dom, element, key, val)
       marked = clearJsxError(marked)
     } catch (error) {
+      if (key === 'innerHTML' || key === 'prop:innerHTML') throw error
       onPropError(error)
     }
   }
@@ -854,6 +855,9 @@ let set = (dom: DomApis, element: JSX.Element, key: string, value: any) => {
   } else if (key.startsWith('style:')) {
     setStyleProp(element.style, key.slice(6), value)
   } else if (key.startsWith('prop:')) {
+    if (key === 'prop:innerHTML' && element.childElementCount) {
+      throw new ReatomError('Can only set one of `children` or `innerHTML`.')
+    }
     // @ts-expect-error
     element[key.slice(5)] = value
   } else if (
@@ -873,6 +877,9 @@ let set = (dom: DomApis, element: JSX.Element, key: string, value: any) => {
 
     // TODO this is the most slow part
     /** @note element.valueAsDate = '' // Uncaught TypeError: Failed to convert value to 'object'. */
+    if (key === 'innerHTML' && element.childElementCount) {
+      throw new ReatomError('Can only set one of `children` or `innerHTML`.')
+    }
     // @ts-ignore
     element[key] = value == null && key !== 'valueAsDate' ? '' : value
   } else {
@@ -953,9 +960,9 @@ export let h = (tag: any, props: Rec, ...children: any[]): JSX.Element => {
 
   if ('children' in props) children = props.children
 
-  setProps(dom, element, props)
-
   walk(dom, element, children)
+
+  setProps(dom, element, props)
 
   return element
 }

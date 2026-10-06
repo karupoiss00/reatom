@@ -19,6 +19,7 @@ import { expect, test, vi } from 'vitest'
 
 // eslint-disable-next-line unused-imports/no-unused-imports
 import { Bind, DEBUG, h, hf, instance, type JSX, mount, stylesheet } from '.'
+import type { Primitive } from './jsx'
 
 clearStack()
 
@@ -1644,10 +1645,7 @@ test('eagerly rendered atom child stays reactive after mount', () =>
 
 test('siblings connect when an earlier atom child changed before mount', () =>
   context.start(async () => {
-    const first = atom<JSX.ElementChildren>(
-      (<i>a</i>) as unknown as JSX.ElementChildren,
-      'first',
-    )
+    const first = atom(instance(HTMLElement, <i>a</i>), 'first')
     const second = atom('x', 'second')
     const element = (
       <div>
@@ -1660,7 +1658,7 @@ test('siblings connect when an earlier atom child changed before mount', () =>
     // connected during the mount walk emits synchronously and rewrites the
     // fragment content mid-walk. The walk must keep visiting the replacement
     // content and the following siblings.
-    first.set((<b>b</b>) as unknown as JSX.ElementChildren)
+    first.set(instance(HTMLElement, <b>b</b>))
 
     mount(parent(), element)
     await wrap(sleep())
@@ -1674,7 +1672,7 @@ test('siblings connect when an earlier atom child changed before mount', () =>
 
 test('siblings connect when a primitive atom child upgraded before mount', () =>
   context.start(async () => {
-    const first = atom<JSX.ElementChildren>('a', 'first')
+    const first = atom<Primitive | ChildNode>('a', 'first')
     const second = atom('x', 'second')
     const element = (
       <div>
@@ -1687,7 +1685,7 @@ test('siblings connect when a primitive atom child upgraded before mount', () =>
     // stops being primitive, removing the very node the mount walk is
     // visiting. The walk must continue into the replacement fragment and the
     // following siblings.
-    first.set((<b>b</b>) as unknown as JSX.ElementChildren)
+    first.set(instance(HTMLElement, <b>b</b>))
 
     mount(parent(), element)
     await wrap(sleep())
@@ -1780,4 +1778,40 @@ test.skip('fragment as child in double atom', () =>
     expect(stripJsxCompilerProps(element.innerHTML)).toBe(
       '<!--first--><p><!--second--><!---->test<!----><!--second--></p><!--first-->',
     )
+  }))
+
+test('select value is applied after options', () =>
+  context.start(async () => {
+    const element = instance(
+      HTMLSelectElement,
+      <select prop:value="ru">
+        <option value="auto">Auto</option>
+        <option value="ru">Русский</option>
+      </select>,
+    )
+
+    expect(element.value).toBe('ru')
+  }))
+
+test('innerHTML without children', () =>
+  context.start(async () => {
+    const element = <div prop:innerHTML="<b>a</b>" />
+
+    expect(element.querySelector('b')?.textContent).toBe('a')
+  }))
+
+test('innerHTML with children throws', () =>
+  context.start(async () => {
+    expect(() => h('div', { innerHTML: '<b>a</b>' }, h('span', {}))).toThrow(
+      'Can only set one of `children` or `innerHTML`.',
+    )
+    expect(() =>
+      h('div', { 'prop:innerHTML': '<b>a</b>' }, h('span', {})),
+    ).toThrow('Can only set one of `children` or `innerHTML`.')
+    expect(() =>
+      h('div', { $spread: { innerHTML: '<b>a</b>' } }, h('span', {})),
+    ).toThrow('Can only set one of `children` or `innerHTML`.')
+
+    const element = <div prop:innerHTML="<b>a</b>">{null}</div>
+    expect(element.querySelector('b')?.textContent).toBe('a')
   }))
