@@ -1,0 +1,95 @@
+import type { CatalogModel } from '../../catalog/types'
+import type {
+  AssistantMessage,
+  ChatId,
+  MessageId,
+  UserMessage,
+} from '../../storage/types'
+
+export const gpt4oMini: CatalogModel = {
+  id: 'openai/gpt-4o-mini',
+  name: 'OpenAI: GPT-4o-mini',
+  contextLength: 128000,
+  promptPrice: 0.00000015,
+  completionPrice: 0.0000006,
+  webSearchPrice: 0.014,
+  isFree: false,
+  inputModalities: ['text', 'image', 'file'],
+  supportedParameters: ['tools', 'temperature', 'reasoning'],
+  supportedEfforts: null,
+  maxCompletionTokens: 16384,
+  isModerated: true,
+  isReasoning: false,
+}
+
+export const claudeSonnet: CatalogModel = {
+  id: 'anthropic/claude-sonnet-4.5',
+  name: 'Anthropic: Claude Sonnet 4.5',
+  contextLength: 200000,
+  promptPrice: 0.000003,
+  completionPrice: 0.000015,
+  webSearchPrice: null,
+  isFree: false,
+  inputModalities: ['text', 'image'],
+  supportedParameters: [
+    'temperature',
+    'top_p',
+    'max_tokens',
+    'reasoning',
+    'tools',
+  ],
+  supportedEfforts: ['low', 'medium', 'high'],
+  maxCompletionTokens: 64000,
+  isModerated: false,
+  isReasoning: true,
+}
+
+export const userMessage = (
+  id: MessageId,
+  parentId: MessageId | null,
+  content: string,
+  patch: Partial<UserMessage> = {},
+  chatId: ChatId = 'chat-1',
+): UserMessage => ({
+  id,
+  chatId,
+  parentId,
+  createdAt: 1,
+  rev: 1,
+  role: 'user',
+  content,
+  attachments: [],
+  ...patch,
+})
+
+export const assistantMessage = (
+  id: MessageId,
+  parentId: MessageId,
+  content: string,
+  patch: Partial<AssistantMessage> = {},
+  chatId: ChatId = 'chat-1',
+): AssistantMessage => ({
+  id,
+  chatId,
+  parentId,
+  createdAt: 2,
+  rev: 1,
+  role: 'assistant',
+  model: gpt4oMini.id,
+  content,
+  status: 'done',
+  reasoning: null,
+  refusal: null,
+  finishReason: 'stop',
+  error: null,
+  usage: null,
+  extraUsage: [],
+  estimateCost: 0,
+  generationId: null,
+  provider: null,
+  timing: { requestAt: 1, firstTokenAt: 2, endAt: 3 },
+  citations: [],
+  ownerTab: 'tab-test',
+  compareGroup: null,
+  ...patch,
+})

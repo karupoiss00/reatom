@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#f6f5f2" />
+    <title>Atelier</title>
+    <script>
+      ;(function () {
+        var root = document.documentElement
+        var pref = 'system'
+        try {
+          var record = JSON.parse(localStorage.getItem('atelier.theme') || 'null')
+          var saved = record && record.data
+          if (saved === 'light' || saved === 'dark') pref = saved
+        } catch (error) {}
+        var theme = pref
+        if (pref === 'system') {
+          theme =
+            window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+              ? 'dark'
+              : 'light'
+        }
+        root.setAttribute('data-theme', theme)
+        root.setAttribute('data-theme-pref', pref)
+        var themeColor = document.querySelector('meta[name="theme-color"]')
+        if (themeColor) themeColor.setAttribute('content', theme === 'dark' ? '#141413' : '#f6f5f2')
+      })()
+    </script>
+    <style>
+      html {
+        background: #f6f5f2;
+        color: #1c1b19;
+        color-scheme: light;
+      }
+      html[data-theme='dark'] {
+        background: #141413;
+        color: #f3f1ea;
+        color-scheme: dark;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/index.tsx"></script>
+  </body>
+</html>

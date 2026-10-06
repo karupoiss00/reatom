@@ -1,0 +1,32 @@
+{
+  "name": "reatom-jsx-chat",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@openrouter/sdk": "1.4.22",
+    "@reatom/core": "1001.*.*",
+    "@reatom/jsx": "1001.*.*",
+    "dompurify": "^3.4.16",
+    "idb": "^8.0.3",
+    "katex": "^0.19.0",
+    "marked": "^18.1.0"
+  },
+  "devDependencies": {
+    "@vitest/browser": "^4.1.7",
+    "@vitest/browser-playwright": "^4.1.7",
+    "axe-core": "^4.14.0",
+    "kahraman": "0.3.1",
+    "playwright": "^1.60.0",
+    "storybook": "10.4.6",
+    "typescript": "^7.0.2",
+    "vite": "^8.0.14",
+    "vitest": "^4.1.7"
+  }
+}
