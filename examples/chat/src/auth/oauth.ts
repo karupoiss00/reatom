@@ -34,6 +34,12 @@ const exchangeClient = new OpenRouter({
 
 const callbackParamNames = ['code', 'state', 'error'] as const
 
+const oauthCallbackUrl = () => {
+  const base = import.meta.env.BASE_URL
+  if (base === '/' || base === '') return location.origin
+  return new URL(base, location.origin).href.replace(/\/$/, '')
+}
+
 let stashedCallbackUrl: URL | null = null
 
 const stripCallbackParams = (url: URL) => {
@@ -106,7 +112,7 @@ export const startOAuth = action(
     })
     const url = await wrap(
       openRouter().oAuth.createAuthorizationUrl({
-        callbackUrl: location.origin,
+        callbackUrl: oauthCallbackUrl(),
         codeChallenge: challenge.codeChallenge,
         codeChallengeMethod: 'S256',
         ...(limit === undefined ? {} : { limit }),

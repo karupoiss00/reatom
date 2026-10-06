@@ -160,7 +160,7 @@ test('edits a user message inside its bubble without remounting the row', async 
   expect(row('u1')).toBe(firstRow)
   expect(firstRow?.querySelector('[data-slot="UserMessageBubble"]')).toBe(bubble)
   expect(editor).toBeInstanceOf(HTMLElement)
-  expect(bubble?.contains(editor)).toBe(true)
+  expect(bubble?.contains(editor ?? null)).toBe(true)
   expect(row('a1')).toBe(replyRow)
 
   ui.editing.set(null)

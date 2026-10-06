@@ -24,7 +24,7 @@ const relativePath = (fromFile: string, toFile: string) => {
 export const shot = async (flowId: string, name: string) => {
   const target = `${evidenceRoot}/${flowId}/${name}.png`
   const testPath = expect.getState().testPath ?? ''
-  const path = testPath.includes('reatom-jsx-chat')
+  const path = testPath.includes('examples/chat')
     ? relativePath(testPath, target)
     : target
   return page.screenshot({ path })

@@ -11,7 +11,7 @@ import {
 
 export { rememberKey }
 import { isOnline } from '../../platform/env'
-import { chatRoute } from '../../routes'
+import { chatIdFromReturnTo, chatRoute, currentChatReturnTo } from '../../routes'
 
 const limitPattern = /^(?:\d+|\d+\.\d+)$/
 
@@ -82,18 +82,11 @@ export const connectBusy = computed(
   'welcome.connectBusy',
 )
 
-const currentReturnTo = (): string | null => {
-  const path = `${location.pathname}${location.search}${location.hash}`
-  if (!path.startsWith('/c/')) return null
-  return path
-}
-
 export const followReturnTo = (returnTo: string | null) => {
   if (!returnTo) return
-  const url = new URL(returnTo, location.origin)
-  const chatId = /^\/c\/([^/]+)$/.exec(url.pathname)?.[1]
+  const chatId = chatIdFromReturnTo(returnTo)
   if (!chatId) return
-  chatRoute.go({ chatId: decodeURIComponent(chatId) })
+  chatRoute.go({ chatId })
 }
 
 export const connect = action(async () => {
@@ -107,7 +100,7 @@ export const connect = action(async () => {
       startOAuth({
         limit: limit.state === 'empty' ? null : limit.amount,
         remember: rememberKey(),
-        returnTo: currentReturnTo(),
+        returnTo: currentChatReturnTo(),
       }),
     )
   } finally {

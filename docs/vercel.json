@@ -1,4 +1,10 @@
 {
   "cleanUrls": true,
-  "installCommand": "node ./scripts/vercel-install.mjs"
+  "installCommand": "node ./scripts/vercel-install.mjs",
+  "rewrites": [
+    {
+      "source": "/examples/chat/:path*",
+      "destination": "/examples/chat/index.html"
+    }
+  ]
 }

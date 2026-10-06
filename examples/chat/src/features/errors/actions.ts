@@ -10,7 +10,7 @@ import { createChat } from '../../chat/library'
 import { now } from '../../platform/env'
 import { openExternal } from '../../platform/external'
 import { ui } from '../../app/ui'
-import { openChat } from '../../routes'
+import { currentChatReturnTo, openChat } from '../../routes'
 import { createChatRecord } from '../../storage/records'
 import { repo } from '../../storage/repo'
 import type {
@@ -35,11 +35,6 @@ const effortLadder = [
 const createId = (): string =>
   globalThis.crypto?.randomUUID?.() ??
   `${now().toString(36)}-${Math.random().toString(36).slice(2)}`
-
-const returnToPath = (): string | null => {
-  const path = `${location.pathname}${location.search}${location.hash}`
-  return path.startsWith('/c/') ? path : null
-}
 
 const lowerEffort = (
   current: ReasoningEffort | undefined,
@@ -151,7 +146,7 @@ export const runErrorAction = (input: {
       startOAuth({
         limit: limit !== null && limit > 0 ? limit : 10,
         remember: rememberKey(),
-        returnTo: returnToPath(),
+        returnTo: currentChatReturnTo(),
       })
       return
     }
