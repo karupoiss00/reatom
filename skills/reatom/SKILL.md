@@ -14,6 +14,7 @@ Use this skill when implementing or explaining Reatom v1001. Treat [REFERENCE.md
 3. For deep async flows (`wrap`, `withAsyncData`, `withAbort`, sampling, Suspense), switch to the `reatom-async` skill.
 4. For `@reatom/jsx` (native DOM JSX, mount, props, css prop), switch to the `reatom-jsx` skill.
 5. For pull requests, reviews, or skeptic validation of agent output, switch to the `reatom-review` skill.
+6. For designing, reworking, or replacing a helper, extension, or public API, switch to the `reatom-api-design` skill.
 
 ## Section map
 
