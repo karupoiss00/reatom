@@ -169,11 +169,11 @@ Theme packs and defaults live in `src/theme.tsx` and persisted UI atoms live in 
 
 Binary image corpora live under `src/__fixtures__/images/` in three tiers:
 
-| Tier     | Size              | Use                                                      |
-| -------- | ----------------- | -------------------------------------------------------- |
-| `tier-a` | ~4 MB             | Default CI — EXIF, PNG/WebP/AVIF/GIF/SVG/BMP smoke tests |
-| `tier-b` | ~40 MB            | Extended parser/decode and stress cases                  |
-| `tier-c` | ~140 MB (Git LFS) | Real RAW/DNG/ARW/ORF embedded-preview tests              |
+| Tier     | Size             | Use                                                      |
+| -------- | ---------------- | -------------------------------------------------------- |
+| `tier-a` | ~4 MB            | Default CI — EXIF, PNG/WebP/AVIF/GIF/SVG/BMP smoke tests |
+| `tier-b` | ~40 MB           | Extended parser/decode and stress cases                  |
+| `tier-c` | ~62 MB (Git LFS) | Real NEF/DNG/ARW/ORF embedded-preview tests              |
 
 ```bash
 # Re-download from pinned upstream URLs (updates manifest sha256)
@@ -191,6 +191,8 @@ After clone, pull LFS objects for tier-c:
 git lfs install
 git lfs pull
 ```
+
+Lightbox decode stories use generated 9183×5859 JPEGs in `src/__fixtures__/large/` (about 1.3 MB, not Git LFS). Regenerate them with `pnpm fixtures:large` (`cjpeg` from libjpeg must be on `PATH`).
 
 Attribution: [`src/__fixtures__/LICENSES.md`](src/__fixtures__/LICENSES.md).
 

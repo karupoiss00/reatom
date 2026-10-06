@@ -17,40 +17,40 @@ const fixtureAssetUrls = import.meta.glob('./images/**/*', {
   eager: true,
 }) as Record<string, string>
 
-const personalFixtureAssetUrls = import.meta.glob('./personal/*', {
+const largeFixtureAssetUrls = import.meta.glob('./large/*', {
   query: '?url',
   import: 'default',
   eager: true,
 }) as Record<string, string>
 
-export const personalFixtureEntries = [
+export const largeFixtureEntries = [
   {
-    name: 'DSC08224.jpg',
+    name: 'large-01.jpg',
     width: 9183,
     height: 5859,
-    size: 23_522_946,
+    size: 329_545,
   },
   {
-    name: 'DSC08225.jpg',
+    name: 'large-02.jpg',
     width: 9183,
     height: 5859,
-    size: 20_397_162,
+    size: 330_047,
   },
   {
-    name: 'DSC08226.jpg',
+    name: 'large-03.jpg',
     width: 9183,
     height: 5859,
-    size: 22_687_547,
+    size: 326_512,
   },
   {
-    name: 'DSC08249.jpg',
+    name: 'large-04.jpg',
     width: 9183,
     height: 5859,
-    size: 17_503_162,
+    size: 326_378,
   },
 ] as const
 
-export type PersonalFixtureEntry = (typeof personalFixtureEntries)[number]
+export type LargeFixtureEntry = (typeof largeFixtureEntries)[number]
 
 function fixtureAssetUrl(tier: FixtureTier, relativePath: string): string {
   const normalizedPath = relativePath.replace(/\\/g, '/')
@@ -160,18 +160,18 @@ function getOrCreateFolder(
   return parent
 }
 
-function personalFixtureAssetUrl(name: string): string {
-  const url = personalFixtureAssetUrls[`./personal/${name}`]
+function largeFixtureAssetUrl(name: string): string {
+  const url = largeFixtureAssetUrls[`./large/${name}`]
   if (!url) {
-    throw new Error(`Missing personal fixture asset URL for ${name}`)
+    throw new Error(`Missing large fixture asset URL for ${name}`)
   }
   return url
 }
 
-export function createPersonalFixtureFileHandle(
-  entry: PersonalFixtureEntry,
+export function createLargeFixtureFileHandle(
+  entry: LargeFixtureEntry,
 ): FileSystemFileHandle {
-  const assetUrl = personalFixtureAssetUrl(entry.name)
+  const assetUrl = largeFixtureAssetUrl(entry.name)
   const mime = mimeFromFilename(entry.name)
 
   return {
@@ -189,11 +189,9 @@ export function createPersonalFixtureFileHandle(
   } as unknown as FileSystemFileHandle
 }
 
-function createImageFromPersonalFixture(
-  entry: PersonalFixtureEntry,
-): ImageFile {
+function createImageFromLargeFixture(entry: LargeFixtureEntry): ImageFile {
   return {
-    id: `personal-${entry.name}`,
+    id: `large-${entry.name}`,
     name: entry.name,
     path: '',
     relativePath: entry.name,
@@ -203,16 +201,16 @@ function createImageFromPersonalFixture(
       type: mimeFromFilename(entry.name),
       lastModified: 1700000000000,
     },
-    fileHandle: createPersonalFixtureFileHandle(entry),
+    fileHandle: createLargeFixtureFileHandle(entry),
   }
 }
 
-export function buildPersonalFixtureFolderTree(): FolderNode {
-  const images = personalFixtureEntries.map(createImageFromPersonalFixture)
+export function buildLargeFixtureFolderTree(): FolderNode {
+  const images = largeFixtureEntries.map(createImageFromLargeFixture)
   return {
-    name: 'PersonalFixtures',
+    name: 'LargeFixtures',
     path: '',
-    handle: createMockDirHandle('PersonalFixtures'),
+    handle: createMockDirHandle('LargeFixtures'),
     images,
     children: [],
     imageCount: images.length,

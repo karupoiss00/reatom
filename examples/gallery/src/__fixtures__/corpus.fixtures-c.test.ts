@@ -13,7 +13,10 @@ describe('tier-c fixtures', () => {
   test('parseImageMeta succeeds for representative RAW files when LFS objects exist', async (ctx) => {
     if (!(await tierCAvailablePromise)) ctx.skip()
 
-    const sampleDests = ['raw/IMG_3887.CR2', 'dng/574-purple-cast.dng'] as const
+    const sampleDests = [
+      'pixls/RX700064.ARW',
+      'dng/574-purple-cast.dng',
+    ] as const
 
     for (const dest of sampleDests) {
       const entry = listFixtures('tier-c').find((item) => item.dest === dest)

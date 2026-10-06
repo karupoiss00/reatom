@@ -16,6 +16,7 @@
     "test:fixtures:extended": "vitest --project=fixtures-a --project=fixtures-b",
     "test:fixtures:raw": "vitest --project=fixtures-c",
     "fixtures:fetch": "node scripts/fetch-fixtures.mjs --write-hashes",
+    "fixtures:large": "node scripts/generate-large-fixtures.mjs",
     "prestorybook": "pnpm --filter @reatom/jsx run build",
     "storybook": "storybook dev -p 6006 --no-open",
     "prebuild-storybook": "pnpm --filter @reatom/jsx run build",

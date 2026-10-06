@@ -137,7 +137,8 @@ src/
 ├── __fixtures__/              # mockData.ts, manifest.json, fixtureLoader.ts, images/
 │   ├── images/tier-a/         # default CI corpus (~4 MB)
 │   ├── images/tier-b/         # extended corpus (~40 MB)
-│   └── images/tier-c/         # RAW corpus via Git LFS (~140 MB)
+│   ├── images/tier-c/         # RAW corpus via Git LFS (~62 MB)
+│   └── large/                 # generated ~54 MP JPEGs for decode tests (~1.3 MB)
 ├── shared/                   # Test utilities (test.ts, testSetup.ts, StoryWrapper.tsx)
 ├── integration/               # (reserved for future use)
 ├── App.stories.tsx           # Integration stories — full App

@@ -20,8 +20,7 @@ const WPT =
 const PNGSUITE = 'http://www.schaik.com/pngsuite'
 const LIBWEBP =
   'https://raw.githubusercontent.com/webmproject/libwebp-test-data/main'
-const NOMACS =
-  'https://raw.githubusercontent.com/nomacs/formats_testset/main'
+const NOMACS = 'https://raw.githubusercontent.com/nomacs/formats_testset/main'
 const OCULANTE =
   'https://raw.githubusercontent.com/woelper/oculante/master/tests'
 const EXIFTOOL =
@@ -342,27 +341,6 @@ const manifestEntries = [
   ),
   urlEntry(
     'tier-c',
-    'raw/IMG_3887.CR2',
-    `${NOMACS}/RAW/IMG_3887.CR2`,
-    'BSD-3-Clause',
-    'nomacs/formats_testset RAW/IMG_3887.CR2',
-  ),
-  urlEntry(
-    'tier-c',
-    'raw/IMG_4059.CR2',
-    `${NOMACS}/RAW/IMG_4059.CR2`,
-    'BSD-3-Clause',
-    'nomacs/formats_testset RAW/IMG_4059.CR2',
-  ),
-  urlEntry(
-    'tier-c',
-    'raw/IMG_4073.CR2',
-    `${NOMACS}/RAW/IMG_4073.CR2`,
-    'BSD-3-Clause',
-    'nomacs/formats_testset RAW/IMG_4073.CR2',
-  ),
-  urlEntry(
-    'tier-c',
     'raw/DSC_0073.NEF',
     `${NOMACS}/RAW/DSC_0073.NEF`,
     'BSD-3-Clause',
@@ -452,7 +430,9 @@ async function fileExists(path) {
 async function downloadUrl(url) {
   const response = await fetch(url)
   if (!response.ok) {
-    throw new Error(`Failed to download ${url}: ${response.status} ${response.statusText}`)
+    throw new Error(
+      `Failed to download ${url}: ${response.status} ${response.statusText}`,
+    )
   }
   return Buffer.from(await response.arrayBuffer())
 }
@@ -516,7 +496,9 @@ async function materializeEntry(entry) {
 async function main() {
   const writeHashes = process.argv.includes('--write-hashes')
   const force = process.argv.includes('--force')
-  const tierFilter = process.argv.find((arg) => arg.startsWith('--tier='))?.split('=')[1]
+  const tierFilter = process.argv
+    .find((arg) => arg.startsWith('--tier='))
+    ?.split('=')[1]
 
   const selectedEntries = tierFilter
     ? manifestEntries.filter((entry) => entry.tier === tierFilter)
@@ -528,7 +510,10 @@ async function main() {
   }
 
   const existingByDest = new Map(
-    existingManifest.entries.map((entry) => [ `${entry.tier}/${entry.dest}`, entry ]),
+    existingManifest.entries.map((entry) => [
+      `${entry.tier}/${entry.dest}`,
+      entry,
+    ]),
   )
 
   const updatedEntries = []
@@ -577,9 +562,12 @@ async function main() {
   const allEntries = tierFilter
     ? [
         ...existingManifest.entries.filter(
-          (entry) => entry.tier !== tierFilter && !updatedEntries.some(
-            (updated) => updated.tier === entry.tier && updated.dest === entry.dest,
-          ),
+          (entry) =>
+            entry.tier !== tierFilter &&
+            !updatedEntries.some(
+              (updated) =>
+                updated.tier === entry.tier && updated.dest === entry.dest,
+            ),
         ),
         ...updatedEntries,
       ]

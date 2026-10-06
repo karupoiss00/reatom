@@ -40,7 +40,7 @@ export async function readFixtureBlob(
 
 export async function tierCAvailable(): Promise<boolean> {
   try {
-    const fileStat = await stat(fixtureAbsPath('tier-c', 'raw/IMG_3887.CR2'))
+    const fileStat = await stat(fixtureAbsPath('tier-c', 'pixls/RX700064.ARW'))
     return fileStat.size > 1000
   } catch {
     return false

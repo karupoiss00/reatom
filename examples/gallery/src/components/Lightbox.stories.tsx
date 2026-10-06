@@ -3,9 +3,9 @@ import { waitFor } from '@testing-library/dom'
 import { expect } from 'storybook/test'
 
 import {
-  buildPersonalFixtureFolderTree,
-  personalFixtureEntries,
-  type PersonalFixtureEntry,
+  buildLargeFixtureFolderTree,
+  largeFixtureEntries,
+  type LargeFixtureEntry,
 } from '../__fixtures__/fixtureLoader'
 import { mockFolderTree } from '../__fixtures__/mockData'
 import { assertHoverChangesPaint } from '../design-system/testing/paint'
@@ -16,8 +16,8 @@ import { loadGalleryStateWithImageModels } from '../shared/testSetup'
 import type { FolderNode } from '../types'
 import { Lightbox } from './Lightbox'
 
-const personalFixtureByName = new Map<string, PersonalFixtureEntry>(
-  personalFixtureEntries.map((entry) => [entry.name, entry]),
+const largeFixtureByName = new Map<string, LargeFixtureEntry>(
+  largeFixtureEntries.map((entry) => [entry.name, entry]),
 )
 
 const loc = {
@@ -39,8 +39,8 @@ const I = createMyself((I) => ({
     await I.see(loc.scrubberAppears)
   },
   seeFullResolutionImage: async (name: string) => {
-    const fixture = personalFixtureByName.get(name)
-    if (!fixture) throw new Error(`Unknown personal fixture: ${name}`)
+    const fixture = largeFixtureByName.get(name)
+    if (!fixture) throw new Error(`Unknown large fixture: ${name}`)
 
     await waitFor(
       async () => {
@@ -59,16 +59,16 @@ const I = createMyself((I) => ({
   },
 }))
 
-let personalTree: FolderNode | null = null
+let largeTree: FolderNode | null = null
 let restoreNativeImage: (() => void) | null = null
 
-const loadPersonalTree = () => {
-  personalTree = buildPersonalFixtureFolderTree()
+const loadLargeTree = () => {
+  largeTree = buildLargeFixtureFolderTree()
 }
 
 const renderLightboxAtIndex = (index: number) => {
-  if (!personalTree) throw new Error('Personal fixture tree is not loaded')
-  loadGalleryStateWithImageModels({ tree: personalTree })
+  if (!largeTree) throw new Error('Large fixture tree is not loaded')
+  loadGalleryStateWithImageModels({ tree: largeTree })
   const target = currentImages()[index]
   if (target) openLightbox(target)
   return (
@@ -135,26 +135,26 @@ export const CartoonDarkControlStates: Story = {
 }
 
 /**
- * Regression on real ~54 MP camera JPEGs from `__fixtures__/personal/`.
- * Navigating to the preloaded neighbor used to get stuck on preview quality
- * because concurrent full-size decodes rejected with EncodingError.
+ * Regression on generated ~54 MP JPEGs from `__fixtures__/large/`. Navigating
+ * to the preloaded neighbor used to get stuck on preview quality because
+ * concurrent full-size decodes rejected with EncodingError.
  */
 export const FullResolutionAcrossNavigation: Story = {
   parameters: largePhotoStoryParameters,
-  loaders: [loadPersonalTree],
+  loaders: [loadLargeTree],
   render: () => renderLightboxAtIndex(0),
   play: async () => {
     await I.seeLightboxOpen()
-    await I.seeFullResolutionImage('DSC08224.jpg')
+    await I.seeFullResolutionImage('large-01.jpg')
 
     await I.goToNextImage()
-    await I.seeFullResolutionImage('DSC08225.jpg')
+    await I.seeFullResolutionImage('large-02.jpg')
 
     await I.goToNextImage()
-    await I.seeFullResolutionImage('DSC08226.jpg')
+    await I.seeFullResolutionImage('large-03.jpg')
 
     await I.goToNextImage()
-    await I.seeFullResolutionImage('DSC08249.jpg')
+    await I.seeFullResolutionImage('large-04.jpg')
   },
 }
 
@@ -165,18 +165,18 @@ export const FullResolutionAcrossNavigation: Story = {
  */
 export const PreviewRemainsVisibleAcrossNavigation: Story = {
   parameters: largePhotoStoryParameters,
-  loaders: [loadPersonalTree],
+  loaders: [loadLargeTree],
   render: () => renderLightboxAtIndex(0),
   play: async () => {
     await I.seeLightboxOpen()
-    await I.seeFullResolutionImage('DSC08224.jpg')
+    await I.seeFullResolutionImage('large-01.jpg')
 
     await I.goToNextImage()
 
     await waitFor(
       async () => {
         const preview = await I.resolveLocator((canvas) =>
-          canvas.findByRole('img', { name: 'DSC08225.jpg' }),
+          canvas.findByRole('img', { name: 'large-02.jpg' }),
         )
         if (preview instanceof HTMLImageElement) {
           await expect(preview.naturalWidth).toBeGreaterThan(0)
@@ -191,35 +191,36 @@ export const PreviewRemainsVisibleAcrossNavigation: Story = {
       { timeout: 5_000 },
     )
 
-    await I.seeFullResolutionImage('DSC08225.jpg')
+    await I.seeFullResolutionImage('large-02.jpg')
   },
 }
 
 /** Same regression from the "open the second image first" angle. */
 export const FullResolutionFromMiddleImage: Story = {
   parameters: largePhotoStoryParameters,
-  loaders: [loadPersonalTree],
+  loaders: [loadLargeTree],
   render: () => renderLightboxAtIndex(1),
   play: async () => {
     await I.seeLightboxOpen()
-    await I.seeFullResolutionImage('DSC08225.jpg')
+    await I.seeFullResolutionImage('large-02.jpg')
 
     await I.goToNextImage()
-    await I.seeFullResolutionImage('DSC08226.jpg')
+    await I.seeFullResolutionImage('large-03.jpg')
 
     await I.goToNextImage()
-    await I.seeFullResolutionImage('DSC08249.jpg')
+    await I.seeFullResolutionImage('large-04.jpg')
   },
 }
 
 /**
  * Overlapping `img.decode()` on large photos rejects with EncodingError when
  * decoded frames exceed Chrome's working-set budget. Serialization plus the
- * loaded-bytes fallback must still reach full resolution on real fixtures.
+ * loaded-bytes fallback must still reach full resolution on the large
+ * fixtures.
  */
 export const FullResolutionUnderDecodePressure: Story = {
   parameters: largePhotoStoryParameters,
-  loaders: [loadPersonalTree],
+  loaders: [loadLargeTree],
   render: () => {
     const NativeImage = window.Image
     let inFlightDecodes = 0
@@ -255,10 +256,10 @@ export const FullResolutionUnderDecodePressure: Story = {
   play: async () => {
     try {
       await I.seeLightboxOpen()
-      await I.seeFullResolutionImage('DSC08224.jpg')
+      await I.seeFullResolutionImage('large-01.jpg')
 
       await I.goToNextImage()
-      await I.seeFullResolutionImage('DSC08225.jpg')
+      await I.seeFullResolutionImage('large-02.jpg')
     } finally {
       restoreNativeImage?.()
     }

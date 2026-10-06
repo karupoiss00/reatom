@@ -2,7 +2,7 @@ import { context, effect } from '@reatom/core'
 import type { Meta, StoryObj } from '@storybook/html'
 import { expect } from 'storybook/test'
 
-import { buildPersonalFixtureFolderTree } from '../__fixtures__/fixtureLoader'
+import { buildLargeFixtureFolderTree } from '../__fixtures__/fixtureLoader'
 import { currentImages, openLightbox } from '../model'
 import { viewportSize } from '../models/viewport'
 import { StoryWrapper } from '../shared/StoryWrapper'
@@ -34,10 +34,10 @@ const I = createMyself((I) => ({
   },
 }))
 
-let personalTree: FolderNode | null = null
+let largeTree: FolderNode | null = null
 
-const loadPersonalTree = () => {
-  personalTree = buildPersonalFixtureFolderTree()
+const loadLargeTree = () => {
+  largeTree = buildLargeFixtureFolderTree()
 }
 
 const meta: Meta = {
@@ -88,15 +88,15 @@ export const ViewportSizeSubscribersSettle: Story = {
 }
 
 /**
- * End-to-end angle: open the lightbox on a real photo and make sure the main
+ * End-to-end angle: open the lightbox on a large fixture and make sure the main
  * thread stays responsive while the sized-image pipeline reacts to the display
  * target. Times out if the reactive loop freezes the tab.
  */
 export const OpenImageKeepsMainThreadResponsive: Story = {
-  loaders: [loadPersonalTree],
+  loaders: [loadLargeTree],
   render: () => {
-    if (!personalTree) throw new Error('Personal fixture tree is not loaded')
-    loadGalleryStateWithImageModels({ tree: personalTree })
+    if (!largeTree) throw new Error('Large fixture tree is not loaded')
+    loadGalleryStateWithImageModels({ tree: largeTree })
     const target = currentImages()[0]
     if (target) openLightbox(target)
     return (

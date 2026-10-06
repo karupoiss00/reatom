@@ -25,11 +25,11 @@ Vendored test images for `gallery`. Machine-readable metadata lives in [`manifes
 | [lovell/sharp](https://github.com/lovell/sharp) `test/fixtures/`              | Apache-2.0        | `tier-b/orient-sharp/Landscape_*.jpg`                                                      |
 | [image-rs/image](https://github.com/image-rs/image) `tests/bad/`              | MIT OR Apache-2.0 | `tier-b/corrupt/*`                                                                         |
 
-## Tier C (RAW, Git LFS, ~140 MB)
+## Tier C (RAW, Git LFS, ~62 MB)
 
 | Source                                               | License      | Files                                                              |
 | ---------------------------------------------------- | ------------ | ------------------------------------------------------------------ |
-| nomacs/formats_testset                               | BSD-3-Clause | `tier-c/raw/*.CR2`, `tier-c/raw/*.NEF`, `tier-c/dng/*`             |
+| nomacs/formats_testset                               | BSD-3-Clause | `tier-c/raw/*.NEF`, `tier-c/dng/*`                                 |
 | [raw.pixls.us](https://raw.pixls.us/) `data.lfs.git` | CC0          | `tier-c/pixls/RX700064.ARW`, `tier-c/pixls/RAW_OLYMPUS_C5050Z.ORF` |
 
 ## Git LFS
@@ -40,6 +40,10 @@ Tier C binaries are tracked with Git LFS. After clone:
 git lfs install
 git lfs pull
 ```
+
+## Large decode fixtures
+
+`src/__fixtures__/large/*.jpg` are synthetic 9183×5859 JPEGs produced by `scripts/generate-large-fixtures.mjs`. They replace the former camera JPEGs in lightbox decode tests. Public domain.
 
 ## Attribution notes
 

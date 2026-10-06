@@ -71,4 +71,4 @@ Three things compounded:
 - Prefer serialized `img.decode()` for large originals; parallel preloads are risky in Chrome.
 - Never map `EncodingError` → “broken file” without checking that bytes did not load.
 - Keep expensive atoms off UI that only needs thumbnails.
-- Regression coverage: `src/reatomImage.test.ts` (unit), `src/components/Lightbox.stories.tsx` (story interactions on `src/__fixtures__/personal/` ~54 MP JPEGs).
+- Regression coverage: `src/reatomImage.test.ts` (unit), `src/components/Lightbox.stories.tsx` (story interactions on `src/__fixtures__/large/` ~54 MP JPEGs).

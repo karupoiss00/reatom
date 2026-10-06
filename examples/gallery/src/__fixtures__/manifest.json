@@ -828,33 +828,6 @@
       "source": "nomacs/formats_testset RAW/DSC_0073.NEF",
       "sha256": "b6cc380a6ef820eb784c28902fe4b172474c3827c937862392364b8936c934e3",
       "size": 23321088
-    },
-    {
-      "tier": "tier-c",
-      "dest": "raw/IMG_3887.CR2",
-      "url": "https://raw.githubusercontent.com/nomacs/formats_testset/main/RAW/IMG_3887.CR2",
-      "license": "BSD-3-Clause",
-      "source": "nomacs/formats_testset RAW/IMG_3887.CR2",
-      "sha256": "c56c8628309a9dcab5496f25076e5673f91b5bba710c6b896fe92a46e4ce2d9b",
-      "size": 28958271
-    },
-    {
-      "tier": "tier-c",
-      "dest": "raw/IMG_4059.CR2",
-      "url": "https://raw.githubusercontent.com/nomacs/formats_testset/main/RAW/IMG_4059.CR2",
-      "license": "BSD-3-Clause",
-      "source": "nomacs/formats_testset RAW/IMG_4059.CR2",
-      "sha256": "5a5e9c15fa4d7fe9dde97264a8f8977c5d085d4030d20f158ba840fc874cd739",
-      "size": 27969657
-    },
-    {
-      "tier": "tier-c",
-      "dest": "raw/IMG_4073.CR2",
-      "url": "https://raw.githubusercontent.com/nomacs/formats_testset/main/RAW/IMG_4073.CR2",
-      "license": "BSD-3-Clause",
-      "source": "nomacs/formats_testset RAW/IMG_4073.CR2",
-      "sha256": "22f4a501c5a7ab0477150eda37c6eab2a8d495eca98c1a7b3137495ddb188bc9",
-      "size": 27903972
     }
   ]
 }

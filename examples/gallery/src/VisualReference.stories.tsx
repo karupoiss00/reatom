@@ -2,7 +2,10 @@ import type { Meta, StoryObj } from '@storybook/html'
 import { waitFor } from '@testing-library/dom'
 import { expect } from 'storybook/test'
 
-import { buildPersonalFixtureFolderTree } from './__fixtures__/fixtureLoader'
+import {
+  buildLargeFixtureFolderTree,
+  largeFixtureEntries,
+} from './__fixtures__/fixtureLoader'
 import { App } from './App'
 import { currentImages, openLightbox } from './model'
 import { createMyself, type Locator } from './shared/test'
@@ -83,15 +86,15 @@ const I = createMyself((I) => ({
   },
 }))
 
-let personalTree: FolderNode | null = null
+let largeTree: FolderNode | null = null
 
-const loadPersonalTree = () => {
-  personalTree = buildPersonalFixtureFolderTree()
+const loadLargeTree = () => {
+  largeTree = buildLargeFixtureFolderTree()
 }
 
-const renderGalleryWithPersonalFixtures = () => {
-  if (!personalTree) throw new Error('Personal fixture tree is not loaded')
-  loadGalleryStateWithImageModels({ tree: personalTree })
+const renderGalleryWithLargeFixtures = () => {
+  if (!largeTree) throw new Error('Large fixture tree is not loaded')
+  loadGalleryStateWithImageModels({ tree: largeTree })
   return <App />
 }
 
@@ -109,13 +112,13 @@ export default meta
 type Story = StoryObj
 
 /**
- * Reference render of the gallery grid on real photos: every thumbnail must
- * decode to at least the smallest sharp bucket, and the composed page must
+ * Reference render of the gallery grid on the large fixtures: every thumbnail
+ * must decode to at least the smallest sharp bucket, and the composed page must
  * match the committed baseline screenshot.
  */
 export const GalleryGridReference: Story = {
-  loaders: [loadPersonalTree],
-  render: () => renderGalleryWithPersonalFixtures(),
+  loaders: [loadLargeTree],
+  render: () => renderGalleryWithLargeFixtures(),
   play: async () => {
     await I.seeGalleryLoaded()
     await I.seeSharpGridThumbnails(4)
@@ -123,18 +126,23 @@ export const GalleryGridReference: Story = {
   },
 }
 
-/** Reference render of the lightbox on a real photo at full resolution. */
+/** Reference render of the lightbox on a large fixture at full resolution. */
 export const LightboxReference: Story = {
-  loaders: [loadPersonalTree],
+  loaders: [loadLargeTree],
   render: () => {
-    const element = renderGalleryWithPersonalFixtures()
+    const element = renderGalleryWithLargeFixtures()
     const first = currentImages()[0]
     if (first) openLightbox(first)
     return element
   },
   play: async () => {
     await I.seeLightboxOpen()
-    await I.seeFullResolutionLightboxImage('DSC08224.jpg', 9183)
+    const firstFixture = largeFixtureEntries[0]
+    if (!firstFixture) throw new Error('Large fixtures are empty')
+    await I.seeFullResolutionLightboxImage(
+      firstFixture.name,
+      firstFixture.width,
+    )
     await I.matchScreenshot('lightbox-reference')
   },
 }
