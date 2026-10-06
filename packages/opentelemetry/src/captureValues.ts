@@ -1,5 +1,5 @@
-import { nonFiniteString } from './nonFiniteString.ts'
 import type { OtlpAttrValue } from './toOtlpValue.ts'
+import { nonFiniteString } from './toOtlpValue.ts'
 
 export type CaptureValuesOptions =
   | false

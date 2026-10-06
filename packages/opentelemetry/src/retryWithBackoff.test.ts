@@ -315,6 +315,68 @@ test('an aborted signal discards a late successful response', async () => {
   expect(sleep).not.toHaveBeenCalled()
 })
 
+test('full jitter samples down to zero', async () => {
+  const restoreRandom = mockRandom((min) => min!)
+  try {
+    const send = vi.fn(async () => UNAVAILABLE())
+    const { sleep, calls } = makeSleep()
+    await retryWithBackoff({ send, sleep, maxRetries: 2 })
+    expect(calls).toEqual([0, 0])
+  } finally {
+    restoreRandom()
+  }
+})
+
+test('honors an HTTP-date Retry-After', async () => {
+  const now = Date.parse('1999-12-31T23:59:00Z')
+  const send = vi
+    .fn()
+    .mockResolvedValueOnce(
+      new Response(null, {
+        status: 503,
+        headers: { 'Retry-After': 'Fri, 31 Dec 1999 23:59:59 GMT' },
+      }),
+    )
+    .mockResolvedValueOnce(OK())
+  const { sleep, calls } = makeSleep()
+  await retryWithBackoff({ send, sleep, now: () => now })
+  expect(calls[0]).toBe(59_000)
+})
+
+test('ignores Retry-After values that would synchronize retries', async () => {
+  const now = Date.parse('2000-01-01T00:00:00Z')
+  const restoreRandom = mockRandom((_min, max) => max!)
+  try {
+    for (const retryAfter of [
+      '0',
+      '1e3',
+      'not-a-date',
+      'Fri, 31 Dec 1999 23:59:59 GMT',
+      'Sat, 01 Jan 2000 00:00:00 GMT',
+    ]) {
+      const send = vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(null, {
+            status: 503,
+            headers: { 'Retry-After': retryAfter },
+          }),
+        )
+        .mockResolvedValueOnce(OK())
+      const { sleep, calls } = makeSleep()
+      await retryWithBackoff({
+        send,
+        sleep,
+        baseDelayMs: 1000,
+        now: () => now,
+      })
+      expect(calls).toEqual([1000])
+    }
+  } finally {
+    restoreRandom()
+  }
+})
+
 test('an already-expired deadline throws before any send', async () => {
   const send = vi.fn(async () => OK())
   await expect(

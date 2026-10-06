@@ -1,8 +1,8 @@
 import { expect, test } from 'vitest'
 
+import type { SpanInput } from './buildSpan.ts'
 import { buildSpan } from './buildSpan.ts'
-import type { SpanId } from './generateSpanId.ts'
-import type { TraceId } from './generateTraceId.ts'
+import type { SpanId, TraceId } from './spanContext.ts'
 
 const TRACE_ID = '0af7651916cd43dd8448eb211c80319c' as TraceId
 const SPAN_ID = 'b7ad6b7169203331' as SpanId
@@ -116,16 +116,36 @@ test('includes attributes when provided', () => {
   ])
 })
 
-test('includes status when provided', () => {
+test('maps status names to OTLP integer codes', () => {
+  const statusOf = (status: NonNullable<SpanInput['status']>) =>
+    buildSpan({
+      traceId: TRACE_ID,
+      spanId: SPAN_ID,
+      name: 'test',
+      startTimeMs: 0,
+      endTimeMs: 0,
+      status,
+    }).status
+
+  expect(statusOf({ code: 'unset' })).toEqual({ code: 0 })
+  expect(statusOf({ code: 'ok' })).toEqual({ code: 1 })
+  expect(statusOf({ code: 'error' })).toEqual({ code: 2 })
+  expect(statusOf({ code: 'error', message: 'timeout' })).toEqual({
+    code: 2,
+    message: 'timeout',
+  })
+})
+
+test('encodes timestamps as exact int64 nanosecond strings', () => {
   const span = buildSpan({
     traceId: TRACE_ID,
     spanId: SPAN_ID,
     name: 'test',
-    startTimeMs: 0,
-    endTimeMs: 0,
-    status: { code: 'ok' },
+    startTimeMs: 1761000000123,
+    endTimeMs: 1.5,
   })
-  expect(span.status).toEqual({ code: 1 })
+  expect(span.startTimeUnixNano).toBe('1761000000123000000')
+  expect(span.endTimeUnixNano).toBe('1500000')
 })
 
 test('events default to empty array', () => {

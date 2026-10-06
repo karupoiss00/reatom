@@ -48,9 +48,13 @@ test('dispatches string array to arrayValue', () => {
   })
 })
 
-test('dispatches Uint8Array to bytesValue', () => {
-  expect(toOtlpValue(new Uint8Array([72, 105]))).toEqual({
-    bytesValue: 'SGk=',
+test('dispatches Uint8Array to base64 bytesValue', () => {
+  expect(toOtlpValue(new Uint8Array([72, 101, 108, 108, 111]))).toEqual({
+    bytesValue: 'SGVsbG8=',
+  })
+  expect(toOtlpValue(new Uint8Array([]))).toEqual({ bytesValue: '' })
+  expect(toOtlpValue(new Uint8Array([0, 127, 255]))).toEqual({
+    bytesValue: 'AH//',
   })
 })
 

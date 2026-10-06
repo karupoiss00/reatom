@@ -2,8 +2,7 @@ import { expect, test } from 'vitest'
 
 import { buildExportPayload, buildResource } from './buildExportPayload.ts'
 import { buildSpan } from './buildSpan.ts'
-import type { SpanId } from './generateSpanId.ts'
-import type { TraceId } from './generateTraceId.ts'
+import type { SpanId, TraceId } from './spanContext.ts'
 
 const makeSpan = (name: string) =>
   buildSpan({

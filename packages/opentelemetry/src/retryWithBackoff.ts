@@ -1,7 +1,4 @@
-import { isAbort } from '@reatom/core'
-
-import { calculateBackoff } from './calculateBackoff.ts'
-import { parseRetryAfter } from './parseRetryAfter.ts'
+import { isAbort, random } from '@reatom/core'
 
 export interface RetryWithBackoffInput {
   send: () => Promise<Response>
@@ -23,6 +20,31 @@ export class ExportTimeoutError extends Error {
 }
 
 const RETRYABLE_STATUS = new Set([429, 502, 503, 504])
+
+/**
+ * Parses a `Retry-After` header (delta-seconds or HTTP-date) into milliseconds.
+ * Absent, unparseable, zero, and past values are `undefined` so the caller
+ * keeps jittered backoff instead of retrying in lockstep.
+ *
+ * https://datatracker.ietf.org/doc/html/rfc7231#section-7.1.3
+ */
+const parseRetryAfter = (
+  header: string | null | undefined,
+  now: number,
+): number | undefined => {
+  if (!header) return undefined
+
+  if (/^\d+$/.test(header)) {
+    const ms = Number(header) * 1000
+    return ms > 0 ? ms : undefined
+  }
+
+  const target = Date.parse(header)
+  if (Number.isNaN(target)) return undefined
+
+  const delta = target - now
+  return delta > 0 ? delta : undefined
+}
 
 const wait = (
   ms: number,
@@ -101,8 +123,10 @@ export const retryWithBackoff = async ({
     // Cleanup failures are not network-send failures and must not trigger retry.
     if (response) await response.body?.cancel()
     signal?.throwIfAborted()
+    // Full jitter: uniform sample of [0, min(baseDelayMs * 2^N, maxDelayMs)].
+    // https://opentelemetry.io/docs/specs/otlp/#otlphttp-throttling
     const delay =
-      retryAfter ?? calculateBackoff(attempt, baseDelayMs, maxDelayMs)
+      retryAfter ?? random(0, Math.min(baseDelayMs * 2 ** attempt, maxDelayMs))
     if (deadline !== undefined && delay >= deadline - now())
       throw new ExportTimeoutError()
     await wait(delay, signal, sleep)

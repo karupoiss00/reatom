@@ -6,38 +6,24 @@ export const buildResource = (attributes: Record<string, OtlpAttrValue>) => ({
   attributes: toOtlpAttributes(attributes),
 })
 
-const buildInstrumentationScope = (version: string) => ({
-  name: '@reatom/opentelemetry',
-  version,
-})
-
-type ScopeSpansInput = {
-  version: string
-  spans: OtlpSpan[]
-}
-
-// Clone the spans array so later mutations of `input.spans` don't affect the built payload
-// (e.g. a batch exporter clearing its queue after build, before retry).
-const buildScopeSpans = (input: ScopeSpansInput) => ({
-  scope: buildInstrumentationScope(input.version),
-  spans: [...input.spans],
-})
-
-type ResourceSpansInput = {
-  resourceAttributes: Record<string, OtlpAttrValue>
-  version: string
-  spans: OtlpSpan[]
-}
-
-const buildResourceSpans = (input: ResourceSpansInput) => ({
-  resource: buildResource(input.resourceAttributes),
-  scopeSpans: [buildScopeSpans({ version: input.version, spans: input.spans })],
-})
-
 export interface ExportPayloadInput {
-  groups: ResourceSpansInput[]
+  groups: {
+    resourceAttributes: Record<string, OtlpAttrValue>
+    version: string
+    spans: OtlpSpan[]
+  }[]
 }
 
 export const buildExportPayload = (input: ExportPayloadInput) => ({
-  resourceSpans: input.groups.map(buildResourceSpans),
+  resourceSpans: input.groups.map((group) => ({
+    resource: buildResource(group.resourceAttributes),
+    scopeSpans: [
+      {
+        scope: { name: '@reatom/opentelemetry', version: group.version },
+        // Own the array: a later clear of the caller's batch must not rewrite
+        // a payload already handed to retry.
+        spans: [...group.spans],
+      },
+    ],
+  })),
 })

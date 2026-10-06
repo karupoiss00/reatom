@@ -1,10 +1,4 @@
-import type { OtlpSpanEvent, SpanEventInput } from './buildSpanEvent.ts'
-import { buildSpanEvent } from './buildSpanEvent.ts'
-import type { OtlpSpanStatus, StatusCode } from './buildSpanStatus.ts'
-import { buildSpanStatus } from './buildSpanStatus.ts'
-import type { SpanId } from './generateSpanId.ts'
-import type { TraceId } from './generateTraceId.ts'
-import { msToNano } from './msToNano.ts'
+import type { SpanId, TraceId } from './spanContext.ts'
 import type { OtlpAttrValue } from './toOtlpValue.ts'
 import { toOtlpAttributes } from './toOtlpValue.ts'
 
@@ -18,9 +12,18 @@ const SPAN_KIND = {
   consumer: 5,
 } as const
 
+const STATUS_CODE = { unset: 0, ok: 1, error: 2 } as const
+
 export const MAX_RECORD_BYTES = 16_384
 
 export type SpanKind = keyof typeof SPAN_KIND
+export type StatusCode = keyof typeof STATUS_CODE
+
+export interface SpanEventInput {
+  name: string
+  timeMs: number
+  attributes?: Record<string, OtlpAttrValue>
+}
 
 export interface SpanInput {
   traceId: TraceId
@@ -46,8 +49,20 @@ export interface OtlpSpan {
   startTimeUnixNano: string
   endTimeUnixNano: string
   attributes: ReturnType<typeof toOtlpAttributes>
-  events: OtlpSpanEvent[]
-  status?: OtlpSpanStatus
+  events: {
+    timeUnixNano: string
+    name: string
+    attributes: ReturnType<typeof toOtlpAttributes>
+  }[]
+  status?: { code: (typeof STATUS_CODE)[StatusCode]; message?: string }
+}
+
+// `Date.now() * 1e6` overflows Number.MAX_SAFE_INTEGER; BigInt keeps integer
+// ms exact, and fractional ms from performance.now() folds in via rounding.
+const msToNano = (ms: number): string => {
+  const truncMs = Math.trunc(ms)
+  const fracNs = Math.round((ms - truncMs) * 1_000_000)
+  return (BigInt(truncMs) * 1_000_000n + BigInt(fracNs)).toString()
 }
 
 export const buildSpan = (input: SpanInput): OtlpSpan => {
@@ -59,10 +74,19 @@ export const buildSpan = (input: SpanInput): OtlpSpan => {
     startTimeUnixNano: msToNano(input.startTimeMs),
     endTimeUnixNano: msToNano(input.endTimeMs),
     attributes: toOtlpAttributes(input.attributes),
-    events: input.events?.map(buildSpanEvent) ?? [],
+    events: (input.events ?? []).map((event) => ({
+      timeUnixNano: msToNano(event.timeMs),
+      name: event.name,
+      attributes: toOtlpAttributes(event.attributes),
+    })),
   }
   if (input.parentSpanId) span.parentSpanId = input.parentSpanId
-  if (input.status)
-    span.status = buildSpanStatus(input.status.code, input.status.message)
+  if (input.status) {
+    const code = STATUS_CODE[input.status.code]
+    span.status =
+      input.status.message === undefined
+        ? { code }
+        : { code, message: input.status.message }
+  }
   return span
 }

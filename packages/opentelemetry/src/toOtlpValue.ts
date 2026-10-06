@@ -1,8 +1,5 @@
 import { isRec } from '@reatom/core'
 
-import { nonFiniteString } from './nonFiniteString.ts'
-import { toOtlpBytesValue } from './toOtlpBytesValue.ts'
-
 export type OtlpAttrValue =
   | string
   | number
@@ -31,17 +28,22 @@ const CIRCULAR: OtlpAnyValue = { stringValue: '[Circular]' }
 const INT64_MAX = (1n << 63n) - 1n //  9_223_372_036_854_775_807n
 const INT64_MIN = -(1n << 63n) //     -9_223_372_036_854_775_808n
 
-const toOtlpStringValue = (value: string) => ({ stringValue: value })
+/** Protobuf JSON spelling shared by capture and doubleValue encoding. */
+export const nonFiniteString = (
+  value: number,
+): 'NaN' | 'Infinity' | '-Infinity' | undefined => {
+  if (Number.isFinite(value)) return undefined
+  if (Number.isNaN(value)) return 'NaN'
+  return value > 0 ? 'Infinity' : '-Infinity'
+}
 
-const toOtlpIntValue = (value: number | bigint) => ({
-  intValue: String(value),
-})
-
-const toOtlpBoolValue = (value: boolean) => ({ boolValue: value })
-
-const toOtlpDoubleValue = (value: number): OtlpDoubleValue => ({
-  doubleValue: nonFiniteString(value) ?? value,
-})
+// bytes_value uses standard protobuf JSON base64. OTLP hex is only for ids.
+// https://opentelemetry.io/docs/specs/otlp/#json-protobuf-encoding
+export const toOtlpBytesValue = (bytes: Uint8Array): { bytesValue: string } => {
+  let bin = ''
+  for (const b of bytes) bin += String.fromCharCode(b)
+  return { bytesValue: btoa(bin) }
+}
 
 // Ancestor-stack cycle detection: add on enter, remove on exit so shared-but-
 // non-cyclic references like { a: x, b: x } aren't false-flagged as cycles.
@@ -49,22 +51,22 @@ const encodeOtlpValue = (
   value: OtlpAttrValue,
   seen: WeakSet<object>,
 ): OtlpAnyValue => {
-  if (typeof value === 'string') return toOtlpStringValue(value)
+  if (typeof value === 'string') return { stringValue: value }
   if (typeof value === 'number') {
-    if (Number.isSafeInteger(value)) return toOtlpIntValue(value)
+    if (Number.isSafeInteger(value)) return { intValue: String(value) }
     // Outside the safe-integer range (incl. integer-valued doubles like
     // 2^53+1, NaN, ±Infinity), JS already represents the value as a
     // 64-bit double — emit it as such. OTLP's intValue is int64, which
     // we can't fulfill faithfully past 2^53; doubleValue is the spec-aligned
     // wire form for everything else.
-    return toOtlpDoubleValue(value)
+    return { doubleValue: nonFiniteString(value) ?? value }
   }
-  if (typeof value === 'boolean') return toOtlpBoolValue(value)
+  if (typeof value === 'boolean') return { boolValue: value }
   if (typeof value === 'bigint') {
     if (value > INT64_MAX || value < INT64_MIN) {
-      return toOtlpStringValue(`[Unsafe bigint ${value}]`)
+      return { stringValue: `[Unsafe bigint ${value}]` }
     }
-    return toOtlpIntValue(value)
+    return { intValue: String(value) }
   }
   if (value instanceof Uint8Array) return toOtlpBytesValue(value)
   if (Array.isArray(value)) {
@@ -87,7 +89,7 @@ const encodeOtlpValue = (
     seen.delete(value)
     return result
   }
-  return toOtlpStringValue(String(value))
+  return { stringValue: String(value) }
 }
 
 export const toOtlpValue = (value: OtlpAttrValue): OtlpAnyValue =>
