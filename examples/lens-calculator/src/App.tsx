@@ -12,6 +12,7 @@ export const App = () => (
   <div
     css={`
       min-height: 100dvh;
+      min-width: 0;
       display: grid;
       grid-template-rows: auto 1fr auto;
       gap: 1.25rem;
@@ -25,6 +26,7 @@ export const App = () => (
     <main
       css={`
         display: grid;
+        min-width: 0;
         grid-template-columns: minmax(0, 22.5rem) minmax(0, 1fr);
         grid-template-rows: auto 1fr;
         align-items: start;

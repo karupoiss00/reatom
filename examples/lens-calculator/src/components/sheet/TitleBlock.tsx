@@ -42,9 +42,13 @@ export const TitleCell = ({
     >
       {title}
     </svg:text>
+    <svg:clipPath id={`title-${x}-${y}`}>
+      <svg:rect x={x + 6} y={y} width={width - 12} height={height} />
+    </svg:clipPath>
     <svg:text
       x={x + 7}
       y={y + height - 8}
+      attr:clip-path={`url(#title-${x}-${y})`}
       css={`
         ${annotation}
         font-size: ${strong ? 13 : 10}px;
@@ -57,7 +61,7 @@ export const TitleCell = ({
 )
 
 export const TitleBlock = () => {
-  const columns = [200, 190, 120]
+  const columns = [188, 206, 156]
   const width = columns.reduce((sum, column) => sum + column, 0)
   const height = 78
   const x = SHEET_WIDTH - FRAME_INNER - width

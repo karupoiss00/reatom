@@ -63,6 +63,7 @@ export const Sheet = () => (
     css={`
       position: relative;
       margin: 0;
+      min-width: 0;
       border: 1px solid var(--hairline);
       background: var(--paper-deep);
       overflow-x: auto;

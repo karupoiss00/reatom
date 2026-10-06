@@ -38,9 +38,10 @@ const Designation = () => (
   <div
     css={`
       display: flex;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
       align-items: baseline;
       gap: 0.4rem 1.25rem;
+      min-width: 0;
     `}
   >
     <span
@@ -74,73 +75,88 @@ const Designation = () => (
 )
 
 const LangSwitch = () => (
-  <label
+  <span
     css={`
+      position: relative;
       display: grid;
-      gap: 0.25rem;
-      justify-items: end;
+      flex: none;
     `}
   >
-    <span
-      css={`
-        ${label}
-        font-size: 0.5625rem;
-      `}
-    >
-      {t.lang.label}
-    </span>
-    <select
-      aria-label={t.lang.label}
-      prop:value={LANG_PREF}
-      on:change={(event) => changeLang(event.currentTarget.value)}
-      css={`
-        appearance: none;
-        padding: 0.35rem 0.65rem;
-        border: 1px solid var(--hairline);
-        border-radius: 1px;
-        background: var(--paper-deep);
-        color: var(--ink);
-        font-family: var(--font-ui);
-        font-size: 0.75rem;
-        letter-spacing: 0.04em;
-        cursor: pointer;
+      <select
+        aria-label={t.lang.label}
+        autocomplete="off"
+        ref={(node) => {
+          if (!(node instanceof HTMLSelectElement)) return
+          const select = node
+          const apply = () => {
+            if (select.value !== LANG_PREF) select.value = LANG_PREF
+          }
+          apply()
+          addEventListener('pageshow', apply)
+          return () => removeEventListener('pageshow', apply)
+        }}
+        on:change={(event) => {
+          if (!event.isTrusted) return
+          changeLang(event.currentTarget.value)
+        }}
+        css={`
+          appearance: none;
+          width: 100%;
+          margin: 0;
+          padding: 0.15rem 1.35rem 0.15rem 0.55rem;
+          line-height: 1.2;
+          border: 1px solid var(--hairline);
+          border-radius: 1px;
+          background: var(--paper-deep);
+          color: var(--ink);
+          font-family: var(--font-ui);
+          font-size: 0.75rem;
+          letter-spacing: 0.04em;
+          cursor: pointer;
 
-        &:focus-visible {
-          outline: 1px solid var(--accent);
-          outline-offset: 1px;
-        }
-      `}
-    >
-      {LANG_PREFS.map((pref) => (
-        <option value={pref}>{t.lang[pref]}</option>
-      ))}
-    </select>
-  </label>
+          &:focus-visible {
+            outline: 1px solid var(--accent);
+            outline-offset: 1px;
+          }
+        `}
+      >
+        {LANG_PREFS.map((pref) => (
+          <option value={pref} selected={pref === LANG_PREF}>
+            {t.lang[pref]}
+          </option>
+        ))}
+      </select>
+      <span
+        aria-hidden="true"
+        css={`
+          position: absolute;
+          top: 50%;
+          right: 0.55rem;
+          width: 0.32rem;
+          height: 0.32rem;
+          border-right: 1px solid var(--ink-dim);
+          border-bottom: 1px solid var(--ink-dim);
+          transform: translateY(-70%) rotate(45deg);
+          pointer-events: none;
+        `}
+      />
+  </span>
 )
 
 export const Header = () => (
   <header
     css={`
       display: flex;
-      flex-wrap: wrap;
-      align-items: baseline;
+      flex-wrap: nowrap;
+      align-items: center;
       justify-content: space-between;
-      gap: 0.75rem 2rem;
-      padding: 0 0.25rem;
+      gap: 0.75rem 1.5rem;
+      min-width: 0;
       animation: prime-rise 500ms ease-out backwards;
     `}
   >
     <Wordmark />
-    <div
-      css={`
-        display: flex;
-        flex-wrap: wrap;
-        align-items: baseline;
-        gap: 0.75rem 1.5rem;
-      `}
-    >
-      <Designation />
-      <LangSwitch />
-    </div>
+    <Designation />
+    <LangSwitch />
   </header>
 )

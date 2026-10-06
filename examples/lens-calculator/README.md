@@ -1,4 +1,4 @@
-# Prime — lens envelope estimator
+# Prime — size and weight of a prime lens
 
 A `@reatom/jsx` example that estimates the **approximate** size and weight of a prime (fixed focal length) photographic lens from a handful of editable characteristics, and draws an engineering-style cross-section of the result.
 
@@ -12,10 +12,10 @@ Every input lives in the URL (`?f=85&n=1.4&tier=flagship`), so any configuration
 | Barrel diameter, length      | Glass envelope plus wall, focus drive and mount allowances; retrofocus / telephoto track ratios     |
 | Element and group count      | Grows with speed, angle of view, design tier and iris asymmetry                                     |
 | Iris position                | Pushed back it deepens the entrance pupil (bigger front group); pulled forward the rear group grows |
-| Mass budget                  | Glass volume × density, barrel shell by material, plus iris, focus motor, stabilizer, mount         |
+| Mass breakdown               | Glass volume × density, barrel shell by material, plus iris, focus motor, stabilizer, mount         |
 | Angle of view, back focus    | Sensor format and mount flange distance                                                             |
 
-The model is a first-order fit calibrated against ~30 production lenses (see `referenceLenses` in `src/optics/`). Expect ±25 % — it is a design envelope, not a datasheet.
+The model is a rough fit to about 30 production lenses (see `referenceLenses` in `src/optics/`). The usual error is about 25%. It describes a plausible size, not a datasheet.
 
 ## Inputs
 
