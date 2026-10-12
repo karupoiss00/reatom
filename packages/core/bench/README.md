@@ -243,3 +243,103 @@ the **monomorphic pipeline** as the two large wins (~30% each on the
 diamond microbench); the clean-read fast path is a few percent; the
 frame cache is within noise on most scenarios but removes WeakMap
 traffic in the single-context case.
+
+---
+
+## `bench_cause_retention.ts`
+
+An opt-in Node GC reproduction of temporary UI state retained by a live atom
+and its document-owned action. It imports the kernel and abort/cause helpers
+directly from `../src`, so no package build is needed. The public barrel's
+unrelated persistence/BroadcastChannel setup is not loaded. It changes no core
+behavior and is not part of the default test suite.
+
+From the repository root:
+
+```bash
+pnpm --filter @reatom/core run bench_cause_retention
+pnpm --filter @reatom/core run bench_cause_retention --nodes 256 --rounds 4
+pnpm --filter @reatom/core run bench_cause_retention --isolated
+# Optional regression check. Exits 1 while ordinary writes retain activations.
+pnpm --filter @reatom/core run bench_cause_retention --check
+```
+
+Or, from `packages/core`:
+
+```bash
+node --expose-gc --import=tsx bench/bench_cause_retention.ts
+```
+
+### What it measures
+
+Each live node has a numeric atom and a persistent `commit` action. Each activation
+creates a temporary input atom and a submit action that captures that input.
+The submit sends only a number to `commit`. Its abort scope ends before measurement.
+The benchmark retains only `WeakRef`s to the temporary input and submit objects.
+There is no React, router, logger, timer-based preview, or full form involved.
+
+It compares three cases:
+
+- `no-write` reads the temporary input but never writes to the node. This checks
+  that activation creation, action call cleanup, and the GC harness can release
+  the temporary objects.
+- `ordinary` invokes the persistent `commit` action from the temporary submit.
+- `root-bound` invokes `bind(node.commit, context())` from the same kind of submit.
+  Values still reach the same live node, but its command's cause starts at root.
+
+Output counts reachable latest inputs, earlier inputs, and submit actions.
+`--nodes` defaults to 64, and `--rounds` defaults to 4. Repeated activations of each
+node distinguish retention of its latest caller from retention of every edit.
+The default run uses the single global context. `--isolated` starts a second,
+explicit context; run it in a separate process to check the other cache path.
+
+On `v1001` at `1b853c5f`, ordinary writes retain the latest input and submit for
+each live node after abort and GC. Earlier activations are collected in this
+specific graph. Both other cases release all temporary objects.
+
+The ordinary case then writes directly to the atoms from root and collects again.
+This alone still leaves the persistent `commit` actions' causes holding the
+latest submits. Invoking those actions from root replaces their causes and the
+atoms' causes, after which the temporary objects can be collected. All nodes
+remain alive, and the benchmark checks their applied numeric values after GC.
+
+### Why this happens
+
+`computedMiddleware` stores the write caller in `frame.pubs[0]`, and
+`actionMiddleware` stores its caller in `frame.pubs`. Both are strong references
+to execution frames. An atom and its persistent command can therefore retain:
+
+```text
+live node / commit action
+  -> cached frame
+  -> last caller frame
+  -> temporary submit action
+  -> callback closure
+  -> temporary input atom
+```
+
+Action call-list cleanup does not remove the caller reference. Aborting an
+activation also does not detach these cached causes. `isCausedBy` traverses the
+same graph, so the benchmark checks it synchronously before GC. This is an
+observable lifetime issue to investigate, not a proposed change to causality.
+
+### GC controls and limits
+
+Each observation uses eight forced-GC passes in separate Node jobs. The benchmark
+does not call `WeakRef.deref()` between those passes. A dereference keeps its
+target alive for the rest of the current job, per the
+[ECMAScript WeakRef rules](https://tc39.es/ecma262/multipage/managing-memory.html#sec-weak-ref.prototype.deref).
+Action call lists and queues are drained before measurement, and no execution
+frames, subscriptions, or strong references to temporary inputs/submits are
+stored in the measurement records.
+
+The no-write, root-bound, and root-command-overwrite controls must release all
+temporary objects or the run throws as inconclusive. Ordinary retention is
+reported, not asserted as desirable behavior. `--check` instead requires no
+ordinary retention and intentionally fails on the affected core.
+
+The counts show reachability in this Node/V8 reproduction, not retained bytes,
+GC timing guarantees, or a universal bound on other graphs. In particular, the
+per-node bound observed here must not be generalized to arbitrary causal chains.
+The benchmark does not determine whether changing cause lifetime, weakening
+references, or providing an explicit write boundary is the right core fix.
