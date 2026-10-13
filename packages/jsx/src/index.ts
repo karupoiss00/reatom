@@ -189,38 +189,51 @@ let lifecycle = (phase: 'ref' | 'mount', node: Node, cb: () => void) => {
  * only rewrite content after their own node, so earlier siblings stay valid
  * anchors. (`NodeIterator` would give this liveness for free, but live
  * iterators tax every subsequent DOM mutation of the whole document.)
+ *
+ * `visit` runs before a node's children (pre-order), `leave` runs after them
+ * (post-order).
  */
-let walkTree = (node: Node, visit: (node: Node) => void) => {
+let walkTree = (
+  node: Node,
+  visit: (node: Node) => void,
+  leave?: (node: Node) => void,
+) => {
   visit(node)
   let prev: Node | null = null
   let child = node.firstChild
   while (child) {
-    walkTree(child, visit)
+    walkTree(child, visit, leave)
     if (child.parentNode === node) prev = child
     child = prev ? prev.nextSibling : node.firstChild
   }
+  leave?.(node)
 }
 
 /**
- * Subscribe parent-first so boundaries exist before descendants initialize,
- * then mount refs child-first. Cleanup mirrors both orders below.
+ * Subscribe parent-first (pre-order) so boundaries exist before descendants
+ * initialize, then mount refs in post-order: children before their parent,
+ * siblings in document order. For `<A><B><C/></B><D/></A>` refs run C, B, D,
+ * A. Cleanup reverses the subscription order below.
  */
 let connectNode = (node: Node, symbol: symbol) => {
   let nodesToMount: Node[] = []
-  walkTree(node, (visited) => {
-    let meta = (visited as any)[symbol] as Meta | undefined
-    if (!meta) return
+  walkTree(
+    node,
+    (visited) => {
+      let meta = (visited as any)[symbol] as Meta | undefined
+      if (!meta || meta.unsubscribes.length > 0) return
 
-    if (meta.unsubscribes.length === 0) {
       for (let subscribe of meta.subscribes) {
         lifecycle('mount', visited, () => meta.unsubscribes.push(subscribe()))
       }
-    }
-    if (!meta.mounted) nodesToMount.push(visited)
-  })
+    },
+    (left) => {
+      let meta = (left as any)[symbol] as Meta | undefined
+      if (meta && !meta.mounted) nodesToMount.push(left)
+    },
+  )
 
-  for (let i = nodesToMount.length - 1; i >= 0; i--) {
-    let node = nodesToMount[i]!
+  for (let node of nodesToMount) {
     let meta = (node as any)[symbol] as Meta | undefined
     // The `mounted` re-check dedupes nodes queued twice by a mid-walk restart.
     if (!meta || meta.mounted) continue
@@ -234,9 +247,10 @@ let connectNode = (node: Node, symbol: symbol) => {
 }
 
 /**
- * Unmount refs parent-first, then unsubscribe the batch in reverse DOM order.
- * This mirrors normal parent-first registration so shared core pubs can use
- * their `pub.subs.pop()` path.
+ * Unmount refs in pre-order (parent before its children, siblings in document
+ * order), then unsubscribe the batch in reverse DOM order. The latter mirrors
+ * normal parent-first registration so shared core pubs can use their
+ * `pub.subs.pop()` path.
  */
 let cleanupNodes = (nodes: Node[], symbol: symbol) => {
   let metaNodes: Node[] = []

@@ -790,6 +790,81 @@ test('ref mount and unmount callbacks order', () =>
     expect(order).toStrictEqual([2, 1, 0, 0, 1, 2])
   }))
 
+test('sibling refs mount in document order', () =>
+  context.start(async () => {
+    const order: number[] = []
+    const items = [0, 1, 2, 3]
+
+    const element = (
+      <ul>
+        {items.map((index) => (
+          <li ref={() => void order.push(index)} />
+        ))}
+      </ul>
+    )
+
+    const { unmount } = mount(parent(), element)
+    await wrap(sleep())
+
+    expect(order).toStrictEqual([0, 1, 2, 3])
+    unmount()
+  }))
+
+test('refs mount in post-order and unmount in pre-order', () =>
+  context.start(async () => {
+    const order: string[] = []
+    const track = (name: string) => () => {
+      order.push(`mount ${name}`)
+      return () => void order.push(`unmount ${name}`)
+    }
+
+    const element = (
+      <div ref={track('A')}>
+        <div ref={track('B')}>
+          <div ref={track('C')} />
+        </div>
+        <div ref={track('D')} />
+      </div>
+    )
+
+    const { unmount } = mount(parent(), element)
+    await wrap(sleep())
+    expect(order).toStrictEqual(['mount C', 'mount B', 'mount D', 'mount A'])
+
+    order.length = 0
+    unmount()
+    expect(order).toStrictEqual([
+      'unmount A',
+      'unmount B',
+      'unmount C',
+      'unmount D',
+    ])
+  }))
+
+test('refs of appended content mount in post-order', () =>
+  context.start(async () => {
+    const order: string[] = []
+    const track = (name: string) => () => void order.push(name)
+
+    const element = <section />
+    const { unmount } = mount(parent(), element)
+    await wrap(sleep())
+
+    element.append(
+      <div ref={track('A')}>
+        <div ref={track('B')}>
+          <div ref={track('C')} />
+        </div>
+        <div ref={track('D')} />
+      </div>,
+      <div ref={track('E')} />,
+    )
+    await wrap(sleep())
+
+    expect(order).toStrictEqual(['C', 'B', 'D', 'A', 'E'])
+    unmount()
+  }))
+
 test('batched removal unsubscribes shared pubs in reverse subscription order', () =>
   context.start(async () => {
     const order: string[] = []
