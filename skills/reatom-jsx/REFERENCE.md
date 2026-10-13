@@ -878,8 +878,8 @@ const App = () => (
 )
 ```
 
-- Prefer lazy children `{() => <Child />}` (or an atom) so construction-time throws are caught. Eager element children are created before the boundary runs.
-- Fragments are fine too: `<>{() => <Child />}</>` re-runs the fragment recipe on each attempt (including after `pending` / `retry`), same as a lazy function child.
+- Prefer lazy children `{() => <Child />}` (or an atom) so construction-time throws are caught. Eager element children are created before the boundary runs; in `DEBUG` the boundary warns about them.
+- A fragment child `<>…</>` runs its function and atom children again on each attempt (after `retry` or a resolved `pending`) but re-attaches its element children as they are. Mounted elements that `fallback` or `pending` replaced come back without their reactive bindings and `on:*` handlers, so prefer `{() => <>…</>}` to build fresh elements on every attempt.
 - `fallback(error, retry)` renders after a failure; call `retry()` to clear and re-render children.
 - Thrown promises use `pending` while unsettled; rejection goes to `fallback`.
 - Ownership follows the node's current DOM ancestors — moving a node under another boundary adopts it. The wrapper is a `display: contents` `<span>`.

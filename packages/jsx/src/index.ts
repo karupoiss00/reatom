@@ -278,6 +278,14 @@ let isSkipped = (value: unknown): value is boolean | '' | null | undefined =>
   typeof value === 'boolean' || value === '' || value == null
 
 /**
+ * `LiveDocumentFragment` is part of the runtime children union (fragments are
+ * appended as regular nodes) but is not representable in `ElementChildren`
+ * (`DocumentFragment` is not a `ChildNode`), so it is spelled out explicitly.
+ */
+type ChildrenValue = JSX.ElementChildren | LiveDocumentFragment
+type WalkChildren = ChildrenValue | LinkedListJSXAtom
+
+/**
  * @see https://www.measurethat.net/Benchmarks/Show/13274
  * @todo Explore adding elements to a DocumentFragment before adding them to a
  *   Document.
@@ -285,7 +293,7 @@ let isSkipped = (value: unknown): value is boolean | '' | null | undefined =>
 let walk = (
   dom: DomApis,
   element: JSX.Element | DocumentFragment,
-  children: JSX.DOMAttributes<JSX.Element>['children'],
+  children: WalkChildren,
 ) => {
   if (Array.isArray(children)) {
     for (let i = 0; i < children.length; i++) walk(dom, element, children[i])
@@ -311,8 +319,8 @@ let isPrimitiveText = (value: unknown): value is string | number | bigint =>
     typeof value === 'bigint') &&
   !isSkipped(value)
 
-let walkAtom = (dom: DomApis, anAtom: AtomLike<JSX.ElementChildren>): Node => {
-  let state: JSX.ElementChildren
+let walkAtom = (dom: DomApis, anAtom: AtomLike<ChildrenValue>): Node => {
+  let state: ChildrenValue
   try {
     state = peek(anAtom)
   } catch (error) {
@@ -363,8 +371,8 @@ let walkAtom = (dom: DomApis, anAtom: AtomLike<JSX.ElementChildren>): Node => {
 
 let walkAtomFragment = (
   dom: DomApis,
-  anAtom: AtomLike<JSX.ElementChildren>,
-  state?: JSX.ElementChildren,
+  anAtom: AtomLike<ChildrenValue>,
+  state?: ChildrenValue,
   peekError?: unknown,
 ): LiveDocumentFragment => {
   let fragment = createLiveFragment(dom, anAtom.name)
@@ -515,12 +523,67 @@ interface LiveDocumentFragment extends DocumentFragment {
   __reatomFragment: {
     start: Comment
     end: Comment
-    update: (children?: JSX.ElementChildren) => void
+    update: (children?: WalkChildren) => void
+    /**
+     * Original JSX children of a `<>...</>` (`hf`) fragment. Rendering empties
+     * a `DocumentFragment`, so `ErrorBoundary` rebuilds it from the recipe:
+     * function and atom children run again, element children are re-attached as
+     * they are.
+     */
+    recipe?: JSX.ElementChildren
   }
 }
 
 let isLiveFragment = (node: Node): node is LiveDocumentFragment =>
   !!node && '__reatomFragment' in node
+
+/** A `<>...</>` fragment created by `h(hf, ...)` — it carries a recipe. */
+let isHfFragment = <T>(children: T): children is T & LiveDocumentFragment =>
+  isObject(children) &&
+  '__reatomFragment' in children &&
+  'recipe' in (children as unknown as LiveDocumentFragment).__reatomFragment
+
+/** Builds a `<>...</>` live fragment from its JSX children. */
+let materializeHf = (
+  dom: DomApis,
+  recipe: JSX.ElementChildren,
+): LiveDocumentFragment => {
+  let fragment = createLiveFragment(dom, '')
+  fragment.__reatomFragment.recipe = recipe
+  walk(dom, fragment, recipe)
+  fragment.append(fragment.__reatomFragment.end)
+  return fragment
+}
+
+/**
+ * Replaces rendered (and so emptied) `<>...</>` fragments with fresh ones built
+ * from their recipes, nested fragments included. Fragments that were not
+ * rendered yet and all other children are returned as they are.
+ */
+let rebuildConsumedFragments = <T>(dom: DomApis, children: T): T => {
+  if (Array.isArray(children)) {
+    return children.map((child) => rebuildConsumedFragments(dom, child)) as T
+  }
+  if (isHfFragment(children) && !children.firstChild) {
+    let recipe = rebuildConsumedFragments(dom, children.__reatomFragment.recipe)
+    return materializeHf(dom, recipe) as T
+  }
+  return children
+}
+
+/**
+ * Whether children hold DOM nodes built in advance, `<>...</>` recipes
+ * included.
+ */
+let hasEagerNode = (dom: DomApis, children: unknown): boolean => {
+  if (Array.isArray(children)) {
+    return children.some((child) => hasEagerNode(dom, child))
+  }
+  if (isHfFragment(children)) {
+    return hasEagerNode(dom, children.__reatomFragment.recipe)
+  }
+  return children instanceof dom.Node
+}
 
 let throwNativeFragment = (element: JSX.Element) => {
   // Elements (nodeType 1) are never native fragments — skip assert in createMany.
@@ -538,7 +601,7 @@ let createLiveFragment = (dom: DomApis, name: string): LiveDocumentFragment => {
   let start = dom.document.createComment(name)
   let end = start.cloneNode() as Comment
   let marked: Element | undefined
-  let update = (children?: JSX.ElementChildren) => {
+  let update = (children?: WalkChildren) => {
     if (start.nextSibling && start.nextSibling !== end) {
       let staleRange = dom.document.createRange()
       staleRange.setStartAfter(start)
@@ -920,11 +983,11 @@ export let h = (tag: any, props: Rec, ...children: any[]): JSX.Element => {
 
   if (tag === hf) {
     // needed for `walkLinkedList`
-    let fragment = createLiveFragment(dom, '')
-    walk(dom, fragment, children)
-    fragment.append(fragment.__reatomFragment.end)
     // FIXME we need types refactoring
-    return fragment as any
+    return materializeHf(
+      dom,
+      children.length === 1 ? children[0] : children,
+    ) as any
   }
 
   props ??= {}
@@ -1057,7 +1120,9 @@ export interface ErrorBoundaryProps {
  * automatically.
  *
  * Prefer lazy children `{() => <Child />}` so construction-time throws are
- * caught; eagerly created element children ran before this component.
+ * caught and `retry` rebuilds the subtree; eagerly created element children ran
+ * before this component. A `<>...</>` child runs its function and atom children
+ * again on `retry`, but re-attaches its elements as they are.
  */
 export let ErrorBoundary = (props: ErrorBoundaryProps): JSX.Element => {
   let failure = atom<null | { error: unknown }>(null, 'jsx.ErrorBoundary')
@@ -1075,14 +1140,18 @@ export let ErrorBoundary = (props: ErrorBoundaryProps): JSX.Element => {
     failure.set({ error })
   }
 
-  if (
-    peek(DEBUG) &&
-    props.children != null &&
-    typeof props.children !== 'function' &&
-    !isAtom(props.children)
-  ) {
+  // `h` stores varargs children as an array — unwrap the single-child case.
+  let child =
+    Array.isArray(props.children) && props.children.length === 1
+      ? props.children[0]
+      : props.children
+  // A linked list atom returns list state when called; only `walk` renders it.
+  let isLazyChild = typeof child === 'function' && !isLinkedListAtom(child)
+  let dom = _read(DOM)?.state ?? peek(DOM)
+
+  if (peek(DEBUG) && hasEagerNode(dom, child)) {
     console.warn(
-      'ErrorBoundary: prefer lazy children `{() => <Child />}` so construction-time errors are caught',
+      'ErrorBoundary: prefer lazy children `{() => <Child />}` so construction-time errors are caught and retry rebuilds elements',
     )
   }
 
@@ -1091,11 +1160,9 @@ export let ErrorBoundary = (props: ErrorBoundaryProps): JSX.Element => {
       let prev = jsxBoundary.current
       jsxBoundary.current = handle
       try {
-        let children = props.children
-        let result =
-          typeof children === 'function'
-            ? (children as () => JSX.ElementChildren)()
-            : children
+        let result = isLazyChild
+          ? (child as () => JSX.ElementChildren)()
+          : rebuildConsumedFragments(dom, child)
         // Nested walkAtom may have reported into this boundary during the call.
         if (!failure()) return result
       } catch (error) {
@@ -1109,11 +1176,10 @@ export let ErrorBoundary = (props: ErrorBoundaryProps): JSX.Element => {
     let current = failure()
     if (!current) return undefined
     return current.error instanceof Promise
-      ? props.pending
+      ? rebuildConsumedFragments(dom, props.pending)
       : props.fallback(current.error, retry)
   }, 'jsx.ErrorBoundary.content')
 
-  let dom = _read(DOM)?.state ?? peek(DOM)
   let element = dom.document.createElement('span')
   element.style.display = 'contents'
   ensureMeta(element).boundary = handle

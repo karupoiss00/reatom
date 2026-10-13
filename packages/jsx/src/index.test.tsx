@@ -336,6 +336,26 @@ test('fragment as child', () =>
     expect(parent().textContent).toBe('foobar')
   }))
 
+test('rendered fragment is not rebuilt when rendered again', () =>
+  context.start(() => {
+    let builds = 0
+    const fragment = (
+      <>
+        <b>static</b>
+        {() => {
+          builds++
+          return 'lazy'
+        }}
+      </>
+    )
+    const first = <div>{fragment}</div>
+    const second = <div>{fragment}</div>
+
+    expect(first.textContent).toBe('staticlazy')
+    expect(second.textContent).toBe('')
+    expect(builds).toBe(1)
+  }))
+
 test('array children', () =>
   context.start(async () => {
     const n = atom(1)
