@@ -391,6 +391,65 @@ describe('raw format parser', () => {
     expect(preview?.type).toBe('image/jpeg')
   })
 
+  test('extractRawPreview skips heuristic scan when tag preview covers minLongEdge', async () => {
+    vi.stubGlobal('createImageBitmap', async (blob: Blob) => ({
+      width: blob.size,
+      height: 1,
+      close: () => undefined,
+    }))
+
+    const tagCount = 4
+    const previewOffset = 8 + 2 + tagCount * 12 + 4
+    const tagPreview = new Uint8Array(400)
+    tagPreview[0] = 0xff
+    tagPreview[1] = 0xd8
+    tagPreview[tagPreview.length - 2] = 0xff
+    tagPreview[tagPreview.length - 1] = 0xd9
+    const buffer = buildTiffBuffer(
+      [
+        { tag: IMAGE_WIDTH_TAG, type: TIFF_TYPE_SHORT, count: 1, value: 5472 },
+        { tag: IMAGE_LENGTH_TAG, type: TIFF_TYPE_SHORT, count: 1, value: 3648 },
+        {
+          tag: JPEG_INTERCHANGE_FORMAT_TAG,
+          type: TIFF_TYPE_LONG,
+          count: 1,
+          value: previewOffset,
+        },
+        {
+          tag: JPEG_INTERCHANGE_FORMAT_LENGTH_TAG,
+          type: TIFF_TYPE_LONG,
+          count: 1,
+          value: tagPreview.length,
+        },
+      ],
+      tagPreview,
+    )
+
+    const largerJpeg = new Uint8Array(5000)
+    largerJpeg[0] = 0xff
+    largerJpeg[1] = 0xd8
+    largerJpeg[largerJpeg.length - 2] = 0xff
+    largerJpeg[largerJpeg.length - 1] = 0xd9
+
+    const fileBytes = new Uint8Array(buffer.byteLength + largerJpeg.length)
+    fileBytes.set(new Uint8Array(buffer), 0)
+    fileBytes.set(largerJpeg, buffer.byteLength)
+    const blob = new Blob([fileBytes])
+
+    const thumbnailPreview = await extractRawPreview(blob, 'cr2', {
+      minLongEdge: 300,
+    })
+    expect(thumbnailPreview?.size).toBe(tagPreview.length)
+
+    const tooSmallTagPreview = await extractRawPreview(blob, 'cr2', {
+      minLongEdge: 1000,
+    })
+    expect(tooSmallTagPreview?.size).toBe(largerJpeg.length)
+
+    const largestPreview = await extractRawPreview(blob, 'cr2')
+    expect(largestPreview?.size).toBe(largerJpeg.length)
+  })
+
   test('extractRawPreview returns null when preview range is outside file', async () => {
     const buffer = buildTiffBuffer([
       { tag: IMAGE_WIDTH_TAG, type: TIFF_TYPE_SHORT, count: 1, value: 100 },

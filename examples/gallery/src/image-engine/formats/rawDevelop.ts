@@ -1,11 +1,12 @@
 import type LibRaw from 'libraw-wasm'
+import type { LibRawSettings, RawImageData } from 'libraw-wasm'
 
 import {
   getOrientationFromExif,
   orientationDegrees,
   orientationMirrored,
 } from '../orientation'
-import type { ExifData, RawImageFormat } from '../types'
+import type { ExifData } from '../types'
 import type { RawEncodeRequest, RawEncodeResponse } from './rawDevelop.types'
 import RawDevelopEncodeWorker from './rawDevelop.worker?worker'
 
@@ -16,16 +17,7 @@ export type RawDevelopResult = {
 }
 
 type LibRawModule = { default: typeof LibRaw }
-type LibRawInstance = LibRaw
-
-type LibRawImageData = {
-  width: number
-  height: number
-  colors: number
-  bits: number
-  data: Uint8Array
-  dataSize: number
-}
+type LibRawWithWorker = LibRaw & { worker: Worker }
 
 type DevelopOrientation = {
   degrees: number
@@ -33,7 +25,7 @@ type DevelopOrientation = {
 }
 
 type DevelopSlot = {
-  instance: LibRawInstance | null
+  instance: LibRaw | null
   abort: AbortController | null
 }
 
@@ -42,6 +34,7 @@ type DevelopJob = {
   orientation: DevelopOrientation
   externalSignal: AbortSignal | undefined
   maxDimension?: number
+  sourceLongEdge?: number
   resolve: (result: RawDevelopResult | null) => void
   reject: (error: Error) => void
   releaseQueueAbort?: () => void
@@ -49,6 +42,15 @@ type DevelopJob = {
 
 const JPEG_DEVELOP_QUALITY = 0.92
 const DEVELOP_POOL_SIZE = 3
+
+const BASE_DEVELOP_SETTINGS = {
+  useCameraWb: true,
+  useCameraMatrix: 1,
+  outputColor: 1,
+  outputBps: 8,
+  userQual: 3,
+  userFlip: 0,
+} satisfies LibRawSettings
 
 let libRawModulePromise: Promise<LibRawModule> | null = null
 let developPool: DevelopSlot[] | null = null
@@ -62,7 +64,7 @@ function loadLibRawModule(): Promise<LibRawModule> {
   return libRawModulePromise
 }
 
-function ensurePool(_LibRaw: LibRawModule['default']): DevelopSlot[] {
+function ensurePool(): DevelopSlot[] {
   if (!developPool) {
     developPool = Array.from({ length: DEVELOP_POOL_SIZE }, () => ({
       instance: null,
@@ -72,15 +74,15 @@ function ensurePool(_LibRaw: LibRawModule['default']): DevelopSlot[] {
   return developPool
 }
 
+function getLibRawWorker(instance: LibRaw): Worker {
+  return (instance as LibRawWithWorker).worker
+}
+
 function disposeSlotInstance(slot: DevelopSlot): void {
   const instance = slot.instance
   if (!instance) return
 
-  if (typeof instance.dispose === 'function') {
-    instance.dispose()
-  } else {
-    instance.worker.terminate()
-  }
+  getLibRawWorker(instance).terminate()
   slot.instance = null
 }
 
@@ -88,21 +90,61 @@ function createAbortError(): DOMException {
   return new DOMException('Raw develop aborted', 'AbortError')
 }
 
-function raceAbort<T>(task: Promise<T>, signal: AbortSignal): Promise<T> {
+function watchLibRawWorker(worker: Worker): {
+  failure: Promise<never>
+  stop: () => void
+} {
+  let rejectFailure: (error: Error) => void = () => {}
+  const failure = new Promise<never>((_, reject) => {
+    rejectFailure = reject
+  })
+  void failure.catch(() => {})
+
+  const fail = (message: string) => {
+    rejectFailure(new Error('LibRaw worker crashed: ' + message))
+  }
+  const onError = (event: ErrorEvent) => {
+    fail(event.message || event.type)
+  }
+  const onMessageError = () => {
+    fail('messageerror')
+  }
+  worker.addEventListener('error', onError)
+  worker.addEventListener('messageerror', onMessageError)
+
+  return {
+    failure,
+    stop: () => {
+      worker.removeEventListener('error', onError)
+      worker.removeEventListener('messageerror', onMessageError)
+    },
+  }
+}
+
+function raceAbort<T>(
+  task: Promise<T>,
+  signal: AbortSignal,
+  failure?: Promise<never>,
+): Promise<T> {
   if (signal.aborted) return Promise.reject(createAbortError())
   return new Promise<T>((resolve, reject) => {
-    const onAbort = () => reject(createAbortError())
+    let settled = false
+    const finish = (settle: () => void) => {
+      if (settled) return
+      settled = true
+      signal.removeEventListener('abort', onAbort)
+      settle()
+    }
+    const onAbort = () => finish(() => reject(createAbortError()))
+    const rejectError = (error: unknown) => {
+      finish(() =>
+        reject(error instanceof Error ? error : new Error(String(error))),
+      )
+    }
+
     signal.addEventListener('abort', onAbort, { once: true })
-    task.then(
-      (value) => {
-        signal.removeEventListener('abort', onAbort)
-        resolve(value)
-      },
-      (error: unknown) => {
-        signal.removeEventListener('abort', onAbort)
-        reject(error instanceof Error ? error : new Error(String(error)))
-      },
-    )
+    if (failure) failure.then(() => {}, rejectError)
+    task.then((value) => finish(() => resolve(value)), rejectError)
   })
 }
 
@@ -144,7 +186,7 @@ function shutdownEncodeWorker(): void {
 }
 
 function encodeRgbToJpeg(
-  rgb: Uint8Array,
+  rgb: ArrayBuffer,
   width: number,
   height: number,
   orientation: DevelopOrientation,
@@ -153,7 +195,6 @@ function encodeRgbToJpeg(
 ): Promise<Blob> {
   const worker = getEncodeWorker()
   const id = nextEncodeId++
-  const buffer = rgb.buffer as ArrayBuffer
 
   return new Promise<Blob>((resolve, reject) => {
     if (signal.aborted) {
@@ -180,7 +221,7 @@ function encodeRgbToJpeg(
 
     const request: RawEncodeRequest = {
       id,
-      rgb: buffer,
+      rgb,
       width,
       height,
       quality: JPEG_DEVELOP_QUALITY,
@@ -188,30 +229,58 @@ function encodeRgbToJpeg(
       mirrored: orientation.mirrored,
       maxDimension,
     }
-    worker.postMessage(request, [buffer])
+    worker.postMessage(request, [rgb])
   })
 }
 
-function isLibRawImageData(value: unknown): value is LibRawImageData {
-  if (!value || typeof value !== 'object') return false
-  const candidate = value as LibRawImageData
+function isEightBitImageData(
+  image: RawImageData | undefined,
+): image is RawImageData & { data: Uint8Array } {
   return (
-    typeof candidate.width === 'number' &&
-    typeof candidate.height === 'number' &&
-    candidate.data instanceof Uint8Array &&
-    candidate.width > 0 &&
-    candidate.height > 0
+    !!image &&
+    image.data instanceof Uint8Array &&
+    image.width > 0 &&
+    image.height > 0
   )
 }
 
-function copyRgbBuffer(image: LibRawImageData): Uint8Array | null {
+export function takeRgbBuffer(
+  image: RawImageData & { data: Uint8Array },
+): ArrayBuffer | null {
   const colorCount = image.colors > 0 ? image.colors : 3
   const expectedLength = image.width * image.height * colorCount
   const availableLength = Math.min(image.dataSize, image.data.byteLength)
   if (availableLength < expectedLength) return null
   if (colorCount !== 3) return null
 
-  return new Uint8Array(image.data.subarray(0, expectedLength))
+  if (
+    image.data.byteOffset === 0 &&
+    image.data.buffer.byteLength === expectedLength &&
+    image.data.buffer instanceof ArrayBuffer
+  ) {
+    return image.data.buffer
+  }
+
+  const copied = image.data.slice(0, expectedLength).buffer
+  return copied instanceof ArrayBuffer ? copied : null
+}
+
+export function shouldDevelopAtHalfSize(
+  maxDimension: number | undefined,
+  sourceLongEdge: number | undefined,
+): boolean {
+  if (
+    maxDimension === undefined ||
+    sourceLongEdge === undefined ||
+    !Number.isFinite(maxDimension) ||
+    !Number.isFinite(sourceLongEdge) ||
+    maxDimension <= 0 ||
+    sourceLongEdge <= 0
+  ) {
+    return false
+  }
+
+  return maxDimension <= Math.floor(sourceLongEdge / 2)
 }
 
 function resolveDevelopOrientation(
@@ -237,53 +306,58 @@ async function developInSlot(
 
   const instance = new LibRaw()
   slot.instance = instance
+  const workerCrash = watchLibRawWorker(getLibRawWorker(instance))
 
-  const fileBytes = new Uint8Array(
-    await raceAbort(job.source.arrayBuffer(), signal),
-  )
+  try {
+    const fileBytes = new Uint8Array(
+      await raceAbort(job.source.arrayBuffer(), signal, workerCrash.failure),
+    )
 
-  await raceAbort(
-    instance.open(fileBytes, {
-      useCameraWb: true,
-      useCameraMatrix: 1,
-      outputColor: 1,
-      outputBps: 8,
-      userQual: 3,
-      halfSize: false,
-      userFlip: 0,
-    }),
-    signal,
-  )
+    await raceAbort(
+      instance.open(fileBytes, {
+        ...BASE_DEVELOP_SETTINGS,
+        halfSize: shouldDevelopAtHalfSize(job.maxDimension, job.sourceLongEdge),
+      }),
+      signal,
+      workerCrash.failure,
+    )
 
-  const image = await raceAbort(instance.imageData(), signal)
-  if (!isLibRawImageData(image)) return null
+    const image = await raceAbort(
+      instance.imageData(),
+      signal,
+      workerCrash.failure,
+    )
+    if (!isEightBitImageData(image)) return null
 
-  const rgb = copyRgbBuffer(image)
-  if (!rgb) return null
+    const rgb = takeRgbBuffer(image)
+    if (!rgb) return null
 
-  const blob = await encodeRgbToJpeg(
-    rgb,
-    image.width,
-    image.height,
-    job.orientation,
-    signal,
-    job.maxDimension,
-  )
+    const blob = await encodeRgbToJpeg(
+      rgb,
+      image.width,
+      image.height,
+      job.orientation,
+      signal,
+      job.maxDimension,
+    )
 
-  const swapDimensions =
-    job.orientation.degrees === 90 || job.orientation.degrees === 270
-  const developedWidth = swapDimensions ? image.height : image.width
-  const developedHeight = swapDimensions ? image.width : image.height
-  const outputLongEdge = Math.max(developedWidth, developedHeight)
-  const cappedLongEdge = job.maxDimension
-    ? Math.min(outputLongEdge, job.maxDimension)
-    : outputLongEdge
-  const outputScale = outputLongEdge > 0 ? cappedLongEdge / outputLongEdge : 1
+    const swapDimensions =
+      job.orientation.degrees === 90 || job.orientation.degrees === 270
+    const developedWidth = swapDimensions ? image.height : image.width
+    const developedHeight = swapDimensions ? image.width : image.height
+    const outputLongEdge = Math.max(developedWidth, developedHeight)
+    const cappedLongEdge = job.maxDimension
+      ? Math.min(outputLongEdge, job.maxDimension)
+      : outputLongEdge
+    const outputScale = outputLongEdge > 0 ? cappedLongEdge / outputLongEdge : 1
 
-  return {
-    blob,
-    width: Math.max(1, Math.round(developedWidth * outputScale)),
-    height: Math.max(1, Math.round(developedHeight * outputScale)),
+    return {
+      blob,
+      width: Math.max(1, Math.round(developedWidth * outputScale)),
+      height: Math.max(1, Math.round(developedHeight * outputScale)),
+    }
+  } finally {
+    workerCrash.stop()
   }
 }
 
@@ -381,14 +455,14 @@ function enqueueDevelopJob(job: DevelopJob): void {
   scheduleDevelopJobs()
 }
 
-async function developWithPool(
+function developWithPool(
   source: Blob,
   orientation: DevelopOrientation,
   externalSignal: AbortSignal | undefined,
   maxDimension?: number,
+  sourceLongEdge?: number,
 ): Promise<RawDevelopResult | null> {
-  const { default: LibRaw } = await loadLibRawModule()
-  ensurePool(LibRaw)
+  ensurePool()
 
   return new Promise<RawDevelopResult | null>((resolve, reject) => {
     enqueueDevelopJob({
@@ -396,6 +470,7 @@ async function developWithPool(
       orientation,
       externalSignal,
       maxDimension,
+      sourceLongEdge,
       resolve,
       reject,
     })
@@ -433,10 +508,10 @@ export function shutdownRawDevelopPool(): void {
 export async function developRawToJpegBlob(
   source: Blob,
   options?: {
-    format?: RawImageFormat
     exif?: ExifData
     ignoreOrientation?: boolean
     maxDimension?: number
+    sourceLongEdge?: number
     signal?: AbortSignal
   },
 ): Promise<RawDevelopResult | null> {
@@ -453,6 +528,7 @@ export async function developRawToJpegBlob(
       orientation,
       options?.signal,
       options?.maxDimension,
+      options?.sourceLongEdge,
     )
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {

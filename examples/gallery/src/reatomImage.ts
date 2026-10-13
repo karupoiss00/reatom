@@ -181,10 +181,10 @@ async function resolveSizedImageSourceBlob(
   if (!needsDevelopedSource) return embeddedPreview
 
   const developed = await developRawToJpegBlob(fileBlob, {
-    format: metaState.format,
     exif: metaState.exif,
     ignoreOrientation,
     maxDimension: developMaxDimension,
+    sourceLongEdge: Math.max(metaState.width, metaState.height),
     signal,
   })
 
@@ -413,10 +413,10 @@ export function reatomImage(
 
     return await wrap(
       developRawToJpegBlob(fileBlob, {
-        format: metaState.format,
         exif: metaState.exif,
         ignoreOrientation,
         maxDimension,
+        sourceLongEdge: Math.max(metaState.width, metaState.height),
         signal: abortVar.require().signal,
       }),
     )
@@ -432,7 +432,6 @@ export function reatomImage(
 
       return await wrap(
         developRawToJpegBlob(fileBlob, {
-          format: metaState.format,
           exif: metaState.exif,
           ignoreOrientation,
           signal: abortVar.require().signal,

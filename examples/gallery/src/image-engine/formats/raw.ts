@@ -877,9 +877,22 @@ export function parseRawPreviewMeta(
   }
 }
 
+export type ExtractRawPreviewOptions = {
+  minLongEdge?: number
+}
+
+function coversLongEdge(
+  preview: DecodedPreviewCandidate | null,
+  minLongEdge: number | undefined,
+): boolean {
+  if (!preview || minLongEdge === undefined) return false
+  return Math.max(preview.width, preview.height) >= minLongEdge
+}
+
 export async function extractRawPreviewData(
   blob: Blob,
   preferredFormat?: RawFormat,
+  options?: ExtractRawPreviewOptions,
 ): Promise<RawPreviewData | null> {
   const headerReadBytes = Math.min(blob.size, EXIF_READ_BYTES)
   const slice = blob.slice(0, headerReadBytes)
@@ -901,7 +914,8 @@ export async function extractRawPreviewData(
     }
   }
 
-  if (preferredFormat !== undefined) {
+  const tagPreviewIsEnough = coversLongEdge(bestPreview, options?.minLongEdge)
+  if (preferredFormat !== undefined && !tagPreviewIsEnough) {
     const scannedPreview = await scanLargestJpegPreview(blob)
     if (scannedPreview) {
       bestPreview = largerDecodedPreview(bestPreview, scannedPreview)
@@ -920,6 +934,9 @@ export async function extractRawPreviewData(
 export async function extractRawPreview(
   blob: Blob,
   preferredFormat?: RawFormat,
+  options?: ExtractRawPreviewOptions,
 ): Promise<Blob | null> {
-  return (await extractRawPreviewData(blob, preferredFormat))?.blob ?? null
+  return (
+    (await extractRawPreviewData(blob, preferredFormat, options))?.blob ?? null
+  )
 }

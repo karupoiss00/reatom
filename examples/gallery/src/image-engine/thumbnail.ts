@@ -248,7 +248,8 @@ async function tryRawPreviewPath(
   const rawFormat = isRawImageFormat(meta?.format) ? meta.format : undefined
   throwIfThumbnailAborted(signal)
   const rawPreviewBlob =
-    meta?.embeddedPreview?.blob ?? (await extractRawPreview(source, rawFormat))
+    meta?.embeddedPreview?.blob ??
+    (await extractRawPreview(source, rawFormat, { minLongEdge: maxSize }))
   throwIfThumbnailAborted(signal)
   return tryEmbeddedJpegPreviewPath(
     rawPreviewBlob,

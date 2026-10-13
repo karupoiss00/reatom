@@ -39,6 +39,6 @@
     "@reatom/core": "1001.*.*",
     "@reatom/jsx": "1001.*.*",
     "idb-keyval": "^6.3.0",
-    "libraw-wasm": "^1.1.2"
+    "libraw-wasm": "^1.3.0"
   }
 }
