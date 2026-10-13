@@ -1,5 +1,12 @@
-import type { Computed } from '@reatom/core'
-import { action, computed } from '@reatom/core'
+import type { Computed, Unsubscribe } from '@reatom/core'
+import {
+  action,
+  computed,
+  noop,
+  peek,
+  withChangeHook,
+  withConnectHook,
+} from '@reatom/core'
 
 import { shutdownRawDevelopPool } from '../image-engine/formats/rawDevelop'
 import { shutdownRawPreviewScanPool } from '../image-engine/formats/rawPreviewScanPool'
@@ -150,9 +157,51 @@ export const currentImages = computed(() => {
   return collectImages(selectedFolderModel, includeSubfolders())
 }, 'currentImages')
 
+/**
+ * Visible images own their thumbnail demand from the model, not from view refs:
+ * requests start right after the models exist, in grid order, and do not depend
+ * on which view (grid, list, table) mounts or in what order.
+ */
+const demandedThumbnails = new Map<GalleryImageModel, Unsubscribe>()
+let isPreviewDemandConnected = false
+
+function releasePreviewDemand(image: GalleryImageModel): void {
+  demandedThumbnails.get(image)?.()
+  demandedThumbnails.delete(image)
+  if (image.previewLoadPriority() === 'high') {
+    image.previewLoadPriority.set('off')
+  }
+}
+
+function syncPreviewDemand(images: GalleryImageModel[]): void {
+  if (!isPreviewDemandConnected) return
+
+  const nextImages = new Set(images)
+  for (const image of [...demandedThumbnails.keys()]) {
+    if (!nextImages.has(image)) releasePreviewDemand(image)
+  }
+  for (const image of images) {
+    if (demandedThumbnails.has(image)) continue
+    image.previewLoadPriority.set('high')
+    demandedThumbnails.set(image, image.thumbnail.data.subscribe(noop))
+  }
+}
+
 export const visibleImages = computed(
   () => currentImages().filter((node) => node.visible()),
   'visibleImages',
+).extend(
+  withChangeHook(syncPreviewDemand),
+  withConnectHook((target) => {
+    isPreviewDemandConnected = true
+    syncPreviewDemand(peek(target))
+    return () => {
+      isPreviewDemandConnected = false
+      for (const image of [...demandedThumbnails.keys()]) {
+        releasePreviewDemand(image)
+      }
+    }
+  }),
 )
 
 export const visibleIndexMap = computed(() => {

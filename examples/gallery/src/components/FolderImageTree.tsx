@@ -1,7 +1,6 @@
 import type { JSX } from '@reatom/jsx'
 
 import {
-  bindGalleryImagePreview,
   folderModelTree,
   type GalleryFolderModel,
   type ImageModel,
@@ -52,14 +51,12 @@ export const FolderImageTree = ({
   )
 }
 
-export const PreviewBoundImage = ({
+export const VisibleImageSlot = ({
   image,
-  folder,
   css,
   children,
 }: {
   image: ImageModel
-  folder: GalleryFolderModel
   css?: string
   children: JSX.ElementChildren
 }) => (
@@ -68,7 +65,6 @@ export const PreviewBoundImage = ({
     attr:data-mod3={() => String((visibleIndexMap().get(image) ?? 0) % 3)}
     attr:data-mod5={() => String((visibleIndexMap().get(image) ?? 0) % 5)}
     attr:data-mod6={() => String((visibleIndexMap().get(image) ?? 0) % 6)}
-    ref={() => bindGalleryImagePreview(image, folder)}
     css={css}
   >
     {children}

@@ -91,18 +91,44 @@ function* walkJpegMarkers(view: DataView): Generator<JpegMarker> {
   }
 }
 
-export function parseJpegMeta(view: DataView): JpegMeta | null {
+const BROWSER_DECODABLE_SOF_MARKERS = new Set([
+  SOF_BASELINE,
+  SOF_EXTENDED_SEQUENTIAL,
+  SOF_PROGRESSIVE,
+])
+
+export type JpegFrame = {
+  width: number
+  height: number
+  marker: number
+}
+
+export function parseJpegFrame(view: DataView): JpegFrame | null {
   for (const { marker, offset } of walkJpegMarkers(view)) {
     if (ALL_SOF_MARKERS.has(marker)) {
       if (offset + 9 > view.byteLength) return null
       return {
         height: view.getUint16(offset + 5),
         width: view.getUint16(offset + 7),
-        isProgressive: PROGRESSIVE_SOF_MARKERS.has(marker),
+        marker,
       }
     }
   }
   return null
+}
+
+export function isBrowserDecodableJpegFrame(frame: JpegFrame): boolean {
+  return BROWSER_DECODABLE_SOF_MARKERS.has(frame.marker)
+}
+
+export function parseJpegMeta(view: DataView): JpegMeta | null {
+  const frame = parseJpegFrame(view)
+  if (!frame) return null
+  return {
+    width: frame.width,
+    height: frame.height,
+    isProgressive: PROGRESSIVE_SOF_MARKERS.has(frame.marker),
+  }
 }
 
 export function checkExifThumbnailPresence(view: DataView): boolean {

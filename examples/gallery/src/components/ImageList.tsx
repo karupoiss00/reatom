@@ -1,7 +1,7 @@
 import { focusableCardAttrs } from '../a11y'
 import type { ImageModel } from '../model'
 import { listPreviewHeight, listPreviewWidth, openLightbox } from '../model'
-import { FolderImageTree, PreviewBoundImage } from './FolderImageTree'
+import { FolderImageTree, VisibleImageSlot } from './FolderImageTree'
 import { ImageFavoriteButton, ImageSelectButton } from './ImageControls'
 
 const ListImage = ({ image }: { image: ImageModel }) => {
@@ -111,10 +111,10 @@ const ListImage = ({ image }: { image: ImageModel }) => {
 
 export const ImageList = () => (
   <FolderImageTree
-    renderImage={(image, folder) => (
-      <PreviewBoundImage image={image} folder={folder}>
+    renderImage={(image) => (
+      <VisibleImageSlot image={image}>
         <ListImage image={image} />
-      </PreviewBoundImage>
+      </VisibleImageSlot>
     )}
   />
 )

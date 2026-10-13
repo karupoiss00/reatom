@@ -6,8 +6,9 @@ import type { ThumbnailResult } from '../image-engine'
 import * as imageEngine from '../image-engine'
 import { loadGalleryState } from '../shared/testSetup'
 import * as collection from './collection'
-import { currentImages, resetGallerySession } from './collection'
+import { currentImages, resetGallerySession, visibleImages } from './collection'
 import { bindBackgroundPreviewLoader } from './previewLoad'
+import { maxParallelThumbnails } from './thumbnailConcurrency'
 import { viewMode } from './view'
 
 test('background loading advances past a failed image without activating every candidate', async () => {
@@ -134,6 +135,66 @@ test('background waits for visible work and stops on unmount', async () => {
         stop()
         finishVisible(result)
         finishBackground(result)
+        resetGallerySession()
+      }
+    })
+  } finally {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+  }
+})
+
+test('visible thumbnails load in grid order as soon as the models exist, without any view', async () => {
+  clearStack()
+  vi.useFakeTimers()
+  vi.spyOn(imageEngine, 'parseImagePreviewMeta').mockResolvedValue({
+    width: 1200,
+    height: 800,
+    format: 'jpeg',
+    isProgressive: false,
+    hasExifThumbnail: false,
+  })
+  const load = vi
+    .spyOn(imageEngine, 'loadThumbnailWithMeta')
+    .mockResolvedValue({
+      url: 'blob:visible',
+      width: 192,
+      height: 128,
+      source: 'generated',
+    })
+  vi.spyOn(imageEngine, 'revokeThumbnail').mockImplementation(() => {})
+  try {
+    await context.start(async () => {
+      const names = Array.from(
+        { length: maxParallelThumbnails * 2 },
+        (_, index) => `${index}.jpg`,
+      )
+      loadGalleryState({
+        tree: {
+          ...mockFolderTree,
+          images: names.map((name) => createMockImage({ name })),
+          children: [],
+          imageCount: names.length,
+        },
+      })
+      viewMode.setList()
+      const stopVisibleImages = visibleImages.subscribe()
+      const images = visibleImages()
+      try {
+        await wrap(vi.advanceTimersByTimeAsync(20))
+        const loadedNames = load.mock.calls.map(([file]) => (file as File).name)
+        expect(loadedNames).toEqual(images.map((image) => image.source.name))
+        expect(
+          images.every((image) => image.previewLoadPriority() === 'high'),
+        ).toBe(true)
+
+        stopVisibleImages()
+        await wrap(vi.advanceTimersByTimeAsync(0))
+        expect(
+          images.every((image) => image.previewLoadPriority() === 'off'),
+        ).toBe(true)
+      } finally {
+        stopVisibleImages()
         resetGallerySession()
       }
     })

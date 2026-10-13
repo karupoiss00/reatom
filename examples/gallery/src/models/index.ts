@@ -179,8 +179,6 @@ export {
 } from './preferences'
 export {
   bindBackgroundPreviewLoader,
-  bindGalleryImagePreview,
-  bindGalleryImagePreviewWhen,
   ensureGalleryImagePreviewHigh,
 } from './previewLoad'
 export {

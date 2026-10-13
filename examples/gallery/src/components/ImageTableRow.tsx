@@ -3,7 +3,6 @@ import { formatExifDisplayValue } from '../image-engine/exifDisplay'
 import { resolveImageOrientationStyle } from '../image-engine/orientation'
 import type { ImageModel } from '../model'
 import {
-  bindGalleryImagePreviewWhen,
   ignoreExifOrientation,
   openLightbox,
   tablePreviewHeight,
@@ -57,7 +56,6 @@ export const ImageTableRow = ({
   return (
     <tr
       {...focusableRowAttrs(openLabel, () => openLightbox(image))}
-      ref={() => bindGalleryImagePreviewWhen(image, visible)}
       attr:data-selected={image.selected}
       style:display={() => (visible() ? 'table-row' : 'none')}
       css:preview-width={() => `${tablePreviewWidth()}px`}

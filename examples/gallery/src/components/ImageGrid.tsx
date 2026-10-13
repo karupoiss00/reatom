@@ -6,7 +6,7 @@ import {
   visibleIndexMap,
 } from '../model'
 import { pack } from '../themeVars'
-import { FolderImageTree, PreviewBoundImage } from './FolderImageTree'
+import { FolderImageTree, VisibleImageSlot } from './FolderImageTree'
 import { GridImage } from './GridImage'
 import { GridLoupe } from './GridLoupe'
 import { SearchIcon } from './Icons'
@@ -144,10 +144,10 @@ export const ImageGrid = () => (
             <ImageList />
           ) : (
             <FolderImageTree
-              renderImage={(image, folder) => (
-                <PreviewBoundImage image={image} folder={folder}>
+              renderImage={(image) => (
+                <VisibleImageSlot image={image}>
                   <GridImage image={image} />
-                </PreviewBoundImage>
+                </VisibleImageSlot>
               )}
             />
           )}

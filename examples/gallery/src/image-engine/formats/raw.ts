@@ -1,6 +1,7 @@
 import type { ExifData, RawImageFormat } from '../types'
 import { EXIF_READ_BYTES } from '../types'
 import { parseExifOrientationAtTiffBase, parseExifTagsAtTiffBase } from './exif'
+import { isBrowserDecodableJpegFrame, parseJpegFrame } from './jpeg'
 import {
   canScanRawPreviewInWorker,
   scanRawPreviewRangesInWorker,
@@ -52,6 +53,7 @@ const JPEG_SOI_SCAN_BYTES = 512
 const MIN_HEURISTIC_JPEG_BYTES = 4096
 const JPEG_SCAN_BYTES = 64 * 1024 * 1024
 const MAX_HEURISTIC_SEGMENTS = 64
+const JPEG_FRAME_PROBE_BYTES = 64 * 1024
 
 const JPEG_SOI_BYTE_0 = 0xff
 const JPEG_SOI_BYTE_1 = 0xd8
@@ -85,8 +87,8 @@ type PreviewRange = {
   length: number
 }
 
-type DecodedPreviewCandidate = {
-  blob: Blob
+type PreviewCandidate = PreviewRange & {
+  buffer: ArrayBuffer
   width: number
   height: number
   area: number
@@ -661,19 +663,94 @@ function findPreviewRange(
   return ranges[0] ?? null
 }
 
-async function readDecodableJpegCandidate(
+async function decodeJpegSize(
   blob: Blob,
-): Promise<DecodedPreviewCandidate | null> {
+): Promise<{ width: number; height: number } | null> {
   try {
     const bitmap = await createImageBitmap(blob)
-    const width = bitmap.width
-    const height = bitmap.height
-    const area = width * height
+    const size = { width: bitmap.width, height: bitmap.height }
     bitmap.close()
-    return { blob, width, height, area }
+    return size
   } catch {
     return null
   }
+}
+
+function previewCandidate(
+  range: PreviewRange,
+  buffer: ArrayBuffer,
+  width: number,
+  height: number,
+): PreviewCandidate | null {
+  if (width <= 0 || height <= 0) return null
+  return { ...range, buffer, width, height, area: width * height }
+}
+
+async function measurePreviewCandidate(
+  source: Blob,
+  range: PreviewRange,
+  buffer: ArrayBuffer,
+): Promise<PreviewCandidate | null> {
+  const probeRange = {
+    start: range.start,
+    length: Math.min(range.length, JPEG_FRAME_PROBE_BYTES),
+  }
+  const probeBytes = await readPreviewBytes(source, probeRange, buffer)
+  const jpegStart = findJpegSoiOffsetInBytes(probeBytes)
+  const frame = parseJpegFrame(
+    new DataView(
+      probeBytes.buffer,
+      probeBytes.byteOffset + jpegStart,
+      probeBytes.byteLength - jpegStart,
+    ),
+  )
+
+  if (frame && frame.width > 0 && frame.height > 0) {
+    if (!isBrowserDecodableJpegFrame(frame)) return null
+    return previewCandidate(range, buffer, frame.width, frame.height)
+  }
+
+  const decodedSize = await decodeJpegSize(
+    await readPreviewBlob(source, range, buffer),
+  )
+  if (!decodedSize) return null
+  return previewCandidate(range, buffer, decodedSize.width, decodedSize.height)
+}
+
+async function measurePreviewCandidates(
+  source: Blob,
+  ranges: PreviewRange[],
+  buffer: ArrayBuffer,
+): Promise<PreviewCandidate[]> {
+  const candidates: PreviewCandidate[] = []
+  for (const range of ranges) {
+    const candidate = await measurePreviewCandidate(source, range, buffer)
+    if (candidate) candidates.push(candidate)
+  }
+  return candidates
+}
+
+function candidateLongEdge(candidate: PreviewCandidate): number {
+  return Math.max(candidate.width, candidate.height)
+}
+
+function pickPreviewCandidate(
+  candidates: PreviewCandidate[],
+  minLongEdge: number | undefined,
+): PreviewCandidate | null {
+  let smallestCovering: PreviewCandidate | null = null
+  let largest: PreviewCandidate | null = null
+
+  for (const candidate of candidates) {
+    if (!largest || candidate.area > largest.area) largest = candidate
+
+    const covers =
+      minLongEdge !== undefined && candidateLongEdge(candidate) >= minLongEdge
+    if (covers && (!smallestCovering || candidate.area < smallestCovering.area))
+      smallestCovering = candidate
+  }
+
+  return smallestCovering ?? largest
 }
 
 function findJpegEndOffset(bytes: Uint8Array, start: number): number {
@@ -740,37 +817,15 @@ async function collectHeuristicJpegPreviewSegments(
   }
 }
 
-async function scanLargestJpegPreview(
+async function scanJpegPreviewCandidates(
   blob: Blob,
-): Promise<DecodedPreviewCandidate | null> {
+): Promise<PreviewCandidate[]> {
   const scanSize = Math.min(blob.size, JPEG_SCAN_BYTES)
   const { segments, buffer } = await collectHeuristicJpegPreviewSegments(
     blob,
     scanSize,
   )
-
-  let bestPreview: DecodedPreviewCandidate | null = null
-  for (const segment of segments) {
-    const segmentBlob = await readPreviewBlob(blob, segment, buffer)
-
-    if (segmentBlob) {
-      bestPreview = largerDecodedPreview(
-        bestPreview,
-        await readDecodableJpegCandidate(segmentBlob),
-      )
-    }
-  }
-
-  return bestPreview
-}
-
-function largerDecodedPreview(
-  current: DecodedPreviewCandidate | null,
-  next: DecodedPreviewCandidate | null,
-): DecodedPreviewCandidate | null {
-  if (!next) return current
-  if (!current || next.area > current.area) return next
-  return current
+  return measurePreviewCandidates(blob, segments, buffer)
 }
 
 function copyBytes(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
@@ -785,21 +840,28 @@ function normalizePreviewBytes(bytes: Uint8Array): Blob {
   return new Blob([copyBytes(jpegBytes)], { type: 'image/jpeg' })
 }
 
+async function readPreviewBytes(
+  source: Blob,
+  range: PreviewRange,
+  headerBuffer: ArrayBuffer,
+): Promise<Uint8Array> {
+  const headerEnd = range.start + range.length
+  if (headerEnd <= headerBuffer.byteLength) {
+    return new Uint8Array(headerBuffer, range.start, range.length)
+  }
+
+  const previewSlice = source.slice(range.start, range.start + range.length)
+  return new Uint8Array(await previewSlice.arrayBuffer())
+}
+
 async function readPreviewBlob(
   source: Blob,
   range: PreviewRange,
   headerBuffer: ArrayBuffer,
-): Promise<Blob | null> {
-  const headerEnd = range.start + range.length
-  if (headerEnd <= headerBuffer.byteLength) {
-    const bytes = new Uint8Array(headerBuffer, range.start, range.length)
-    return normalizePreviewBytes(bytes)
-  }
-
-  const previewSlice = source.slice(range.start, range.start + range.length)
-  const previewBuffer = await previewSlice.arrayBuffer()
-  const bytes = new Uint8Array(previewBuffer)
-  return normalizePreviewBytes(bytes)
+): Promise<Blob> {
+  return normalizePreviewBytes(
+    await readPreviewBytes(source, range, headerBuffer),
+  )
 }
 
 export function checkRawPreviewPresence(
@@ -882,18 +944,23 @@ export type ExtractRawPreviewOptions = {
 }
 
 function coversLongEdge(
-  preview: DecodedPreviewCandidate | null,
+  preview: PreviewCandidate | null,
   minLongEdge: number | undefined,
 ): boolean {
   if (!preview || minLongEdge === undefined) return false
-  return Math.max(preview.width, preview.height) >= minLongEdge
+  return candidateLongEdge(preview) >= minLongEdge
 }
 
+/**
+ * With `minLongEdge`, returns the smallest embedded preview that covers it
+ * (falling back to the largest one); without it, returns the largest preview.
+ */
 export async function extractRawPreviewData(
   blob: Blob,
   preferredFormat?: RawFormat,
   options?: ExtractRawPreviewOptions,
 ): Promise<RawPreviewData | null> {
+  const minLongEdge = options?.minLongEdge
   const headerReadBytes = Math.min(blob.size, EXIF_READ_BYTES)
   const slice = blob.slice(0, headerReadBytes)
   const buffer = await slice.arrayBuffer()
@@ -902,30 +969,23 @@ export async function extractRawPreviewData(
   const header = parseTiffHeader(view)
   if (!header) return null
 
-  let bestPreview: DecodedPreviewCandidate | null = null
   const ranges = collectPreviewRangesFromIfd(view, header, blob.size)
-  for (const range of ranges) {
-    const previewBlob = await readPreviewBlob(blob, range, buffer)
-    if (previewBlob) {
-      bestPreview = largerDecodedPreview(
-        bestPreview,
-        await readDecodableJpegCandidate(previewBlob),
-      )
-    }
-  }
+  const tagCandidates = await measurePreviewCandidates(blob, ranges, buffer)
+  let bestPreview = pickPreviewCandidate(tagCandidates, minLongEdge)
 
-  const tagPreviewIsEnough = coversLongEdge(bestPreview, options?.minLongEdge)
+  const tagPreviewIsEnough = coversLongEdge(bestPreview, minLongEdge)
   if (preferredFormat !== undefined && !tagPreviewIsEnough) {
-    const scannedPreview = await scanLargestJpegPreview(blob)
-    if (scannedPreview) {
-      bestPreview = largerDecodedPreview(bestPreview, scannedPreview)
-    }
+    const scannedCandidates = await scanJpegPreviewCandidates(blob)
+    bestPreview = pickPreviewCandidate(
+      [...tagCandidates, ...scannedCandidates],
+      minLongEdge,
+    )
   }
 
   if (!bestPreview) return null
 
   return {
-    blob: bestPreview.blob,
+    blob: await readPreviewBlob(blob, bestPreview, bestPreview.buffer),
     width: bestPreview.width,
     height: bestPreview.height,
   }

@@ -23,6 +23,8 @@ import { parseWebpMeta } from './formats/webp'
 import type { ImageFormat, ImageMeta } from './types'
 import { HEADER_READ_BYTES, resolveExifReadBytes } from './types'
 
+const FULL_SIZE_RAW_PREVIEW_LONG_EDGE_RATIO = 0.9
+
 export type ParseImageMetaOptions = {
   filename?: string
 }
@@ -456,9 +458,15 @@ export async function parseImageMeta(
       source.size,
     )
     if (rawMeta) {
+      const sensorLongEdge = Math.max(rawMeta.width, rawMeta.height)
       const embeddedPreview = await extractRawPreviewData(
         source,
         rawMeta.format,
+        {
+          minLongEdge: Math.round(
+            sensorLongEdge * FULL_SIZE_RAW_PREVIEW_LONG_EDGE_RATIO,
+          ),
+        },
       )
 
       return withDetectedFormatWarning(

@@ -71,6 +71,85 @@ function swapSize(size: Size): Size {
   return { width: size.height, height: size.width }
 }
 
+const JPEG_DECODE_SCALES = [8, 4, 2]
+
+function pickJpegDecodeSize(stored: Size, storedTarget: Size): Size | null {
+  for (const scale of JPEG_DECODE_SCALES) {
+    const scaled = {
+      width: Math.ceil(stored.width / scale),
+      height: Math.ceil(stored.height / scale),
+    }
+    if (
+      scaled.width >= storedTarget.width &&
+      scaled.height >= storedTarget.height
+    ) {
+      return scaled
+    }
+  }
+  return null
+}
+
+async function videoFrameToStoredLayoutBitmap(
+  frame: VideoFrame,
+): Promise<ImageBitmap> {
+  const { width, height } = frame.visibleRect ?? {
+    width: frame.codedWidth,
+    height: frame.codedHeight,
+  }
+  const rgba = new Uint8ClampedArray(width * height * 4)
+  await frame.copyTo(rgba, { format: 'RGBA' })
+  return createImageBitmap(new ImageData(rgba, width, height))
+}
+
+/**
+ * Lets libjpeg scale in the DCT domain (1/2, 1/4, 1/8) instead of decoding
+ * every pixel. Returns `null` whenever the browser can't honor the exact size,
+ * so the caller falls back to a regular decode. Pixels are copied out of the
+ * frame because Chromium applies the frame's EXIF `rotation`/`flip` in
+ * `createImageBitmap(frame)` only sometimes; `copyTo` always yields the stored
+ * pixel layout.
+ */
+async function decodeScaledJpegBitmap(
+  source: Blob,
+  meta: ImageMeta | null,
+  storedTarget: Size,
+): Promise<ImageBitmap | null> {
+  if (meta?.format !== 'jpeg' || typeof ImageDecoder === 'undefined') {
+    return null
+  }
+
+  const decodeSize = pickJpegDecodeSize(meta, storedTarget)
+  if (!decodeSize) return null
+
+  let decoder: ImageDecoder | null = null
+  try {
+    decoder = new ImageDecoder({
+      data: source.stream(),
+      type: 'image/jpeg',
+      desiredWidth: decodeSize.width,
+      desiredHeight: decodeSize.height,
+    })
+    const { image } = await decoder.decode()
+    try {
+      const bitmap = await videoFrameToStoredLayoutBitmap(image)
+      if (
+        bitmap.width !== decodeSize.width ||
+        bitmap.height !== decodeSize.height
+      ) {
+        bitmap.close()
+        return null
+      }
+      return bitmap
+    } finally {
+      image.close()
+    }
+  } catch {
+    return null
+  } finally {
+    decoder?.close()
+  }
+}
+
 export type OrientedBitmapOptions = {
   ignoreExifOrientation: boolean
   target?: Size
@@ -96,6 +175,31 @@ export async function decodeOrientedBitmap(
   const orientation = getOrientationFromExif(meta?.exif)
   const needsTransform = orientationNeedsTransform(orientation)
   const swapsAxes = orientationSwapsAxes(orientation)
+
+  if (target) {
+    const storedTarget =
+      swapsAxes && !ignoreExifOrientation ? swapSize(target) : target
+    const scaledBitmap = await decodeScaledJpegBitmap(
+      source,
+      meta,
+      storedTarget,
+    )
+    if (scaledBitmap) {
+      throwIfBitmapDecodeAborted(signal, [scaledBitmap])
+      let bitmap = await resizeBitmapTowardTarget(
+        scaledBitmap,
+        storedTarget,
+        signal,
+      )
+      if (!needsTransform || ignoreExifOrientation) {
+        return { bitmap, orientationBaked: false, browserOriented: false }
+      }
+      bitmap = await applyOrientationToImageBitmap(bitmap, orientation)
+      throwIfBitmapDecodeAborted(signal, [bitmap])
+      return { bitmap, orientationBaked: true, browserOriented: false }
+    }
+  }
+
   const browserBakesOrientation =
     needsTransform && (await browserAppliesExifToBitmaps())
 

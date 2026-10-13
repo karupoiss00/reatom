@@ -41,6 +41,68 @@ function stubCreateImageBitmap(options: { bakesOrientation: boolean }) {
   return createImageBitmapMock
 }
 
+let imageDecoderInits: ImageDecoderInit[] = []
+
+function stubScaledDecodeGlobals(options: { honorsSize: boolean }) {
+  imageDecoderInits = []
+
+  class FakeImageData {
+    constructor(
+      readonly data: Uint8ClampedArray,
+      readonly width: number,
+      readonly height: number,
+    ) {}
+  }
+
+  class FakeImageDecoder {
+    constructor(private readonly init: ImageDecoderInit) {
+      imageDecoderInits.push(init)
+    }
+
+    async decode() {
+      const width = options.honorsSize
+        ? (this.init.desiredWidth ?? 0)
+        : orientation6Meta.width
+      const height = options.honorsSize
+        ? (this.init.desiredHeight ?? 0)
+        : orientation6Meta.height
+      return {
+        image: {
+          codedWidth: width,
+          codedHeight: height,
+          visibleRect: { width, height },
+          copyTo: async () => [],
+          close: () => undefined,
+        },
+        complete: true,
+      }
+    }
+
+    close() {}
+  }
+
+  const createImageBitmapMock = vi.fn(
+    async (
+      source: unknown,
+      bitmapOptions?: { resizeWidth?: number; resizeHeight?: number },
+    ) => {
+      if (source instanceof FakeImageData) {
+        return { width: source.width, height: source.height, close: () => {} }
+      }
+      return {
+        width: bitmapOptions?.resizeWidth ?? orientation6Meta.width,
+        height: bitmapOptions?.resizeHeight ?? orientation6Meta.height,
+        close: () => undefined,
+      }
+    },
+  )
+
+  vi.stubGlobal('ImageDecoder', FakeImageDecoder)
+  vi.stubGlobal('ImageData', FakeImageData)
+  vi.stubGlobal('createImageBitmap', createImageBitmapMock)
+  return createImageBitmapMock
+}
+
 function sourceBlob() {
   return new Blob([new Uint8Array(4096)], { type: 'image/jpeg' })
 }
@@ -182,6 +244,49 @@ describe('decodeOrientedBitmap', () => {
     expect(applySpy).not.toHaveBeenCalled()
     expect(result.orientationBaked).toBe(false)
     expect([result.bitmap.width, result.bitmap.height]).toEqual([400, 600])
+  })
+
+  test('scaled JPEG decode: decodes at 1/4 in stored layout then rotates by hand', async () => {
+    const createImageBitmapMock = stubScaledDecodeGlobals({ honorsSize: true })
+    const applySpy = stubOrientationApplication()
+
+    const result = await decodeOrientedBitmap(sourceBlob(), orientation6Meta, {
+      ignoreExifOrientation: false,
+      target: { width: 300, height: 200 },
+    })
+
+    expect(imageDecoderInits[0]).toMatchObject({
+      desiredWidth: 300,
+      desiredHeight: 450,
+    })
+    expect(
+      createImageBitmapMock.mock.calls.some(
+        ([source]) => source instanceof Blob,
+      ),
+    ).toBe(false)
+    expect(applySpy).toHaveBeenCalledOnce()
+    expect(applySpy.mock.calls[0]?.[1].value).toBe(6)
+    expect(result).toMatchObject({
+      orientationBaked: true,
+      browserOriented: false,
+    })
+    expect([result.bitmap.width, result.bitmap.height]).toEqual([300, 200])
+  })
+
+  test('scaled JPEG decode: falls back to a regular decode when the size is not honored', async () => {
+    const createImageBitmapMock = stubScaledDecodeGlobals({ honorsSize: false })
+    stubOrientationApplication()
+
+    await decodeOrientedBitmap(sourceBlob(), orientation6Meta, {
+      ignoreExifOrientation: false,
+      target: { width: 300, height: 200 },
+    })
+
+    expect(imageDecoderInits).toHaveLength(1)
+    const blobDecodeCall = createImageBitmapMock.mock.calls.find(
+      ([source]) => source instanceof Blob && source.size > 1024,
+    )
+    expect(blobDecodeCall).toBeDefined()
   })
 
   test('skips the probe for images without an orientation transform', async () => {

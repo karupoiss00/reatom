@@ -4,6 +4,7 @@ import { parseImageMeta } from '../header'
 import {
   checkRawPreviewPresence,
   extractRawPreview,
+  extractRawPreviewData,
   isTiffLike,
   parseRawMeta,
 } from './raw'
@@ -155,6 +156,20 @@ function buildTiffBuffer(
 }
 
 const minimalJpegPreview = new Uint8Array([0xff, 0xd8, 0xff, 0xd9])
+
+function jpegWithFrame(
+  width: number,
+  height: number,
+  byteLength: number,
+): Uint8Array {
+  const bytes = new Uint8Array(byteLength)
+  const view = new DataView(bytes.buffer)
+  bytes.set([0xff, 0xd8, 0xff, 0xc0, 0x00, 0x11, 0x08])
+  view.setUint16(7, height)
+  view.setUint16(9, width)
+  bytes.set([0xff, 0xd9], byteLength - 2)
+  return bytes
+}
 
 const stubImageBitmapDecode = () => {
   vi.stubGlobal('createImageBitmap', async () => ({
@@ -448,6 +463,80 @@ describe('raw format parser', () => {
 
     const largestPreview = await extractRawPreview(blob, 'cr2')
     expect(largestPreview?.size).toBe(largerJpeg.length)
+  })
+
+  test('extractRawPreviewData sizes tag previews from the JPEG frame header without decoding', async () => {
+    const decode = vi.fn()
+    vi.stubGlobal('createImageBitmap', decode)
+
+    const tagCount = 3
+    const previewOffset = 8 + 2 + tagCount * 12 + 4
+    const tagPreview = jpegWithFrame(1616, 1080, 600)
+    const buffer = buildTiffBuffer(
+      [
+        { tag: MAKE_TAG, type: TIFF_TYPE_ASCII, count: 5, value: 'SONY' },
+        {
+          tag: JPEG_INTERCHANGE_FORMAT_TAG,
+          type: TIFF_TYPE_LONG,
+          count: 1,
+          value: previewOffset + 'SONY\0'.length,
+        },
+        {
+          tag: JPEG_INTERCHANGE_FORMAT_LENGTH_TAG,
+          type: TIFF_TYPE_LONG,
+          count: 1,
+          value: tagPreview.length,
+        },
+      ],
+      tagPreview,
+    )
+
+    const preview = await extractRawPreviewData(new Blob([buffer]), 'arw', {
+      minLongEdge: 300,
+    })
+
+    expect(preview).toMatchObject({ width: 1616, height: 1080 })
+    expect(preview?.blob.size).toBe(tagPreview.length)
+    expect(decode).not.toHaveBeenCalled()
+  })
+
+  test('extractRawPreviewData picks the smallest scanned preview that covers minLongEdge', async () => {
+    const decode = vi.fn()
+    vi.stubGlobal('createImageBitmap', decode)
+
+    const buffer = buildTiffBuffer([
+      { tag: IMAGE_WIDTH_TAG, type: TIFF_TYPE_SHORT, count: 1, value: 9600 },
+      { tag: IMAGE_LENGTH_TAG, type: TIFF_TYPE_SHORT, count: 1, value: 6376 },
+    ])
+    const thumbnailJpeg = jpegWithFrame(160, 120, 4200)
+    const mediumJpeg = jpegWithFrame(1616, 1080, 5000)
+    const fullJpeg = jpegWithFrame(9504, 6336, 9000)
+
+    const fileBytes = new Uint8Array(
+      buffer.byteLength +
+        thumbnailJpeg.length +
+        mediumJpeg.length +
+        fullJpeg.length,
+    )
+    fileBytes.set(new Uint8Array(buffer), 0)
+    fileBytes.set(thumbnailJpeg, buffer.byteLength)
+    fileBytes.set(mediumJpeg, buffer.byteLength + thumbnailJpeg.length)
+    fileBytes.set(
+      fullJpeg,
+      buffer.byteLength + thumbnailJpeg.length + mediumJpeg.length,
+    )
+    const blob = new Blob([fileBytes])
+
+    const thumbnailPreview = await extractRawPreviewData(blob, 'cr2', {
+      minLongEdge: 300,
+    })
+    expect(thumbnailPreview).toMatchObject({ width: 1616, height: 1080 })
+
+    const largestPreview = await extractRawPreviewData(blob, 'cr2')
+    expect(largestPreview).toMatchObject({ width: 9504, height: 6336 })
+    expect(largestPreview?.blob.size).toBe(fullJpeg.length)
+
+    expect(decode).not.toHaveBeenCalled()
   })
 
   test('extractRawPreview returns null when preview range is outside file', async () => {

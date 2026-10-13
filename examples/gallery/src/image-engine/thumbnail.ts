@@ -8,6 +8,7 @@ import {
 } from './orientation'
 import type { OrientedBitmap } from './resizeBitmap'
 import { decodeOrientedBitmap } from './resizeBitmap'
+import { createTaskLimit } from './taskLimit'
 import type {
   ImageFormat,
   ImageMeta,
@@ -36,6 +37,15 @@ function throwIfThumbnailAborted(signal: AbortSignal | undefined): void {
 function isThumbnailAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === 'AbortError'
 }
+
+/**
+ * Full decodes are CPU-bound, so running more of them than there are cores only
+ * delays every result without finishing the batch sooner. Cheap thumbnail paths
+ * (embedded previews) stay limited by the caller's queue only.
+ */
+const limitFullImageDecodes = createTaskLimit(
+  globalThis.navigator?.hardwareConcurrency ?? 4,
+)
 
 const ALPHA_CAPABLE_FORMATS: ReadonlySet<ImageFormat> = new Set([
   'png',
@@ -124,11 +134,15 @@ async function generateThumbnailFromBlob(
 
   let decoded: OrientedBitmap
   try {
-    decoded = await decodeOrientedBitmap(source, meta, {
-      ignoreExifOrientation,
-      target,
+    decoded = await limitFullImageDecodes(
+      () =>
+        decodeOrientedBitmap(source, meta, {
+          ignoreExifOrientation,
+          target,
+          signal,
+        }),
       signal,
-    })
+    )
   } catch (err) {
     if (isThumbnailAbortError(err)) throw err
     if (signal?.aborted) throw createThumbnailAbortError(signal)
