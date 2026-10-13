@@ -116,12 +116,21 @@ const messagesAtom = atom([], 'messages').extend(withGameChannel('messages'))
 const usersAtom = atom([], 'users').extend(withGameChannel('users'))
 ```
 
+The default `withBroadcastChannel` adapter creates its shared `BroadcastChannel` on the first persist read, write, or subscribe — not at import time. Importing `@reatom/core` does not keep a Node process alive. Pass a getter to `reatomPersistBroadcastChannel` when you want the same laziness for a custom channel:
+
+```typescript
+const withGameChannel = reatomPersistBroadcastChannel(
+  () => new BroadcastChannel('game-state'),
+)
+```
+
 **Features:**
 
 - Instant cross-tab synchronization without page refresh
 - Memory-based storage (no disk persistence)
 - Zero configuration required
 - Works across browser tabs and web workers
+- Default channel is created on first persist use, not at import
 
 **Use Cases:**
 

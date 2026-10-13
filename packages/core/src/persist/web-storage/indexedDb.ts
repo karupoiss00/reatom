@@ -6,7 +6,11 @@ import {
   reatomPersist,
   type WithPersist,
 } from '../index'
-import { isBroadcastChannelAvailable } from './isBroadcastChannelAvailable'
+import {
+  isBroadcastChannelAvailable,
+  resolveBroadcastChannel,
+  type BroadcastChannelSource,
+} from './isBroadcastChannelAvailable'
 
 /**
  * Web storage persist interface that extends the base persist functionality
@@ -118,7 +122,8 @@ const checkIdb = (): Promise<any> => {
  *   - Applications requiring robust storage with transactions
  *
  * @param dbName - Name of the IndexedDB database to use
- * @param channel - BroadcastChannel for cross-tab synchronization
+ * @param channel - BroadcastChannel for cross-tab synchronization, or a getter
+ *   called on first persist read, write, or subscribe
  * @returns Persist adapter with IndexedDB storage and cross-tab sync
  * @see {@link withIndexedDb} for default IndexedDB with automatic fallback
  * @see {@link withLocalStorage} for simpler persistent storage with size limits
@@ -126,9 +131,10 @@ const checkIdb = (): Promise<any> => {
  */
 export const reatomPersistIndexedDb = (
   dbName: string,
-  channel: BroadcastChannel,
+  channel: BroadcastChannelSource,
 ): WithPersistWebStorage => {
-  const postMessage = (msg: BroadcastMessage) => channel.postMessage(msg)
+  const getChannel = resolveBroadcastChannel(channel)
+  const postMessage = (msg: BroadcastMessage) => getChannel().postMessage(msg)
 
   let store: any
   const getStore = async () => {
@@ -209,7 +215,7 @@ export const reatomPersistIndexedDb = (
         }
       }
 
-      channel.addEventListener('message', handler)
+      getChannel().addEventListener('message', handler)
 
       // Load initial data from IndexedDB
       ;(async () => {
@@ -227,7 +233,7 @@ export const reatomPersistIndexedDb = (
         }
       })()
 
-      return () => channel.removeEventListener('message', handler)
+      return () => getChannel().removeEventListener('message', handler)
     },
   })
 }
@@ -310,7 +316,8 @@ const initWithIndexedDb = () =>
   isIndexedDbAvailable
     ? reatomPersistIndexedDb(
         'reatom_default',
-        new BroadcastChannel('reatom_withIndexedDb_default'),
+        () =>
+          new globalThis.BroadcastChannel('reatom_withIndexedDb_default'),
       )
     : (reatomPersist(
         createMemStorage({ name: 'withIndexedDb' }),

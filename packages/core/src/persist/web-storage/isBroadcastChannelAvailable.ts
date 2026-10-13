@@ -15,3 +15,14 @@ const initIsBroadcastChannelAvailable = () => {
 
 export const isBroadcastChannelAvailable =
   /* @__PURE__ */ initIsBroadcastChannelAvailable()
+
+export type BroadcastChannelSource = BroadcastChannel | (() => BroadcastChannel)
+
+export const resolveBroadcastChannel = (
+  source: BroadcastChannelSource,
+): (() => BroadcastChannel) => {
+  if (typeof source !== 'function') return () => source
+
+  let channel: undefined | BroadcastChannel
+  return () => (channel ??= source())
+}

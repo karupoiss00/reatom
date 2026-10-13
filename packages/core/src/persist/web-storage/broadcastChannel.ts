@@ -6,7 +6,11 @@ import {
   reatomPersist,
   type WithPersist,
 } from '../index'
-import { isBroadcastChannelAvailable } from './isBroadcastChannelAvailable'
+import {
+  isBroadcastChannelAvailable,
+  resolveBroadcastChannel,
+  type BroadcastChannelSource,
+} from './isBroadcastChannelAvailable'
 /**
  * Web storage persist interface that extends the base persist functionality
  * with a storage atom for managing the underlying storage mechanism.
@@ -82,15 +86,17 @@ export type BroadcastMessage =
  *   - Real-time notifications
  *   - Shared application state
  *
- * @param channel - BroadcastChannel instance for cross-tab communication
+ * @param channel - BroadcastChannel instance, or a getter called on first
+ *   persist read, write, or subscribe
  * @returns Persist adapter with cross-tab synchronization capabilities
  * @see {@link withBroadcastChannel} for default channel with automatic fallback
  * @see {@link BroadcastMessage} for message format details
  */
 export const reatomPersistBroadcastChannel = (
-  channel: BroadcastChannel,
+  channel: BroadcastChannelSource,
 ): WithPersistWebStorage => {
-  const postMessage = (msg: BroadcastMessage) => channel.postMessage(msg)
+  const getChannel = resolveBroadcastChannel(channel)
+  const postMessage = (msg: BroadcastMessage) => getChannel().postMessage(msg)
 
   // @ts-ignore TODO
   return reatomPersist({
@@ -141,7 +147,7 @@ export const reatomPersistBroadcastChannel = (
         }
       }
 
-      channel.addEventListener('message', handler, false)
+      getChannel().addEventListener('message', handler, false)
 
       // Request initial data
       try {
@@ -150,7 +156,7 @@ export const reatomPersistBroadcastChannel = (
         // BroadcastChannel might be unavailable - fail silently
       }
 
-      return () => channel.removeEventListener('message', handler, false)
+      return () => getChannel().removeEventListener('message', handler, false)
     },
   })
 }
@@ -160,9 +166,9 @@ export const reatomPersistBroadcastChannel = (
  * memory storage.
  *
  * Provides real-time cross-tab synchronization using a default
- * BroadcastChannel. Automatically falls back to memory storage in environments
- * where BroadcastChannel is not available (Node.js, older browsers, some secure
- * contexts).
+ * BroadcastChannel, created on first persist read, write, or subscribe.
+ * Automatically falls back to memory storage in environments where
+ * BroadcastChannel is not available (older browsers, some secure contexts).
  *
  * @example
  *   // Simple cross-tab synchronization - changes in one tab appear in others
@@ -211,7 +217,10 @@ export const reatomPersistBroadcastChannel = (
 const initWithBroadcastChannel = () =>
   isBroadcastChannelAvailable
     ? reatomPersistBroadcastChannel(
-        new BroadcastChannel('reatom_withBroadcastChannel_default'),
+        () =>
+          new globalThis.BroadcastChannel(
+            'reatom_withBroadcastChannel_default',
+          ),
       )
     : (reatomPersist(
         createMemStorage({ name: 'withBroadcastChannel' }),
