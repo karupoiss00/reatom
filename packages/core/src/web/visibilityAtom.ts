@@ -1,6 +1,7 @@
 import type { Atom } from '../core'
 import { atom } from '../core'
 import { reatomObservable } from '../methods'
+import { isBrowser } from '../utils'
 import { onEvent } from './onEvent'
 
 type VisibilityAtom = Atom<DocumentVisibilityState> & {
@@ -42,8 +43,9 @@ type VisibilityAtom = Atom<DocumentVisibilityState> & {
 const initVisibilityAtom = () =>
   reatomObservable(
     () => ({
-      getState: () => document.visibilityState,
+      getState: () => (isBrowser() ? document.visibilityState : 'visible'),
       subscribe: (fn) => {
+        if (!isBrowser()) return
         onEvent(document, 'visibilitychange', () => {
           const state = document.visibilityState
           fn(state)
