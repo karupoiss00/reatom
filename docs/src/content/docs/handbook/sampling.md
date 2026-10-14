@@ -477,7 +477,7 @@ When you need to wait for the first of several concurrent operations to complete
 Consider a translation tool that queries multiple providers to show the fastest result. Each provider does real work after the network call — saving to translation memory, updating stats — and abort prevents that unnecessary work when another provider already won.
 
 ```javascript
-import { action, wrap, race, abortVar, withAbort } from '@reatom/core'
+import { action, wrap, race, abortVar, withAbort, noop } from '@reatom/core'
 
 const translateWithGoogle = async (text, targetLang) => {
   const response = await wrap(
@@ -516,6 +516,9 @@ const detectLanguage = async (text) => {
 }
 
 const translate = action(async (text, targetLang) => {
+  // fire-and-forget: nobody awaits it, the "finally" strategy stops it
+  prefetchGlossary(targetLang).catch(noop)
+
   const googlePromise = abortVar.createAndRun(
     translateWithGoogle,
     text,
@@ -530,12 +533,13 @@ const translate = action(async (text, targetLang) => {
 
   // first translation wins; the slower service is aborted
   // before it writes a duplicate to translation memory
-  const result = await wrap(race(googlePromise, deeplPromise))
+  const translation = await wrap(race(googlePromise, deeplPromise))
 
-  // language detection is redundant — the winning translator already identified it
+  // language detection is redundant — the winning translator already identified it.
+  // Abort it now instead of waiting for the action end: post-processing may take a while
   detectPromise.controller.abort('language known')
 
-  return result
+  return await wrap(postProcess(translation))
 }, 'translate').extend(withAbort('finally'))
 ```
 
@@ -543,8 +547,10 @@ This pattern demonstrates several powerful features:
 
 1. **`abortVar.createAndRun`** — wraps a function call into a `ControlledPromise` with an attached `AbortController`, so it can be cancelled later
 2. **`race`** — resolves with the first promise to settle and automatically aborts every other participant with reason `"race"`. The key point: all code after `wrap` in the losing function (like `saveToTranslationMemory`) never executes
-3. **Manual abort** — you can abort any `ControlledPromise` at any time with a custom reason (here, `'language known'` for the redundant detection)
-4. **`"finally"` strategy** — when the action completes, all async operations started inside it (even fire-and-forget ones) are automatically aborted, preventing resource leaks
+3. **Manual abort** — you can abort any `ControlledPromise` at any time with a custom reason (here, `'language known'` stops the redundant detection before the post-processing starts)
+4. **`"finally"` strategy** — when the action completes, all async operations started inside it (even fire-and-forget ones like `prefetchGlossary`) are automatically aborted, preventing resource leaks
+
+Each `translate()` call gets its own controllers, so a second call starts fresh and cleans up only its own work.
 
 ## Clean Error Handling with `framePromise`
 
