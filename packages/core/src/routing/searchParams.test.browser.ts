@@ -1,5 +1,6 @@
 import { beforeEach, expect, test, vi } from 'test'
 
+import { action } from '../core'
 import { atom } from '../core/atom'
 import { wrap } from '../methods'
 import { reatomBoolean } from '../primitives/reatomBoolean'
@@ -140,6 +141,68 @@ test('lens path wildcard', async () => {
   await wrap(sleep())
 
   expect(urlAtom().search).toBe('?test=2')
+})
+
+test('batched atom writes update every search param', async () => {
+  history.replaceState({}, '', '/?f=24&n=2.8&tier=classic')
+
+  const focal = atom(50, 'focal').extend(
+    withSearchParams('f', {
+      parse: (value) => (value === undefined ? 50 : Number(value)),
+      serialize: (value) => (value === 50 ? undefined : String(value)),
+      replace: true,
+    }),
+  )
+  const fNumber = atom(1.4, 'fNumber').extend(
+    withSearchParams('n', {
+      parse: (value) => (value === undefined ? 1.4 : Number(value)),
+      serialize: (value) => (value === 1.4 ? undefined : String(value)),
+      replace: true,
+    }),
+  )
+  const tier = atom('modern', 'tier').extend(
+    withSearchParams('tier', {
+      parse: (value = 'modern') => value,
+      serialize: (value) => (value === 'modern' ? undefined : value),
+      replace: true,
+    }),
+  )
+
+  focal.subscribe()
+  fNumber.subscribe()
+  tier.subscribe()
+
+  await wrap(sleep())
+
+  expect(focal()).toBe(24)
+  expect(fNumber()).toBe(2.8)
+  expect(tier()).toBe('classic')
+
+  action(() => {
+    focal.set(50)
+    fNumber.set(1.4)
+    tier.set('modern')
+  })()
+
+  await wrap(sleep())
+
+  expect(focal()).toBe(50)
+  expect(fNumber()).toBe(1.4)
+  expect(tier()).toBe('modern')
+  expect(urlAtom().search).toBe('')
+
+  action(() => {
+    focal.set(85)
+    fNumber.set(1.4)
+    tier.set('flagship')
+  })()
+
+  await wrap(sleep())
+
+  expect(focal()).toBe(85)
+  expect(fNumber()).toBe(1.4)
+  expect(tier()).toBe('flagship')
+  expect(urlAtom().search).toBe('?f=85&tier=flagship')
 })
 
 test('search reset', async () => {

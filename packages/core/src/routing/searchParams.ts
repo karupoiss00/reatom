@@ -246,12 +246,14 @@ export function withSearchParams<T = string>(
           isSubpath(urlAtom().pathname, path)
         ) {
           const value = serialize(state)
-          const sp = searchParamsAtom()
-          if (value === undefined) {
-            if (key in sp) searchParamsAtom.del(key, replace)
-          } else if (sp[key] !== value) {
-            searchParamsAtom.set(key, value, replace)
-          }
+          _enqueue(() => {
+            const sp = searchParamsAtom()
+            if (value === undefined) {
+              if (key in sp) searchParamsAtom.del(key, replace)
+            } else if (sp[key] !== value) {
+              searchParamsAtom.set(key, value, replace)
+            }
+          }, 'hook')
         }
         target()
       }),
