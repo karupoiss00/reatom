@@ -88,15 +88,9 @@ const Input = () => <input value={value} on:input={onInput} />
 Mount your app:
 
 ```tsx
-import { connectLogger, context, clearStack } from '@reatom/core'
+import { connectLogger, context } from '@reatom/core'
 import { mount } from '@reatom/jsx'
 import { App } from './App'
-
-// Disable default global context to enforce explicit context usage (recommended)
-clearStack()
-
-// Create a root context for the application
-const rootContext = context.start()
 
 if (import.meta.env.MODE === 'development') {
   connectLogger()
@@ -821,7 +815,7 @@ Use the `ref` prop to get access to the DOM element and register mount/unmount s
 />
 ```
 
-Mount refs run child-first; unmount refs run parent-first:
+Mount refs run child-first (post-order: children before their parent, siblings in document order, so `<A><B><C/></B><D/></A>` mounts C, B, D, A); unmount refs run parent-first (pre-order: A, B, C, D):
 
 ```tsx
 <div
