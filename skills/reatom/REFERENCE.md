@@ -200,7 +200,7 @@ Good
 A nice helpers to manage typical data structures and values.
 
 ```ts
-import { reatomBoolean, reatomEnum } from '@reatom/core'
+import { clock, reatomBoolean, reatomEnum, reatomTimer } from '@reatom/core'
 
 // Atom with boolean state and handful actions
 const isModalOpen = reatomBoolean(false, 'isModalOpen')
@@ -218,12 +218,21 @@ priority.reset()
 priority.setLow()
 priority.setMedium()
 priority.setHigh()
+
+// Countdown — e.g. block OTP resend for 30s
+const otpTimer = reatomTimer('otpTimer')
+await otpTimer.start(30_000)
+
+// Wall clock — ticks every second while subscribed (sibling of rAF)
+clock.subscribe((now) => console.log(new Date(now).toISOString()))
 ```
 
 Notes
 
 - **reatomBoolean** adds **setTrue**, **setFalse**, and **toggle** to keep updates semantic.
 - **reatomEnum** is perfect for literal list union inference in TypeScript.
+- **reatomTimer** is for countdowns like an OTP resend or a session expiry. It ticks only while counting, and flows can `await` it to learn how it ended instead of polling.
+- **clock** is for "now"-dependent UI such as relative times or deadlines. One shared tick drives every reader and stops when nothing is shown. Use **reatomClock** for another interval, `hot` when logic must keep time with nothing subscribed, and `fresh` when a value one tick stale is visible, for example after reopening a panel.
 
 Good practice
 
