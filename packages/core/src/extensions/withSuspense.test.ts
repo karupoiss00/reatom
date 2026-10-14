@@ -1,4 +1,4 @@
-import { expect, subscribe, test } from 'test'
+import { catalog, expect, reatomCatalog, subscribe, test } from 'test'
 
 import { atom, computed, context, isConnected, notify } from '../core'
 import { wrap } from '../methods'
@@ -6,22 +6,19 @@ import { sleep } from '../utils'
 import { suspense, withSuspense, withSuspenseInit } from './withSuspense'
 
 test('suspense', async () => {
-  const name = 'suspense'
-  const param = atom(0, `${name}.param`)
-  const data = computed(async () => param(), `${name}.data`)
+  const data = computed(async () => catalog.page(), 'suspense.data')
   const result = computed(() => {
-    const syncData = suspense(data)
-    return syncData
-  }, `${name}.result`)
+    return suspense(data)
+  }, 'suspense.result')
 
   const track = subscribe(
     computed(() => {
       try {
         return result()
-      } catch (error) {
+      } catch {
         return undefined
       }
-    }, `${name}.effect`),
+    }, 'suspense.effect'),
   )
 
   expect(isConnected(result)).toBe(true)
@@ -34,12 +31,39 @@ test('suspense', async () => {
   expect(track).toBeCalledTimes(2)
   expect(track).toBeCalledWith(0)
 
-  param.set(1)
+  catalog.page.set(1)
   expect(() => result()).toThrow()
 
   await wrap(sleep())
 
   expect(result()).toBe(1)
+})
+
+test('suspense with async data', async () => {
+  const { list, page } = reatomCatalog('suspenseAsyncData')
+  const result = computed(() => suspense(list), 'suspenseAsyncData.result')
+
+  const track = subscribe(
+    computed(() => {
+      try {
+        return result()
+      } catch {
+        return undefined
+      }
+    }, 'suspenseAsyncData.effect'),
+  )
+
+  await wrap(sleep())
+
+  expect(track).toBeCalledTimes(2)
+  expect(track).toBeCalledWith([{ id: 0, title: 'Alpha' }])
+
+  page.set(1)
+  expect(() => result()).toThrow()
+
+  await wrap(sleep())
+
+  expect(result()).toEqual([{ id: 1, title: 'Beta' }])
 })
 
 test('suspense reject propagation', async () => {

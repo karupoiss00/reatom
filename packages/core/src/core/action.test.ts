@@ -1,8 +1,8 @@
-import { expect, subscribe, test } from 'test'
+import { catalog, expect, subscribe, test } from 'test'
 
 import { getStackTrace } from '../methods'
 import type { Frame } from './'
-import { _read, action, atom, computed, notify, withMiddleware } from './'
+import { _read, action, computed, notify, withMiddleware } from './'
 
 test('action', () => {
   const name = 'action'
@@ -11,32 +11,26 @@ test('action', () => {
 })
 
 test('action cause stack', () => {
-  const name = 'actionCauseStack'
   const getTrace = (frame?: Frame) =>
     getStackTrace(frame)
-      .replaceAll(`${name}.`, '')
+      .replaceAll('catalog.', '')
       .replace(/\[#\d*\]/g, '')
-  const a1 = atom(0, `${name}.a1`)
-  const a2 = computed(() => a1(), `${name}.a2`)
-  const act = action((number: number) => {
-    return a1.set(number)
-  }, `${name}.act`)
 
   let logData
   const log = computed(() => {
-    a2()
+    catalog.offset()
     logData = getTrace()
   }, 'log')
   log.subscribe()
 
-  expect(logData).toBe('─log\n └─ a2\n    └─ a1')
+  expect(logData).toBe('─log\n └─ offset\n    └─ page')
 
-  act(1)
+  catalog.page.next()
   notify()
 
-  expect(logData).toBe('─log\n └─ a2\n    └─ a1\n       └─ act')
+  expect(logData).toBe('─log\n └─ offset\n    └─ page\n       └─ page.next')
   expect(getTrace(_read(log)!).replaceAll('\n', ' ')).toBe(
-    '─log  └─ a2     └─ a1        └─ act',
+    '─log  └─ offset     └─ page        └─ page.next',
   )
 })
 
@@ -69,17 +63,15 @@ test('no args', () => {
 })
 
 test('subscribe', () => {
-  const act = action((n = 0) => n, 'act')
-
-  const sub = subscribe(act)
+  const sub = subscribe(catalog.page.go)
   expect(sub).toHaveBeenCalledTimes(0)
 
-  act()
+  catalog.page.go()
   notify()
   expect(sub).toHaveBeenCalledTimes(1)
   expect(sub).toHaveBeenCalledWith(0, [])
 
-  act(1)
+  catalog.page.go(1)
   notify()
   expect(sub).toHaveBeenCalledTimes(2)
   expect(sub).toHaveBeenCalledWith(1, [1])

@@ -1,11 +1,19 @@
-import { expect, expectTypeOf, subscribe, test, vi } from 'test'
+import {
+  catalog,
+  expect,
+  expectTypeOf,
+  type Item,
+  subscribe,
+  test,
+  vi,
+} from 'test'
 
 import type { Atom } from '../core'
 import { action, atom, computed, context } from '../core'
 import { isInit, withCallHook, withConnectHook } from '../extensions'
 import { abortVar, effect, retryComputed, wrap } from '../methods'
 import { createMemStorage, reatomPersist } from '../persist'
-import { noop, sleep, throwAbort } from '../utils'
+import { identity, isAbort, noop, sleep, throwAbort } from '../utils'
 import { withAsyncData } from './withAsyncData'
 
 test('action', async () => {
@@ -75,22 +83,35 @@ test('action with mappings', async () => {
 })
 
 test('atom', async () => {
-  const name = 'atomAsyncData'
-  const param = atom(0, `${name}.param`)
-  const resource = computed(async () => param() + 1, `${name}.resource`).extend(
-    withAsyncData(),
-  )
-  const onFulfill = vi.fn()
-  resource.onFulfill.extend(withCallHook((payload) => onFulfill(payload)))
+  const onFulfill = subscribe(catalog.list.onFulfill)
 
-  expect(resource.data()).toBeUndefined()
-  expect(resource.ready()).toBe(false)
+  expect(catalog.list.data()).toEqual([])
+  expect(catalog.list.ready()).toBe(false)
 
   await wrap(sleep())
-  expect(resource.ready()).toBe(true)
-  expect(resource.data()).toBe(1)
+  expect(catalog.list.ready()).toBe(true)
+  expect(catalog.list.data()).toEqual([{ id: 0, title: 'Alpha' }])
   expect(onFulfill).toBeCalledTimes(1)
-  expect(onFulfill).toBeCalledWith({ payload: 1, params: [0] })
+  expect(onFulfill.mock.calls[0]![0]).toEqual({
+    payload: [{ id: 0, title: 'Alpha' }],
+    params: [catalog.visible(), 0, 1],
+  })
+})
+
+test('atom without initState', async () => {
+  const pageLabel = computed(
+    async () => catalog.pageLabel(),
+    'atomAsyncDataNoInit.pageLabel',
+  ).extend(withAsyncData())
+
+  expectTypeOf(pageLabel.data).toExtend<Atom<undefined | string>>()
+
+  expect(pageLabel.data()).toBeUndefined()
+  expect(pageLabel.ready()).toBe(false)
+
+  await wrap(sleep())
+  expect(pageLabel.ready()).toBe(true)
+  expect(pageLabel.data()).toBe('Page 0')
 })
 
 test('atom with mappings', async () => {
@@ -140,40 +161,34 @@ test('withAsyncData action concurrent', async () => {
 })
 
 test('withAsyncData atom concurrent', async () => {
-  const name = 'atomAsyncDataConcurrency'
-  const param = atom(0, `${name}.param`)
-  const resource = computed(async () => {
-    let paramState = param()
-    await wrap(sleep(10))
-    return paramState + 1
-  }, `${name}.resource`).extend(withAsyncData({ initState: 0 }))
+  expectTypeOf(catalog.list.data).toExtend<Atom<Item[]>>()
 
-  expectTypeOf(resource.data).toExtend<Atom<number>>()
-
-  const onFulfill = vi.fn()
-  resource.onFulfill.extend(withCallHook((call) => onFulfill(call)))
-
-  const track = subscribe(resource.pending)
+  catalog.latency.set(10)
+  const onFulfill = subscribe(catalog.list.onFulfill)
+  const track = subscribe(catalog.list.pending)
 
   expect(track).toBeCalledWith(1)
 
-  param.set((s) => s + 1)
+  catalog.page.next()
   await wrap(sleep())
   expect(track.mock.calls.flat()).toEqual([1, 2, 1])
-  param.set((s) => s + 1)
+  catalog.page.next()
   await wrap(sleep())
   expect(track.mock.calls.flat()).toEqual([1, 2, 1, 2, 1])
-  param.set((s) => s + 1)
+  catalog.page.next()
   await wrap(sleep())
   expect(track.mock.calls.flat()).toEqual([1, 2, 1, 2, 1, 2, 1])
 
-  await wrap(resource())
+  await wrap(catalog.list())
 
   expect(track.mock.calls.flat()).toEqual([1, 2, 1, 2, 1, 2, 1, 0])
-  expect(resource.ready()).toBe(true)
-  expect(resource.data()).toBe(4)
+  expect(catalog.list.ready()).toBe(true)
+  expect(catalog.list.data()).toEqual([{ id: 3, title: 'Delta' }])
   expect(onFulfill).toBeCalledTimes(1)
-  expect(onFulfill).toBeCalledWith({ payload: 4, params: [3] })
+  expect(onFulfill.mock.calls[0]![0]).toEqual({
+    payload: [{ id: 3, title: 'Delta' }],
+    params: [catalog.visible(), 3, 4],
+  })
 })
 
 test('atom error handling', async () => {
@@ -231,44 +246,29 @@ test('atom error handling', async () => {
 })
 
 test('withAsyncData for computed retry', async () => {
-  const name = 'computedRetry'
-  let shouldFail = true
-  const params = atom(0, `${name}.params`)
-  const resource = computed(async () => {
-    params() // dependency
-    if (shouldFail) {
-      throw new Error('Initial failure')
-    }
-    return 'Success'
-  }, `${name}.resource`).extend(withAsyncData())
+  catalog.fail.set(true)
+  const onReject = subscribe(catalog.list.onReject)
+  const onFulfill = subscribe(catalog.list.onFulfill)
 
-  const onReject = vi.fn()
-  resource.onReject.extend(withCallHook((call) => onReject(call)))
-  const onFulfill = vi.fn()
-  resource.onFulfill.extend(withCallHook((call) => onFulfill(call)))
-
-  resource.data.subscribe()
-
-  // Initial evaluation should fail
+  catalog.list.data.subscribe()
   await wrap(sleep())
 
-  expect(resource.ready()).toBe(true)
-  expect(resource.error()).instanceOf(Error)
-  expect(resource.error()?.message).toBe('Initial failure')
+  expect(catalog.list.ready()).toBe(true)
+  expect(catalog.list.error()).instanceOf(Error)
+  expect(catalog.list.error()?.message).toBe('TEST')
   expect(onReject).toHaveBeenCalledTimes(1)
   expect(onFulfill).not.toHaveBeenCalled()
 
-  // Retry should succeed
-  shouldFail = false
-  await wrap(retryComputed(resource).catch(noop))
+  catalog.fail.set(false)
+  await wrap(retryComputed(catalog.list).catch(noop))
 
-  expect(resource.ready()).toBe(true)
-  expect(resource.error()).toBeUndefined()
-  expect(onReject).toHaveBeenCalledTimes(1) // Should not be called again
+  expect(catalog.list.ready()).toBe(true)
+  expect(catalog.list.error()).toBeUndefined()
+  expect(onReject).toHaveBeenCalledTimes(1)
   expect(onFulfill).toHaveBeenCalledTimes(1)
-  expect(onFulfill).toHaveBeenCalledWith({
-    payload: 'Success',
-    params: [0], // params from the initial computed evaluation
+  expect(onFulfill.mock.calls[0]![0]).toEqual({
+    payload: [{ id: 0, title: 'Alpha' }],
+    params: [catalog.visible(), 0, 1],
   })
 })
 
@@ -298,18 +298,9 @@ test('Circle subscription', async () => {
 })
 
 test('abort propagation', async () => {
-  const name = 'abortPropagation'
+  const getDataFrame = () => context().state.store.get(catalog.list.data)
 
-  const counter = atom(0, `${name}.counter`)
-  const resource = computed(async () => {
-    const value = counter()
-    await wrap(sleep(value))
-    return value
-  }, `${name}.resource`).extend(withAsyncData())
-
-  const getDataFrame = () => context().state.store.get(resource.data)
-
-  resource.data.subscribe()
+  catalog.list.data.subscribe()
 
   expect(() =>
     getDataFrame()?.run(() => {
@@ -319,8 +310,10 @@ test('abort propagation', async () => {
 
   await wrap(sleep())
 
-  counter.set((s) => s + 1)
-  resource.data()
+  catalog.latency.set(10)
+  catalog.page.next()
+  catalog.list.data()
+  const abortedRequest = catalog.list()
   expect(() =>
     getDataFrame()?.run(() => {
       abortVar.subscribe()
@@ -329,8 +322,8 @@ test('abort propagation', async () => {
 
   await wrap(sleep())
 
-  counter.set((s) => s + 1)
-  resource.data()
+  catalog.page.next()
+  catalog.list.data()
   expect(() =>
     getDataFrame()?.run(() => {
       abortVar.subscribe()
@@ -339,36 +332,31 @@ test('abort propagation', async () => {
 
   await wrap(sleep())
 
-  counter.set((s) => s + 1)
-  resource.data()
+  catalog.page.next()
+  catalog.list.data()
   expect(() =>
     getDataFrame()?.run(() => {
       abortVar.subscribe()
     }),
   ).not.toThrow()
+
+  expect(isAbort(await wrap(abortedRequest.catch(identity)))).toBe(true)
 })
 
 test('few calls in a row', async () => {
-  const name = 'fewCallsInRow'
+  await wrap(catalog.list())
 
-  const counter = atom(0, `${name}.counter`)
-  const resource = computed(async () => {
-    const value = counter()
-    await wrap(sleep(value))
-    return value
-  }, `${name}.resource`).extend(withAsyncData())
-
-  await wrap(resource())
-
-  counter.set((s) => s + 1)
-  resource()
+  catalog.latency.set(1)
+  catalog.page.next()
+  catalog.list()
   // do NOT uncomment next line and read pending atom, as it removes the initial problem
-  // expect(resource.pending()).toBe(1)
-  counter.set((s) => s + 1)
-  const promise = resource()
+  // expect(catalog.list.pending()).toBe(1)
+  catalog.latency.set(2)
+  catalog.page.next()
+  const promise = catalog.list()
   await wrap(promise)
 
-  expect(resource.pending()).toBe(0)
+  expect(catalog.list.pending()).toBe(0)
 })
 
 test('status includes data property', async () => {
@@ -471,78 +459,52 @@ test('status data narrows with null initState', async () => {
 })
 
 test('reset action resets dependencies and data', async () => {
-  const name = 'resetAction'
-  let callCount = 0
-  const param = atom(1, `${name}.param`)
-  const resource = computed(async () => {
-    callCount++
-    const value = param()
-    await wrap(sleep())
-    return value * 10
-  }, `${name}.resource`).extend(withAsyncData({ initState: 0 }))
-
-  resource.data.subscribe()
+  catalog.list.data.subscribe()
   await wrap(sleep())
 
-  expect(resource.data()).toBe(10)
-  expect(callCount).toBe(1)
+  expect(catalog.list.data()).toEqual([{ id: 0, title: 'Alpha' }])
 
-  resource.reset()
+  catalog.list.reset()
 
-  expect(resource.data()).toBe(0)
+  expect(catalog.list.data()).toEqual([])
 
-  await wrap(resource())
+  await wrap(catalog.list())
 
-  expect(resource.data()).toBe(10)
-  expect(callCount).toBe(2)
+  expect(catalog.list.data()).toEqual([{ id: 0, title: 'Alpha' }])
 })
 
 test('retry action after error', async () => {
-  const name = 'retryActionAfterError'
-  let shouldFail = true
-  const resource = computed(async () => {
-    await wrap(sleep())
-    if (shouldFail) throw new Error('Test error')
-    return 'Success'
-  }, `${name}.resource`).extend(withAsyncData())
-
-  resource()
+  catalog.fail.set(true)
+  catalog.list()
   await wrap(sleep())
 
-  expect(resource.error()).instanceOf(Error)
-  expect(resource.data()).toBeUndefined()
+  expect(catalog.list.error()).instanceOf(Error)
+  expect(catalog.list.data()).toEqual([])
 
-  shouldFail = false
-  await wrap(resource.retry())
+  catalog.fail.set(false)
+  await wrap(catalog.list.retry())
 
-  expect(resource.error()).toBeUndefined()
-  expect(resource.data()).toBe('Success')
+  expect(catalog.list.error()).toBeUndefined()
+  expect(catalog.list.data()).toEqual([{ id: 0, title: 'Alpha' }])
 })
 
 test('reset action does not auto re-fetch', async () => {
-  const name = 'resetActionNoAutoFetch'
-  let callCount = 0
-  const resource = computed(async () => {
-    callCount++
-    await wrap(sleep())
-    return callCount
-  }, `${name}.resource`).extend(withAsyncData({ initState: 0 }))
-
-  resource.data.subscribe()
+  const onFulfill = subscribe(catalog.list.onFulfill)
+  catalog.list.data.subscribe()
   await wrap(sleep())
 
-  expect(resource.data()).toBe(1)
-  expect(callCount).toBe(1)
+  expect(catalog.list.data()).toEqual([{ id: 0, title: 'Alpha' }])
+  expect(onFulfill).toBeCalledTimes(1)
 
-  resource.reset()
+  catalog.list.reset()
 
-  expect(resource.data()).toBe(0)
-  expect(callCount).toBe(1)
+  expect(catalog.list.data()).toEqual([])
+  expect(onFulfill).toBeCalledTimes(1)
 
-  await wrap(resource())
+  await wrap(catalog.list())
 
-  expect(callCount).toBe(2)
-  expect(resource.data()).toBe(2)
+  expect(onFulfill).toBeCalledTimes(2)
+  expect(catalog.list.data()).toEqual([{ id: 0, title: 'Alpha' }])
 })
 
 test('persist for data atom', async () => {

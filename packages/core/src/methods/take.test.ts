@@ -1,4 +1,4 @@
-import { expect, test, vi } from 'test'
+import { catalog, expect, test, vi } from 'test'
 
 import { withAsyncData } from '../async'
 import { action, type Atom, atom, computed, notify } from '../core'
@@ -8,17 +8,15 @@ import { take } from './take'
 import { wrap } from './wrap'
 
 test('take atom', async () => {
-  const at = atom(0)
-
-  setTimeout(wrap(at.set), 0, 4)
-  expect(await take(at)).toBe(4)
+  setTimeout(wrap(catalog.page.set), 0, 4)
+  expect(await take(catalog.page)).toBe(4)
 })
 
 test('take action', async () => {
-  const act = action((v: number) => Promise.resolve(v))
+  const item = { id: 1, title: 'Beta!' }
 
-  setTimeout(wrap(act), 0, 4)
-  expect(await take(act)).toBe(4)
+  setTimeout(wrap(catalog.save), 0, item)
+  expect(await take(catalog.save)).toBe(item)
 })
 
 test('take atom error', async () => {
@@ -41,14 +39,12 @@ test('take atom error', async () => {
 })
 
 test('should skip abort', async () => {
-  const name = 'skipAbort'
-  const param = atom(0, `${name}.param`)
-  const data = computed(async () => {
-    const result = param()
+  const delayedPage = computed(async () => {
+    const page = catalog.page()
     await wrap(sleep())
-    return result
-  }, `${name}.data`).extend(withAbort())
-  data.subscribe()
+    return page
+  }, 'skipAbort.delayedPage').extend(withAbort())
+  delayedPage.subscribe()
 
   const TARGET = 3
 
@@ -56,12 +52,12 @@ test('should skip abort', async () => {
   while (i--) {
     queueMicrotask(
       wrap(() => {
-        param.set((state) => state + 1)
+        catalog.page.next()
       }),
     )
   }
 
-  expect(await take(data)).toBe(TARGET)
+  expect(await take(delayedPage)).toBe(TARGET)
 })
 
 test('take concurrency', async () => {
@@ -93,29 +89,25 @@ test('take concurrency', async () => {
 })
 
 test('take filter', async () => {
-  const name = 'skipAbort'
-  const param = atom(0, `${name}.param`)
-  const data = computed(async () => {
-    return param()
-  }, `${name}.data`)
-  data.subscribe()
+  const asyncPage = computed(async () => catalog.page(), 'takeFilter.asyncPage')
+  asyncPage.subscribe()
 
   let i = 5
   while (i--) {
     sleep().then(
       wrap(() => {
-        param.set((state) => state + 1)
+        catalog.page.next()
       }),
     )
   }
 
   const three = await wrap(
-    take(data, (value) => (value === 3 ? value : throwAbort())),
+    take(asyncPage, (value) => (value === 3 ? value : throwAbort())),
   )
   expect(three).toBe(3)
 
-  const paramState = param()
-  expect(take(param, (value) => value)).toBe(paramState)
+  const pageState = catalog.page()
+  expect(take(catalog.page, (value) => value)).toBe(pageState)
 })
 
 test('take suspense', async () => {

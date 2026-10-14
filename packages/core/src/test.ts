@@ -167,3 +167,4 @@ export {
  * '@reatom/core/test'.
  */
 export type * from 'vitest'
+export { catalog, reatomCatalog, type Item } from './testModel'

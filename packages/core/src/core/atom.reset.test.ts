@@ -1,9 +1,11 @@
 // use `vitest` instead of `test` only in this test file
 import { beforeEach, describe, expect, test } from 'vitest'
 
+import { catalog } from 'test'
+
 import { wrap } from '../methods'
 import { type AbortError, isAbort, sleep } from '../utils'
-import { atom, clearStack, context } from './atom'
+import { clearStack, context } from './atom'
 
 clearStack()
 
@@ -13,23 +15,21 @@ beforeEach(() => {
   root.run(context.reset)
 })
 
-const counter = atom(0)
-
 describe('context.reset', () => {
   test('first', () =>
     root.run(() => {
-      expect(counter()).toBe(0)
+      expect(catalog.page()).toBe(0)
 
-      counter.set(1)
-      expect(counter()).toBe(1)
+      catalog.page.set(1)
+      expect(catalog.page()).toBe(1)
     }))
 
   test('second', () =>
     root.run(() => {
-      expect(counter()).toBe(0)
+      expect(catalog.page()).toBe(0)
 
-      counter.set(1)
-      expect(counter()).toBe(1)
+      catalog.page.set(1)
+      expect(catalog.page()).toBe(1)
     }))
 
   test('wrap abort', async () =>

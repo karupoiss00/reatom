@@ -1,6 +1,6 @@
-import { expect, test, vi } from 'test'
+import { catalog, expect, subscribe, test, vi } from 'test'
 
-import { _read, action, atom, computed, mock } from '../core'
+import { _read, action, computed, mock } from '../core'
 import { withCallHook } from '../extensions'
 import { retryComputed, wrap } from '../methods'
 import { noop, sleep, throwAbort } from '../utils'
@@ -30,22 +30,21 @@ test('action', async () => {
 })
 
 test('atom', async () => {
-  const name = 'atomAsync'
-  const params = atom(0, `${name}.params`)
-  const data = computed(async () => params(), `${name}.data`).extend(
-    withAsync(),
-  )
+  const pageLabel = computed(
+    async () => catalog.pageLabel(),
+    'atomAsync.pageLabel',
+  ).extend(withAsync())
 
-  expect(data.pending()).toBe(1)
-  expect(data.ready()).toBe(false)
-  expect(_read(data.pending)?.state).toBe(1)
-  expect(data.pending()).toBe(1)
+  expect(pageLabel.pending()).toBe(1)
+  expect(pageLabel.ready()).toBe(false)
+  expect(_read(pageLabel.pending)?.state).toBe(1)
+  expect(pageLabel.pending()).toBe(1)
   // the async target should run by a computed
-  expect(_read(data)?.state).instanceOf(Promise)
+  expect(_read(pageLabel)?.state).instanceOf(Promise)
 
-  expect(await wrap(data())).toBe(0)
-  expect(data.pending()).toBe(0)
-  expect(data.ready()).toBe(true)
+  expect(await wrap(pageLabel())).toBe('Page 0')
+  expect(pageLabel.pending()).toBe(0)
+  expect(pageLabel.ready()).toBe(true)
 })
 
 test('action error handling', async () => {
@@ -177,42 +176,28 @@ test('abort rejection settles without calling onReject', async () => {
 })
 
 test('computed retry', async () => {
-  const name = 'computedRetry'
-  let shouldFail = true
-  const params = atom(0, `${name}.params`)
-  const resource = computed(async () => {
-    params() // dependency
-    if (shouldFail) {
-      throw new Error('Initial failure')
-    }
-    return 'Success'
-  }, `${name}.resource`).extend(withAsync())
+  catalog.fail.set(true)
+  const onReject = subscribe(catalog.list.onReject)
+  const onFulfill = subscribe(catalog.list.onFulfill)
 
-  const onReject = vi.fn()
-  resource.onReject.extend(withCallHook((call) => onReject(call)))
-  const onFulfill = vi.fn()
-  resource.onFulfill.extend(withCallHook((call) => onFulfill(call)))
+  await wrap(catalog.list().catch(noop))
 
-  // Initial evaluation should fail
-  await wrap(resource().catch(noop))
-
-  expect(resource.ready()).toBe(true)
-  expect(resource.error()).instanceOf(Error)
-  expect(resource.error()?.message).toBe('Initial failure')
+  expect(catalog.list.ready()).toBe(true)
+  expect(catalog.list.error()).instanceOf(Error)
+  expect(catalog.list.error()?.message).toBe('TEST')
   expect(onReject).toHaveBeenCalledTimes(1)
   expect(onFulfill).not.toHaveBeenCalled()
 
-  // Retry should succeed
-  shouldFail = false
-  await wrap(retryComputed(resource).catch(noop))
+  catalog.fail.set(false)
+  await wrap(retryComputed(catalog.list).catch(noop))
 
-  expect(resource.ready()).toBe(true)
-  expect(resource.error()).toBeUndefined()
-  expect(onReject).toHaveBeenCalledTimes(1) // Should not be called again
+  expect(catalog.list.ready()).toBe(true)
+  expect(catalog.list.error()).toBeUndefined()
+  expect(onReject).toHaveBeenCalledTimes(1)
   expect(onFulfill).toHaveBeenCalledTimes(1)
-  expect(onFulfill).toHaveBeenCalledWith({
-    payload: 'Success',
-    params: [0], // params from the initial computed evaluation
+  expect(onFulfill.mock.calls[0]![0]).toEqual({
+    payload: [{ id: 0, title: 'Alpha' }],
+    params: [catalog.visible(), 0, 1],
   })
 })
 
@@ -293,25 +278,15 @@ test('action retry with cacheParams disabled throws error', async () => {
 })
 
 test('atom retry works without cacheParams', async () => {
-  const name = 'atomRetryWithoutCacheParams'
-  let callCount = 0
-  const params = atom(1, `${name}.params`)
-  const resource = computed(async () => {
-    callCount++
-    const value = params()
-    await wrap(sleep())
-    return value * 2
-  }, `${name}.resource`).extend(withAsync())
-
-  // Subscribe to trigger the computed
-  resource.pending.subscribe()
+  const onFulfill = subscribe(catalog.list.onFulfill)
+  catalog.list.pending.subscribe()
   await wrap(sleep())
 
-  expect(callCount).toBe(1)
-  expect(resource.error()).toBeUndefined()
+  expect(onFulfill).toHaveBeenCalledTimes(1)
+  expect(catalog.list.error()).toBeUndefined()
+  expect(catalog.list.data()).toEqual([{ id: 0, title: 'Alpha' }])
 
-  // Retry should work for atoms even without cacheParams
-  expect(await wrap(resource.retry())).toBe(2)
-  expect(callCount).toBe(2)
-  expect(resource.error()).toBeUndefined()
+  expect(await wrap(catalog.list.retry())).toEqual([{ id: 0, title: 'Alpha' }])
+  expect(onFulfill).toHaveBeenCalledTimes(2)
+  expect(catalog.list.error()).toBeUndefined()
 })

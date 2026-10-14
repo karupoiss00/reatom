@@ -1,4 +1,4 @@
-import { expect, subscribe, test, vi } from 'test'
+import { catalog, expect, subscribe, test, vi } from 'test'
 
 import { withComputed } from '../extensions'
 import { identity } from '../utils'
@@ -19,50 +19,42 @@ import {
 } from './'
 
 test('linking', () => {
-  const name = 'linking'
-  const a1 = atom(0, `${name}.a1`)
-  const a2 = computed(() => a1(), `${name}.a2`)
   const fn = vi.fn(identity)
 
-  const testEffect = computed(() => fn(a2()), `${name}.testEffect`)
+  const testEffect = computed(() => fn(catalog.offset()), 'linking.testEffect')
 
   const { store } = context().state
 
   expect(store.has(testEffect)).toBeFalsy()
 
   const un = testEffect.subscribe()
-  // expect(a1()).toBe(0)
-  // expect(a2()).toBe(0)
-  // expect(testEffect()).toBe(0)
   expect(store.has(testEffect)).toBeTruthy()
   expect(fn).toBeCalledTimes(1)
   expect(fn).toBeCalledWith(0)
-  const a1Frame = store.get(a1)!
-  const a2Frame = store.get(a2)!
+  const pageFrame = store.get(catalog.page)!
+  const offsetFrame = store.get(catalog.offset)!
   const testEffectFrame = store.get(testEffect)!
-  expect(a1Frame.pubs).toEqual([context()])
-  expect(a1Frame.subs).toEqual([a2])
-  expect(a2Frame.pubs).toEqual([context(), a1Frame])
-  expect(a2Frame.subs).toEqual([testEffect])
-  expect(testEffectFrame.pubs).toEqual([context(), a2Frame])
+  expect(pageFrame.pubs).toEqual([context()])
+  expect(pageFrame.subs).toEqual([catalog.offset])
+  expect(offsetFrame.pubs).toEqual([context(), pageFrame])
+  expect(offsetFrame.subs).toEqual([testEffect])
+  expect(testEffectFrame.pubs).toEqual([context(), offsetFrame])
 
   un()
 
-  expect(a1Frame).toBe(store.get(a1)!)
-  expect(a2Frame).toBe(store.get(a2)!)
+  expect(pageFrame).toBe(store.get(catalog.page)!)
+  expect(offsetFrame).toBe(store.get(catalog.offset)!)
   expect(testEffectFrame).toBe(store.get(testEffect)!)
 
-  expect(a1Frame.subs.length).toBe(0)
-  expect(a2Frame.subs.length).toBe(0)
+  expect(pageFrame.subs.length).toBe(0)
+  expect(offsetFrame.subs.length).toBe(0)
   expect(testEffectFrame.subs.length).toBe(0)
 })
 
 test('reading', () => {
-  const name = 'reading'
-  const a = atom(0, `${name}.a`)
-  const bFn = vi.fn(() => a())
-  const bMiddleware = vi.fn((state: any) => state)
-  const b = computed(bFn, `${name}.b`).extend(withTap(bMiddleware))
+  const bFn = vi.fn(() => catalog.page())
+  const bMiddleware = vi.fn((state: number) => state)
+  const b = computed(bFn, 'reading.b').extend(withTap(bMiddleware))
 
   expect(b()).toBe(0)
   expect(b()).toBe(0)
@@ -79,25 +71,21 @@ test('reading', () => {
 })
 
 test('disconnect tail deps', () => {
-  const name = 'disconnectTail'
-  const aAtom = atom(0, `${name}.aAtom`)
-  const track = vi.fn(() => aAtom())
-  const bAtom = computed(track, `${name}.bAtom`)
-  const isActiveAtom = atom(true, `${name}.isActiveAtom`)
-  const bAtomControlled = computed((state?: number) => {
-    return isActiveAtom() ? bAtom() : state!
-  }, `${name}.bAtomControlled`)
+  expect(isConnected(catalog.visible)).toBe(false)
+  catalog.preview.subscribe()
+  expect(isConnected(catalog.visible)).toBe(true)
+  expect(catalog.preview()?.title).toBe('Alpha')
 
-  expect(isConnected(bAtom)).toBe(false)
-  bAtomControlled.subscribe()
-  expect(track).toBeCalledTimes(1)
+  catalog.selectedId.set(1)
+  notify()
+  expect(isConnected(catalog.visible)).toBe(false)
+  const staleVisible = _read(catalog.visible)!.state
 
-  isActiveAtom.set(false)
+  catalog.filter.set('Alph')
   notify()
-  expect(isConnected(bAtom)).toBe(false)
-  aAtom.set(aAtom() + 1)
-  notify()
-  expect(track).toBeCalledTimes(1)
+  expect(catalog.preview()?.title).toBe('Beta')
+  expect(isConnected(catalog.visible)).toBe(false)
+  expect(_read(catalog.visible)!.state).toBe(staleVisible)
 })
 
 test('deps shift', () => {
@@ -123,121 +111,99 @@ test('deps shift', () => {
 })
 
 test('subscribe to cached atom', () => {
-  const name = 'cachedAtom'
-  const a1 = atom(0, `${name}.a1`)
-  const a2 = computed(() => a1(), `${name}.a2`)
+  catalog.offset()
+  catalog.offset.subscribe()
 
-  // First get the value without subscribing
-  a2()
-  // Then subscribe
-  a2.subscribe()
-
-  // Check that a1 has exactly one subscriber
-  const a1Frame = _read(a1)
-  expect(a1Frame?.subs.length).toBe(1)
+  const pageFrame = _read(catalog.page)
+  expect(pageFrame?.subs.length).toBe(1)
 })
 
 test('subscribe initial callback runs in the target frame', () => {
-  const source = atom(0, 'subscribeInitialCallbackFrame.source')
   const callbackAtoms = new Array<ReturnType<typeof top>['atom']>()
 
-  source.subscribe(() => {
+  catalog.page.subscribe(() => {
     callbackAtoms.push(top().atom)
   })
 
-  expect(callbackAtoms).toEqual([source])
+  expect(callbackAtoms).toEqual([catalog.page])
 
-  source.set(1)
+  catalog.page.set(1)
   notify()
 
-  expect(callbackAtoms).toEqual([source, source])
+  expect(callbackAtoms).toEqual([catalog.page, catalog.page])
 })
 
 test('update propagation for atom with listener', () => {
-  const name = 'updatePropagation'
-  const a1 = atom(0, `${name}.a1`)
-  const a2 = computed(() => a1(), `${name}.a2`)
-  const a3 = computed(() => a2(), `${name}.a3`)
+  const cbOffset = subscribe(catalog.offset)
+  const cbRange = subscribe(catalog.rangeEnd)
 
-  const cb2 = subscribe(a2)
-  const cb3 = subscribe(a3)
+  expect(cbOffset).toBeCalledTimes(1)
+  expect(cbRange).toBeCalledTimes(1)
 
-  expect(cb2).toBeCalledTimes(1)
-  expect(cb3).toBeCalledTimes(1)
-
-  a1.set(1)
+  catalog.page.set(1)
   notify()
 
-  expect(cb2).toBeCalledTimes(2)
-  expect(cb2).toBeCalledWith(1)
-  expect(cb3).toBeCalledTimes(2)
-  expect(cb3).toBeCalledWith(1)
+  expect(cbOffset).toBeCalledTimes(2)
+  expect(cbOffset).toBeCalledWith(1)
+  expect(cbRange).toBeCalledTimes(2)
+  expect(cbRange).toBeCalledWith(2)
 
-  cb3.unsubscribe()
-  expect(_read(a2)!.subs.length).toBe(1)
-  expect(_read(a3)!.subs.length).toBe(0)
-  a1.set(2)
+  cbRange.unsubscribe()
+  expect(_read(catalog.offset)!.subs.length).toBe(1)
+  expect(_read(catalog.rangeEnd)!.subs.length).toBe(0)
+  catalog.page.set(2)
   notify()
-  expect(cb2).toBeCalledTimes(3)
-  expect(cb2).toBeCalledWith(2)
+  expect(cbOffset).toBeCalledTimes(3)
+  expect(cbOffset).toBeCalledWith(2)
 
-  a3.subscribe(cb3)
-  expect(_read(a2)!.subs.length).toBe(2)
+  catalog.rangeEnd.subscribe(cbRange)
+  expect(_read(catalog.offset)!.subs.length).toBe(2)
 
-  computed(() => a3()).subscribe()
-  expect(_read(a2)!.subs.length).toBe(2)
+  computed(() => catalog.rangeEnd()).subscribe()
+  expect(_read(catalog.offset)!.subs.length).toBe(2)
 })
 
 test('conditional deps duplication', () => {
-  const name = 'conditionalDeps'
-  const condition = atom(true, `${name}.condition`)
-  const dep1 = atom(1, `${name}.dep1`)
-  const dep2 = atom(2, `${name}.dep2`)
-
-  const conditional = computed(() => {
-    if (condition()) {
-      return dep1()
-    } else {
-      return dep2()
-    }
-  }, `${name}.conditional`)
-
-  const fn = subscribe(computed(() => conditional(), `${name}.testEffect`))
+  const fn = subscribe(
+    computed(() => catalog.preview(), 'conditionalDeps.testEffect'),
+  )
 
   expect(fn).toBeCalledTimes(1)
-  expect(fn).toBeCalledWith(1)
+  expect(fn).toBeCalledWith({ id: 0, title: 'Alpha' })
 
-  expect(isConnected(dep1)).toBe(true)
-  expect(isConnected(dep2)).toBe(false)
+  expect(isConnected(catalog.selected)).toBe(true)
+  expect(isConnected(catalog.visible)).toBe(true)
 
-  condition.set(false)
+  catalog.selectedId.set(1)
   notify()
   expect(fn).toBeCalledTimes(2)
-  expect(fn).toBeCalledWith(2)
+  expect(fn).toBeCalledWith({ id: 1, title: 'Beta' })
 
-  expect(isConnected(dep1)).toBe(false)
-  expect(isConnected(dep2)).toBe(true)
+  expect(isConnected(catalog.selected)).toBe(true)
+  expect(isConnected(catalog.visible)).toBe(false)
 
-  dep1.set(10)
+  catalog.filter.set('Alph')
   notify()
   expect(fn).toBeCalledTimes(2)
 
-  dep2.set(20)
+  catalog.items.set((current) =>
+    current.map((item) => (item.id === 1 ? { id: 1, title: 'Beta!' } : item)),
+  )
   notify()
   expect(fn).toBeCalledTimes(3)
-  expect(fn).toBeCalledWith(20)
+  expect(fn).toBeCalledWith({ id: 1, title: 'Beta!' })
 
-  condition.set(true)
+  catalog.selectedId.set(null)
   notify()
   expect(fn).toBeCalledTimes(4)
-  expect(fn).toBeCalledWith(10)
+  expect(fn).toBeCalledWith({ id: 0, title: 'Alpha' })
 
-  expect(isConnected(dep1)).toBe(true)
-  expect(isConnected(dep2)).toBe(false)
+  expect(isConnected(catalog.selected)).toBe(true)
+  expect(isConnected(catalog.visible)).toBe(true)
 
   fn.unsubscribe()
-  expect(isConnected(dep1)).toBe(false)
-  expect(isConnected(dep2)).toBe(false)
+  expect(isConnected(catalog.selected)).toBe(false)
+  expect(isConnected(catalog.visible)).toBe(false)
 })
 
 test('computed without dependencies', () => {
