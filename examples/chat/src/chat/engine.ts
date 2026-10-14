@@ -1,7 +1,10 @@
 import {
+  abortVar,
   action,
   addCallHook,
   computed,
+  isAbort,
+  withAbort,
   withAsync,
   wrap,
 } from '@reatom/core'
@@ -19,6 +22,16 @@ import {
   fromSdkError,
   fromStreamErrorChunk,
 } from '../errors'
+import {
+  acquireMcpCall,
+  isMcpWriteTool,
+  mcpAlwaysAllows,
+  rememberMcpAlwaysAllow,
+  releaseMcpCall,
+} from '../mcp/busy'
+import { callMcpTool, mcpCallStoppedCopy } from '../mcp/call'
+import { serializeToolResult } from '../mcp/intent'
+import { mcpReady, mcpTools } from '../mcp'
 import type {
   ClassifyContext,
   CompletionFailure,
@@ -26,6 +39,7 @@ import type {
 } from '../errors/types'
 import { estimateCost, estimateTokens } from '../money/estimate'
 import { isOnline, now, tabId } from '../platform/env'
+import { onRuntimeReset } from '../platform/runtime'
 import { requestPersistOnce } from '../platform/storage-api'
 import { activeChatId, openChat } from '../routes'
 import { writeFailure } from '../storage/health'
@@ -42,6 +56,7 @@ import type {
   Citation,
   MessageId,
   MessageRecord,
+  ToolCallRecord,
   UserMessage,
 } from '../storage/types'
 import { acquireStreamLock, streamHeldElsewhere } from '../sync'
@@ -57,7 +72,7 @@ import {
   patchChat,
 } from './library'
 import { streamItemToEvents } from './parse'
-import { buildChatRequest } from './request'
+import { buildChatRequest, type McpToolSchema } from './request'
 import {
   localStreams,
   markUnsaved,
@@ -110,6 +125,59 @@ const createId = (): string =>
   `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
 
 const liveStatuses: readonly AssistantStatus[] = ['waiting', 'streaming']
+
+const mergeToolArguments = (known: string, incoming: string) => {
+  if (!incoming) return known
+  if (!known) return incoming
+  if (incoming.startsWith(known)) return incoming
+  if (known.startsWith(incoming)) return known
+  return known + incoming
+}
+
+const mergeToolCalls = (
+  known: ToolCallRecord[] | undefined,
+  incoming: Array<{ id: string; name: string; arguments: string }>,
+): ToolCallRecord[] => {
+  const byId = new Map((known ?? []).map((call) => [call.id, call]))
+  for (const next of incoming) {
+    const existing = byId.get(next.id)
+    const merged: ToolCallRecord = {
+      id: next.id,
+      name: next.name || existing?.name || '',
+      arguments: mergeToolArguments(existing?.arguments ?? '', next.arguments),
+      status: existing?.status ?? 'waiting',
+    }
+    if (existing?.result !== undefined) merged.result = existing.result
+    byId.set(next.id, merged)
+  }
+  return [...byId.values()]
+}
+
+const unresolvedToolCalls = (message: AssistantMessage) =>
+  (message.toolCalls ?? []).filter(
+    (call) => call.status === 'waiting' || call.status === 'calling',
+  )
+
+const connectedMcpTools = (settings: ChatSettings): McpToolSchema[] | undefined => {
+  if (!settings.mcpEnabled || !mcpReady()) return undefined
+  const tools = mcpTools()
+  if (tools.length === 0) return undefined
+  return tools.map((tool) => ({
+    name: tool.name,
+    description: tool.description ?? tool.humanName,
+    inputSchema: tool.inputSchema ?? {
+      type: 'object',
+      properties: {},
+    },
+  }))
+}
+
+const pausedForToolApproval = (
+  message: AssistantMessage,
+  finishReason: string | null,
+) =>
+  finishReason === 'tool_calls' ||
+  unresolvedToolCalls(message).some((call) => call.status === 'waiting')
 
 const newAssistantMessage = (input: {
   id: MessageId
@@ -575,15 +643,19 @@ const streamReply = async (
   plan: TurnPlan,
   stream: LocalStream,
   overrides: RequestOverrides | undefined,
+  resumeFrom?: AssistantMessage,
 ): Promise<StreamOutcome> => {
   const { chatId, chatModel } = plan
-  const path = ancestorChain(chatModel.messages(), plan.user.id)
+  const path = ancestorChain(
+    chatModel.messages(),
+    resumeFrom ? resumeFrom.id : plan.user.id,
+  )
   const blobs = await wrap(loadAttachments(path))
   const wireMessages: WireMessage[] = assembleContext({
     path,
     systemPrompt: plan.settings.systemPrompt,
     requestModel: plan.requestModel,
-    endAtUserId: plan.user.id,
+    endAtUserId: resumeFrom ? undefined : plan.user.id,
     attachment: (id) => blobs.get(id),
   })
   const catalogModel = catalogById().get(plan.requestModel) ?? null
@@ -594,10 +666,18 @@ const streamReply = async (
     settings: plan.settings,
     globalPrivacy: globalPrivacy(),
     overrides,
+    mcpTools: connectedMcpTools(plan.settings),
   })
   const inputTokens = estimateTokens(contextCharacterCount(wireMessages))
 
-  let message = plan.assistant
+  let message = resumeFrom
+    ? {
+        ...resumeFrom,
+        status: 'streaming' as const,
+        error: null,
+        rev: resumeFrom.rev + 1,
+      }
+    : plan.assistant
   let flushTimer: ReturnType<typeof setTimeout> | null = null
   let flushBroken = false
   let pendingFlush: Promise<unknown> = Promise.resolve()
@@ -612,6 +692,7 @@ const streamReply = async (
     message = next
     setMemoryMessage(chatModel, message)
   }
+  if (resumeFrom) commit(message)
 
   const flushNow = async () => {
     if (flushTimer !== null) {
@@ -743,6 +824,9 @@ const streamReply = async (
       case 'citations':
         next = { ...next, citations: mergeCitations(next.citations, event.items) }
         break
+      case 'tool_calls':
+        next = { ...next, toolCalls: mergeToolCalls(next.toolCalls, event.calls) }
+        break
       case 'finish':
         finishReason = event.reason
         next = { ...next, finishReason: event.reason }
@@ -796,8 +880,16 @@ const streamReply = async (
 
   let status: AssistantStatus
   let error: ErrorInfo | null = null
+  const waitingOnTools =
+    !aborted &&
+    !thrownFailure &&
+    !errorEvent &&
+    pausedForToolApproval(message, finishReason)
   if (aborted) {
     status = 'stopped'
+  } else if (waitingOnTools) {
+    status = 'done'
+    error = null
   } else {
     const failure: CompletionFailure =
       thrownFailure ??
@@ -979,15 +1071,23 @@ const runReply = async (spec: ReplySpec): Promise<void> => {
   }
 
   if (!outcome || !plan) return
-  const finalMessage = outcome.message
+  await wrap(finishTurn(plan.chatModel, chatId, outcome.message))
+  await wrap(autoRunRememberedReads(chatId, outcome.message.id))
+}
+
+const finishTurn = async (
+  chatModel: ChatModel,
+  chatId: ChatId,
+  finalMessage: AssistantMessage,
+) => {
   if (finalMessage.status === 'done') {
-    dropFailedEmptySiblings(plan.chatModel, finalMessage).catch(
-      () => {},
-    )
+    dropFailedEmptySiblings(chatModel, finalMessage).catch(() => {})
   }
   patchChat(chatId, { lastActivityAt: now() }).catch(() => {})
 
-  if (finalMessage.status === 'done') {
+  if (unresolvedToolCalls(finalMessage).length > 0) {
+    streamLifecycle({ type: 'completed', chatId, messageId: finalMessage.id })
+  } else if (finalMessage.status === 'done') {
     streamLifecycle({ type: 'completed', chatId, messageId: finalMessage.id })
   } else if (finalMessage.status === 'stopped') {
     streamLifecycle({ type: 'stopped', chatId, messageId: finalMessage.id })
@@ -1007,6 +1107,225 @@ const runReply = async (spec: ReplySpec): Promise<void> => {
     )
   }
 }
+
+const patchAssistantTool = (
+  chatModel: ChatModel,
+  messageId: MessageId,
+  callId: string,
+  patch: Partial<ToolCallRecord>,
+): AssistantMessage | null => {
+  const current = chatModel.messages().get(messageId)
+  if (!current || current.role !== 'assistant') return null
+  const toolCalls = current.toolCalls ?? []
+  const index = toolCalls.findIndex((call) => call.id === callId)
+  if (index < 0) return null
+  const nextCalls = toolCalls.map((call, callIndex) =>
+    callIndex === index ? { ...call, ...patch } : call,
+  )
+  const next: AssistantMessage = {
+    ...current,
+    toolCalls: nextCalls,
+    rev: current.rev + 1,
+  }
+  setMemoryMessage(chatModel, next)
+  return next
+}
+
+const followUpAfterTools = async (
+  chatId: ChatId,
+  assistantId: MessageId,
+): Promise<void> => {
+  requestPersistOnce().catch(() => {})
+  if (!canStartReply(chatId)) return
+  await wrap(chatModelInternals(chatId).loadMessages())
+  if (!canStartReply(chatId)) return
+
+  const chatModel = getChatModel(chatId)
+  const settings = chatSettingsOf(chatId)
+  const existing = chatModel.messages().get(assistantId)
+  if (!settings || !existing || existing.role !== 'assistant') return
+  if (unresolvedToolCalls(existing).length > 0) return
+  const parent = existing.parentId
+    ? chatModel.messages().get(existing.parentId)
+    : undefined
+  if (!parent || parent.role !== 'user') return
+
+  const stream: LocalStream = {
+    messageId: assistantId,
+    controller: new AbortController(),
+    stopRequested: false,
+  }
+  setLocalStream(chatId, stream)
+
+  const plan: TurnPlan = {
+    chatId,
+    chatModel,
+    settings,
+    requestModel: existing.model,
+    user: parent,
+    newUser: null,
+    assistant: existing,
+    newChat: null,
+    selection: chatModel.record()?.selection ?? {},
+    clearDraft: null,
+  }
+
+  let lock: StreamLock | null = null
+  let outcome: StreamOutcome | null = null
+  try {
+    lock = await wrap(acquireStreamLock(chatId))
+    if (!lock || stream.controller.signal.aborted) return
+    publishSync({ type: 'stream', chatId, tabId, active: true })
+    streamLifecycle({ type: 'started', chatId, messageId: assistantId })
+    try {
+      outcome = await wrap(streamReply(plan, stream, undefined, existing))
+    } catch (unexpected) {
+      outcome = await wrap(failUnexpectedly(plan, unexpected))
+    }
+  } finally {
+    const freeing = lock?.release() ?? null
+    if (lock) publishSync({ type: 'stream', chatId, tabId, active: false })
+    setLocalStream(chatId, null)
+    if (freeing) await wrap(freeing)
+  }
+
+  if (!outcome) return
+  await wrap(finishTurn(chatModel, chatId, outcome.message))
+  await wrap(autoRunRememberedReads(chatId, outcome.message.id))
+}
+
+const autoRunRememberedReads = async (chatId: ChatId, assistantId: MessageId) => {
+  const chatModel = getChatModel(chatId)
+  const message = chatModel.messages().get(assistantId)
+  if (!message || message.role !== 'assistant') return
+  for (const call of unresolvedToolCalls(message)) {
+    if (call.status !== 'waiting') continue
+    if (!mcpAlwaysAllows(call.name)) continue
+    await wrap(allowToolOnce(chatId, assistantId, call.id))
+  }
+}
+
+const mcpAllowWasAborted = (error?: unknown) => {
+  if (isAbort(error)) return true
+  try {
+    return abortVar.require().signal.aborted
+  } catch {
+    return true
+  }
+}
+
+let mcpAllowLifetimeInstalled = false
+let mcpAllowInFlight = false
+
+const abortInFlightMcpAllow = () => {
+  allowToolOnce.abort()
+  releaseMcpCall()
+  mcpAllowInFlight = false
+}
+
+const installMcpAllowLifetime = () => {
+  if (mcpAllowLifetimeInstalled || typeof window === 'undefined') return
+  mcpAllowLifetimeInstalled = true
+  window.addEventListener('pagehide', abortInFlightMcpAllow)
+  window.addEventListener('beforeunload', abortInFlightMcpAllow)
+  onRuntimeReset(() => {
+    window.removeEventListener('pagehide', abortInFlightMcpAllow)
+    window.removeEventListener('beforeunload', abortInFlightMcpAllow)
+    mcpAllowLifetimeInstalled = false
+    abortInFlightMcpAllow()
+  })
+}
+
+export const allowToolOnce = action(
+  async (chatId: ChatId, messageId: MessageId, callId: string): Promise<void> => {
+    installMcpAllowLifetime()
+    if (mcpAllowInFlight) return
+    const chatModel = getChatModel(chatId)
+    const current = chatModel.messages().get(messageId)
+    if (!current || current.role !== 'assistant') return
+    const call = current.toolCalls?.find((item) => item.id === callId)
+    if (!call || call.status !== 'waiting') return
+
+    mcpAllowInFlight = true
+    let acquired = false
+    let next: AssistantMessage | null = null
+    try {
+      if (!(await wrap(acquireMcpCall()))) return
+      acquired = true
+      const latest = chatModel.messages().get(messageId)
+      const latestCall =
+        latest?.role === 'assistant'
+          ? latest.toolCalls?.find((item) => item.id === callId)
+          : undefined
+      if (!latestCall || latestCall.status !== 'waiting') return
+
+      const calling = patchAssistantTool(chatModel, messageId, callId, {
+        status: 'calling',
+      })
+      if (calling) await wrap(persistMessage(chatId, calling))
+
+      const result = await wrap(
+        callMcpTool(
+          latestCall.name,
+          latestCall.arguments,
+          abortVar.require().signal,
+        ),
+      )
+      if (mcpAllowWasAborted()) return
+      next = patchAssistantTool(chatModel, messageId, callId, {
+        status: result.isError ? 'error' : 'completed',
+        result: serializeToolResult(result),
+      })
+    } catch (error) {
+      if (mcpAllowWasAborted(error)) return
+      next = patchAssistantTool(chatModel, messageId, callId, {
+        status: 'error',
+        result: mcpCallStoppedCopy,
+      })
+    } finally {
+      mcpAllowInFlight = false
+      if (acquired) releaseMcpCall()
+    }
+    if (next) await wrap(persistMessage(chatId, next))
+    if (next && unresolvedToolCalls(next).length === 0) {
+      await wrap(followUpAfterTools(chatId, messageId))
+    }
+  },
+  'chat.engine.allowToolOnce',
+).extend(withAsync(), withAbort('manual'))
+
+export const denyTool = action(
+  async (chatId: ChatId, messageId: MessageId, callId: string): Promise<void> => {
+    const chatModel = getChatModel(chatId)
+    const current = chatModel.messages().get(messageId)
+    if (!current || current.role !== 'assistant') return
+    const call = current.toolCalls?.find((item) => item.id === callId)
+    if (!call || call.status !== 'waiting') return
+    const denied = patchAssistantTool(chatModel, messageId, callId, {
+      status: 'denied',
+      result: 'The user denied this tool call. It did not run.',
+    })
+    if (denied) await wrap(persistMessage(chatId, denied))
+    if (denied && unresolvedToolCalls(denied).length === 0) {
+      await wrap(followUpAfterTools(chatId, messageId))
+    }
+  },
+  'chat.engine.denyTool',
+).extend(withAsync())
+
+export const alwaysAllowTool = action(
+  async (chatId: ChatId, messageId: MessageId, callId: string): Promise<void> => {
+    const chatModel = getChatModel(chatId)
+    const current = chatModel.messages().get(messageId)
+    if (!current || current.role !== 'assistant') return
+    const call = current.toolCalls?.find((item) => item.id === callId)
+    if (!call) return
+    rememberMcpAlwaysAllow(call.name)
+    if (isMcpWriteTool(call.name)) return
+    await wrap(allowToolOnce(chatId, messageId, callId))
+  },
+  'chat.engine.alwaysAllowTool',
+).extend(withAsync())
 
 export const send = action(
   async (chatId: ChatId | 'new', input: SendInput): Promise<void> => {
@@ -1108,6 +1427,7 @@ export const continueReply = action(
         messages: wireMessages,
         settings,
         globalPrivacy: globalPrivacy(),
+        mcpTools: connectedMcpTools(settings),
       })
       const inputTokens = estimateTokens(contextCharacterCount(wireMessages))
 

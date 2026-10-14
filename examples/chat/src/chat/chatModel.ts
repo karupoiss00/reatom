@@ -78,6 +78,19 @@ const isLiveStatus = (message: MessageRecord) =>
   message.role === 'assistant' &&
   (message.status === 'waiting' || message.status === 'streaming')
 
+const parkCallingTools = (message: MessageRecord): MessageRecord => {
+  if (message.role !== 'assistant') return message
+  const toolCalls = message.toolCalls
+  if (!toolCalls || toolCalls.length === 0) return message
+  let changed = false
+  const parked = toolCalls.map((call) => {
+    if (call.status !== 'calling') return call
+    changed = true
+    return { ...call, status: 'waiting' as const }
+  })
+  return changed ? { ...message, toolCalls: parked } : message
+}
+
 export const mergeMessage = (
   messages: Map<MessageId, MessageRecord>,
   incoming: MessageRecord,
@@ -127,7 +140,9 @@ const reatomChatModel = (id: ChatId | 'new'): ChatModel => {
     try {
       const stored = await wrap(repo.listMessages(id))
       let merged = messages()
-      for (const message of stored) merged = mergeMessage(merged, message)
+      for (const message of stored) {
+        merged = mergeMessage(merged, parkCallingTools(message))
+      }
       messages.set(merged)
       messagesLoadState.set('ready')
     } catch (error) {

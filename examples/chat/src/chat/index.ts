@@ -1,8 +1,11 @@
 export type * from './types'
 export { activeChat, getChatModel, sendBlockContributors } from './chatModel'
 export {
+  allowToolOnce,
+  alwaysAllowTool,
   compareSend,
   continueReply,
+  denyTool,
   editAndSend,
   generatingChats,
   recoverInterrupted,

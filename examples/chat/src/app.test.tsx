@@ -72,6 +72,9 @@ const settingsDialog = (slotName: string, title: string) => {
   return dialog
 }
 
+const settingsPanel = (name: string) =>
+  slot(name)?.closest<HTMLElement>('[role="tabpanel"]') ?? null
+
 afterEach(() => {
   unmountApp?.()
   unmountApp = null
@@ -168,6 +171,7 @@ test('mounts the global layers once', async () => {
 })
 
 test('app settings is a tabbed dialog whose sections are slots', async () => {
+  await page.viewport(1280, 800)
   await startApp()
 
   ui.appSettings.set('appearance')
@@ -182,16 +186,80 @@ test('app settings is a tabbed dialog whose sections are slots', async () => {
     'Data',
     'Privacy',
     'Keyboard',
+    'MCP',
   ])
   expect(
     dialog!.querySelector('[role="tab"][aria-selected="true"]')?.textContent,
   ).toBe('Appearance')
   expect(slot('AppearanceSection')).toBeInstanceOf(HTMLElement)
+  expect(settingsPanel('AppearanceSection')?.dataset.active).toBe('true')
+  expect(
+    dialog!.querySelectorAll('[role="tabpanel"]'),
+  ).toHaveLength(1)
   ;(tabs[2] as HTMLButtonElement).click()
   await paint()
   expect(ui.appSettings()).toBe('data')
-  expect(slot('DataSection')).toBeInstanceOf(HTMLElement)
-  expect(slot('AppearanceSection')).toBeNull()
+  expect(
+    dialog!.querySelector('[role="tabpanel"] [data-slot="DataSection"]'),
+  ).toBeInstanceOf(HTMLElement)
+  expect(
+    dialog!.querySelector('[role="tabpanel"] [data-slot="AppearanceSection"]'),
+  ).toBeNull()
+  expect(dialog!.querySelectorAll('[role="tabpanel"]')).toHaveLength(1)
+  expect(settingsPanel('DataSection')?.dataset.active).toBe('true')
+  expect(settingsPanel('AppearanceSection')).toBeNull()
+
+  const accountTab = tabs.find((tab) => tab.textContent === 'Account & usage') as
+    | HTMLButtonElement
+    | undefined
+  const mcpTab = tabs.find((tab) => tab.textContent === 'MCP') as
+    | HTMLButtonElement
+    | undefined
+  expect(accountTab).toBeInstanceOf(HTMLButtonElement)
+  expect(mcpTab).toBeInstanceOf(HTMLButtonElement)
+
+  await expect
+    .poll(() => slot('LocalSpend')?.querySelector('[data-skeleton]'))
+    .toBeNull()
+
+  await expect.poll(() => getComputedStyle(dialog!).transform).toBe('none')
+
+  accountTab!.click()
+  await paint()
+  const accountSection = slot('AccountSection')
+  const mcpSection = slot('McpSection')
+  expect(accountSection).toBeInstanceOf(HTMLElement)
+  expect(mcpSection).toBeInstanceOf(HTMLElement)
+  const extraRows = document.createElement('div')
+  extraRows.setAttribute('data-tabs-height-probe', '')
+  extraRows.style.height = '36rem'
+  accountSection!.append(extraRows)
+  const mcpProbe = document.createElement('div')
+  mcpProbe.setAttribute('data-tabs-height-probe', '')
+  mcpProbe.style.height = '80rem'
+  mcpSection!.append(mcpProbe)
+  await paint()
+
+  const visiblePanel = () =>
+    dialog!.querySelector<HTMLElement>('[role="tabpanel"]')
+
+  expect(accountSection!.scrollHeight).not.toBe(mcpSection!.scrollHeight)
+  const heightOnAccount = dialog!.offsetHeight
+  mcpTab!.click()
+  await paint()
+  expect(accountSection!.scrollHeight).not.toBe(mcpSection!.scrollHeight)
+  expect(dialog!.offsetHeight).toBe(heightOnAccount)
+  visiblePanel()!.scrollTop = 240
+  expect(visiblePanel()!.scrollTop).toBeGreaterThan(0)
+  accountTab!.click()
+  await paint()
+  expect(dialog!.offsetHeight).toBe(heightOnAccount)
+  expect(visiblePanel()!.scrollTop).toBe(0)
+  const accountHeading = slot('AccountSection')?.querySelector('h3')
+  const panelBox = visiblePanel()!.getBoundingClientRect()
+  expect(accountHeading?.getBoundingClientRect().top).toBeGreaterThanOrEqual(
+    panelBox.top - 1,
+  )
 
   dialog!.close()
   await paint()

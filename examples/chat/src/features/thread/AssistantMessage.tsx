@@ -12,6 +12,7 @@ import { MessageActions } from './MessageActions'
 import { Reasoning } from './Reasoning'
 import { RegenerateMenu } from './RegenerateMenu'
 import { Sources } from './Sources'
+import { ToolCard } from './ToolCard'
 import { VersionSwitcher } from './VersionSwitcher'
 
 const billingNames: Record<string, string> = {
@@ -56,15 +57,21 @@ export const AssistantMessage = ({ chat, node }: NodeSlotProps) => {
   }, `${name}.streaming`)
   const waiting = computed(() => {
     const current = message()
+    const tools = current.toolCalls ?? []
     return (
       (current.status === 'waiting' || current.status === 'streaming') &&
-      current.content.length === 0
+      current.content.length === 0 &&
+      tools.length === 0
     )
   }, `${name}.waiting`)
+  const toolCalls = computed(
+    () => message().toolCalls ?? [],
+    `${name}.toolCalls`,
+  )
   const showBody = computed(() => {
     const current = message()
     const emptyStop = current.status === 'stopped' && current.content.length === 0
-    return !emptyStop && !waiting()
+    return !emptyStop && !waiting() && current.content.length > 0
   }, `${name}.showBody`)
   const error = computed(() => message().error, `${name}.error`)
   const unsaved = computed(() => readUnsaved(chat), `${name}.unsaved`)
@@ -189,6 +196,24 @@ export const AssistantMessage = ({ chat, node }: NodeSlotProps) => {
             <MessageBody source={content} streaming={streamingBody} />
           ) : null
         }
+        {() => {
+          const calls = toolCalls()
+          if (calls.length === 0) return null
+          return (
+            <div
+              css={`
+                display: grid;
+                gap: var(--space-2);
+                min-width: 0;
+                margin-top: var(--space-3);
+              `}
+            >
+              {calls.map((call) => (
+                <ToolCard chat={chat} message={message} callId={call.id} />
+              ))}
+            </div>
+          )
+        }}
       </div>
       {() =>
         unsaved() ? (
@@ -213,7 +238,17 @@ export const AssistantMessage = ({ chat, node }: NodeSlotProps) => {
           <ErrorCard chat={chat} message={message} error={current} />
         ) : null
       }}
-      <Sources message={message} />
+      {() => {
+        const current = message()
+        const hasCitations = current.citations.length > 0
+        const searching =
+          !hasCitations &&
+          current.content.length === 0 &&
+          (current.status === 'waiting' || current.status === 'streaming') &&
+          chat.settings().webSearch === true
+        if (!hasCitations && !searching) return null
+        return <Sources message={message} />
+      }}
       <div
         data-slot="ReplyFooter"
         css={`

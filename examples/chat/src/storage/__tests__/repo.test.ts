@@ -16,6 +16,7 @@ import {
   retryOpenStorage,
   writeFailure,
 } from '../index'
+import { mcpServers } from '../prefs'
 import { resetRepoBackend, StorageReadError } from '../repo'
 import type { AssistantMessage, ChatRecord, PresetRecord } from '../types'
 
@@ -614,3 +615,72 @@ test('bootApp calls boot and waits until sessionMode is not booting; slots are f
     unmountApp()
   }
 })
+
+test('F-29 Turning the Fusion chip off does not delete the saved server; per-chat mcpEnabled merges like webSearch.', async () => {
+  mcpServers.set([
+    { id: 'fusion', url: 'http://127.0.0.1:27182/mcp' },
+  ])
+  await initStorage()
+  await repo.createChat(createChatRecord({ id: chatId, at: 1 }))
+  const base = createDefaultChatSettings()
+  expect(base.mcpEnabled).toBe(false)
+  const enabled = await repo.putChatFields(
+    chatId,
+    { settings: { ...base, mcpEnabled: true, webSearch: true } },
+    100,
+  )
+  expect(enabled.settings.mcpEnabled).toBe(true)
+  expect(enabled.settings.webSearch).toBe(true)
+  const disabled = await repo.putChatFields(
+    chatId,
+    { settings: { ...enabled.settings, mcpEnabled: false } },
+    200,
+  )
+  expect(disabled.settings.mcpEnabled).toBe(false)
+  expect(disabled.settings.webSearch).toBe(true)
+  expect(mcpServers()).toEqual([
+    expect.objectContaining({ url: 'http://127.0.0.1:27182/mcp' }),
+  ])
+  expect(JSON.parse(localStorage.getItem('atelier.mcpServers') ?? 'null')?.data).toEqual(
+    [expect.objectContaining({ url: 'http://127.0.0.1:27182/mcp' })],
+  )
+  expect(await countIndexed('mcpServers')).toBeUndefined()
+})
+
+test('F-39 A waiting Fusion write is stored on the message as waiting, never completed across reload; no MCP IDB store.', async () => {
+  mcpServers.set([{ id: 'fusion', url: 'http://127.0.0.1:27182/mcp' }])
+  await initStorage()
+  await repo.createChat(createChatRecord({ id: chatId, at: 1 }))
+  expect(JSON.parse(localStorage.getItem('atelier.mcpServers') ?? 'null')?.data).toEqual(
+    [expect.objectContaining({ url: 'http://127.0.0.1:27182/mcp' })],
+  )
+  const pending = assistant({
+    id: messageId,
+    content: '',
+    rev: 1,
+    status: 'waiting',
+    toolCalls: [
+      {
+        id: 'call_fusion_execute',
+        name: 'fusion_mcp_execute',
+        arguments: '{"featureType":"script"}',
+        status: 'waiting',
+      },
+    ],
+  })
+  await repo.putMessage(pending)
+  const stored = await readIndexedRecord('messages', messageId)
+  expect(stored).toMatchObject({
+    status: 'waiting',
+    toolCalls: [
+      {
+        id: 'call_fusion_execute',
+        name: 'fusion_mcp_execute',
+        status: 'waiting',
+      },
+    ],
+  })
+  expect(stored).not.toMatchObject({ status: 'done' })
+  expect(await countIndexed('mcpServers')).toBeUndefined()
+})
+

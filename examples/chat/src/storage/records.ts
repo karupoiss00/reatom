@@ -20,6 +20,7 @@ export const createDefaultChatSettings = (): ChatSettings => ({
   privacyOverride: null,
   routing: { mode: 'auto', allowFallbacks: true },
   webSearch: false,
+  mcpEnabled: false,
 })
 
 export const chatMetaFields: readonly ChatMetaField[] = [
@@ -68,6 +69,7 @@ const settingsSubFields = [
   'privacyOverride',
   'routing',
   'webSearch',
+  'mcpEnabled',
 ] as const satisfies readonly (keyof ChatSettings)[]
 
 const asClockBag = (clock: ChatRecord['clock']): ClockBag => clock as ClockBag

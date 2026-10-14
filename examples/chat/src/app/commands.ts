@@ -66,4 +66,7 @@ export const commands = {
   openShortcuts: action(() => {
     ui.shortcuts.set(true)
   }, 'app.commands.openShortcuts'),
+  openSettings: action(() => {
+    ui.appSettings.set('account')
+  }, 'app.commands.openSettings'),
 }

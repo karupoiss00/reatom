@@ -117,6 +117,19 @@ export const chunkToEvents = (chunk: unknown): StreamEvent[] => {
     if (content) events.push({ kind: 'content', text: content })
     const refusal = nonEmptyString(delta.refusal)
     if (refusal) events.push({ kind: 'refusal', text: refusal })
+    const toolCalls = field(delta, 'tool_calls', 'toolCalls')
+    if (Array.isArray(toolCalls) && toolCalls.length > 0) {
+      const calls = toolCalls.flatMap((candidate) => {
+        if (!isRec(candidate)) return []
+        const id = nonEmptyString(candidate.id)
+        const fn = isRec(candidate.function) ? candidate.function : null
+        const name = fn ? nonEmptyString(fn.name) : null
+        if (!id || !name) return []
+        const args = typeof fn?.arguments === 'string' ? fn.arguments : ''
+        return [{ id, name, arguments: args }]
+      })
+      if (calls.length > 0) events.push({ kind: 'tool_calls', calls })
+    }
   }
 
   const citations = collectCitations(chunk, delta)

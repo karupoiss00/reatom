@@ -9,6 +9,7 @@ import { AttachmentTray } from './attachments/AttachmentTray'
 import { CompareButton } from './CompareButton'
 import { CostChip, CostNotes } from './CostChip'
 import { EffortChip } from './EffortChip'
+import { McpToggle } from './McpToggle'
 import { ModelChip } from './ModelChip'
 import { WebSearchNotice, WebSearchToggle } from './WebSearchToggle'
 
@@ -191,7 +192,9 @@ export const Composer = ({ chat }: ChatSlotProps) => {
                 & [data-slot='ModelChip'],
                 & [data-slot='CompareButton'],
                 & [data-slot='WebSearchToggle'],
-                & [data-web-search-toggle] {
+                & [data-web-search-toggle],
+                & [data-slot='McpToggle'],
+                & [data-mcp-toggle] {
                   flex: 0 0 auto;
                   align-self: center;
                 }
@@ -207,6 +210,7 @@ export const Composer = ({ chat }: ChatSlotProps) => {
               <ModelChip chat={chat} />
               <EffortChip chat={chat} />
               <WebSearchToggle chat={chat} />
+              <McpToggle chat={chat} />
               <CompareButton chat={chat} />
               <CostChip chat={chat} />
             </div>

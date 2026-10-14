@@ -1,7 +1,7 @@
 import { page } from 'vitest/browser'
 import { expect } from 'vitest'
 
-const evidenceRoot = '/Users/artalar/code/reatom/.team/evidence'
+const evidenceRoot = '/Users/artalar/code/reatom/examples/chat/.team/evidence'
 
 const relativePath = (fromFile: string, toFile: string) => {
   const fromParts = fromFile

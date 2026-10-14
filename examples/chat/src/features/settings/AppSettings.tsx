@@ -4,6 +4,7 @@ import { AccountSection } from './app/AccountSection'
 import { AppearanceSection } from './app/AppearanceSection'
 import { DataSection } from './app/DataSection'
 import { KeyboardSection } from './app/KeyboardSection'
+import { McpSection } from './app/McpSection'
 import { PrivacySection } from './app/PrivacySection'
 import { reatomSectionDialog } from './sectionDialog'
 
@@ -13,6 +14,7 @@ const appSettingsSections: ReadonlyArray<TabItem<AppSettingsSection>> = [
   { id: 'data', label: 'Data', panel: () => <DataSection /> },
   { id: 'privacy', label: 'Privacy', panel: () => <PrivacySection /> },
   { id: 'keyboard', label: 'Keyboard', panel: () => <KeyboardSection /> },
+  { id: 'mcp', label: 'MCP', panel: () => <McpSection /> },
 ]
 
 const appSettingsDialog = reatomSectionDialog(

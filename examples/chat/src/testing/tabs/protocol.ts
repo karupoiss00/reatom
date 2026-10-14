@@ -21,6 +21,10 @@ export type TabCommand =
   | { type: 'acquire-lock'; chatId: string }
   | { type: 'release-lock'; chatId: string }
   | { type: 'held-elsewhere'; chatId: string }
+  | { type: 'connect-mcp'; url?: string }
+  | { type: 'mcp-delay'; delayMs: number }
+  | { type: 'enable-mcp'; chatId: string }
+  | { type: 'click'; text: string }
 
 export interface TabState {
   tabId: string
@@ -30,6 +34,14 @@ export interface TabState {
   chatRequests: number
   /** Types of every sync event this tab received, oldest first. */
   received: string[]
+  mcpReady: boolean
+  mcpBusy: boolean
+  mcpChip: string | null
+  mcpAlways: string[]
+  mcpExecutes: number
+  mcpToolCalls: number
+  mcpToolCard: string | null
+  mcpAllowDisabled: boolean | null
 }
 
 export interface TabResults {
@@ -45,6 +57,10 @@ export interface TabResults {
   'acquire-lock': boolean
   'release-lock': null
   'held-elsewhere': boolean
+  'connect-mcp': { ready: boolean }
+  'mcp-delay': null
+  'enable-mcp': null
+  click: null
 }
 
 export type TabRequest = {

@@ -5,14 +5,24 @@ import { App } from '../../App'
 import { boot } from '../../app/boot'
 import { writeStoredKey } from '../../auth/keyStore'
 import { sessionMode } from '../../auth/session'
+import { getChatModel } from '../../chat/chatModel'
 import { send, stop } from '../../chat/engine'
 import { deleteChats, libraryRecords, renameChat } from '../../chat/library'
+import { connectMcp, mcpReady } from '../../mcp'
+import { mcpAlwaysAllow, mcpBusy } from '../../mcp/busy'
 import { tabId } from '../../platform/env'
 import { openChat } from '../../routes'
 import { syncReceived } from '../../sync/bus'
 import { acquireStreamLock, streamHeldElsewhere } from '../../sync/locks'
 import type { StreamLock } from '../../sync/types'
+import { fusionMcpUrl } from '../fixtures/mcp'
 import { catalogModels } from '../fixtures/models'
+import {
+  installMcpMock,
+  mcpExecuteCalls,
+  mcpMethods,
+  simulateMcpCallDelay,
+} from '../mcp-mock'
 import {
   chatBodies,
   installOpenRouterMock,
@@ -32,6 +42,7 @@ import {
 const bootWaitMs = 10_000
 
 installOpenRouterMock()
+installMcpMock()
 
 const received: string[] = []
 addCallHook(syncReceived, (event) => {
@@ -49,6 +60,17 @@ const waitUntilBooted = async () => {
   }
 }
 
+const mcpChipLabel = () =>
+  document.querySelector('[data-mcp-toggle]')?.textContent?.trim() ?? null
+
+const mcpToolCardText = () =>
+  document.querySelector('[data-mcp-tool-card]')?.textContent ?? null
+
+const mcpAllowButton = () =>
+  [...document.querySelectorAll('button')].find(
+    (button) => button.textContent?.trim() === 'Allow once',
+  ) ?? null
+
 const readState = (): TabState => ({
   tabId,
   path: location.pathname,
@@ -60,6 +82,14 @@ const readState = (): TabState => ({
   })),
   chatRequests: chatBodies().length,
   received: [...received],
+  mcpReady: mcpReady(),
+  mcpBusy: mcpBusy(),
+  mcpChip: mcpChipLabel(),
+  mcpAlways: [...mcpAlwaysAllow()],
+  mcpExecutes: mcpExecuteCalls().length,
+  mcpToolCalls: mcpMethods().filter((method) => method === 'tools/call').length,
+  mcpToolCard: mcpToolCardText(),
+  mcpAllowDisabled: mcpAllowButton()?.disabled ?? null,
 })
 
 const watchHeldElsewhere = (chatId: string) => {
@@ -131,6 +161,26 @@ const handlers: Handlers = {
   },
   'held-elsewhere'(command) {
     return watchHeldElsewhere(command.chatId)()
+  },
+  async 'connect-mcp'(command) {
+    await connectMcp(command.url ?? fusionMcpUrl)
+    return { ready: mcpReady() }
+  },
+  'mcp-delay'(command) {
+    simulateMcpCallDelay(command.delayMs)
+    return null
+  },
+  'enable-mcp'(command) {
+    getChatModel(command.chatId).updateSettings({ mcpEnabled: true })
+    return null
+  },
+  click(command) {
+    const match = [...document.querySelectorAll('button')].find(
+      (button) => button.textContent?.trim() === command.text,
+    )
+    if (!match) throw new Error(`Second tab has no button "${command.text}"`)
+    match.click()
+    return null
   },
 }
 

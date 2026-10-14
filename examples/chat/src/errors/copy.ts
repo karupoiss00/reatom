@@ -28,6 +28,32 @@ export const keyRejectedSentence = 'Your OpenRouter key was rejected.'
 
 export const refused403Sentence = 'OpenRouter refused this request (403).'
 
+export const mcpCorsSentence =
+  'Reconnect. The browser blocked the request. Check the server is running and allows this origin.'
+
+export const mcpUnreachableSentence =
+  'Reconnect. Nothing reached that URL. Check the server is running.'
+
+export const mcpPortSentence =
+  'Nothing is listening on that URL. Check the server is running and the port is correct.'
+
+export const mcpRequiredUrlSentence = 'Paste an MCP URL.'
+
+export const mcpInvalidUrlSentence =
+  'That is not a valid URL. Paste an http:// or https:// MCP URL.'
+
+export const mcpSchemeSentence =
+  'Atelier is browser-only. Paste an http:// or https:// MCP URL.'
+
+export const mcpUrlTooLongSentence =
+  'That URL is too long. Paste a shorter http:// or https:// MCP URL.'
+
+export const mcpEmptyToolsSentence =
+  'The server listed no tools. Check the server is running.'
+
+export const mcpTimeoutSentence =
+  'The MCP server timed out. Reconnect and check the server is running.'
+
 const resetPhrase = (reset: string): string =>
   reset.startsWith('resets ') ? reset : `resets ${reset}`
 

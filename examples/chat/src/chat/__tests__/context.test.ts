@@ -2,7 +2,12 @@ import { describe, expect, test } from 'vitest'
 
 import { createDefaultChatSettings } from '../../storage/records'
 import type { ErrorInfo } from '../../errors/types'
-import type { ChatSettings } from '../../storage/types'
+import type { ChatSettings, MessageRecord } from '../../storage/types'
+import {
+  cubeAsk,
+  cubeExecuteArguments,
+  fusionToolNames,
+} from '../../testing/fixtures/mcp'
 import {
   citationsScript,
   encryptedReasoningScript,
@@ -209,6 +214,47 @@ describe('R-3 context policy', () => {
           },
         ],
       },
+    ])
+  })
+
+  test('An empty assistant with toolCalls is kept so a Fusion turn round-trips (F-30)', () => {
+    const path = [
+      userMessage('u1', null, cubeAsk),
+      assistantMessage('a1', 'u1', '', {
+        finishReason: 'tool_calls',
+        toolCalls: [
+          {
+            id: 'call_fusion_cube',
+            name: fusionToolNames.execute,
+            arguments: cubeExecuteArguments,
+            status: 'waiting',
+          },
+        ],
+      }),
+      userMessage('u2', 'a1', 'undo'),
+    ]
+    expect(
+      assembleContext({
+        path,
+        systemPrompt: '',
+        requestModel: gpt4oMini.id,
+        attachment: noAttachment,
+      }),
+    ).toEqual([
+      { role: 'user', content: cubeAsk },
+      {
+        role: 'assistant',
+        content: '',
+        toolCalls: [
+          {
+            id: 'call_fusion_cube',
+            name: fusionToolNames.execute,
+            arguments: cubeExecuteArguments,
+            approval: 'waiting',
+          },
+        ],
+      },
+      { role: 'user', content: 'undo' },
     ])
   })
 })
@@ -445,6 +491,105 @@ describe('titles and groups', () => {
     const day = 24 * 60 * 60 * 1000
     expect(groupLabel(nowAt - 3 * day, nowAt, 'UTC')).toBe('Previous 7 days')
     expect(groupLabel(nowAt - 20 * day, nowAt, 'UTC')).toBe('Previous 30 days')
+  })
+})
+
+describe('F-30 Fusion tool turns in context', () => {
+  test('assembleContext keeps assistant tool_calls and tool-role results so the next send still has the Fusion turn', () => {
+    const executeCall = {
+      id: 'call_fusion_cube',
+      name: fusionToolNames.execute,
+      arguments: cubeExecuteArguments,
+      status: 'completed' as const,
+    }
+    const toolResult = {
+      id: 't1',
+      chatId: 'chat-1',
+      parentId: 'a1',
+      createdAt: 3,
+      rev: 1,
+      role: 'tool',
+      content: JSON.stringify({ success: true, cubeMm: 10 }),
+      toolCallId: 'call_fusion_cube',
+    }
+    const path = [
+      userMessage('u1', null, cubeAsk),
+      assistantMessage('a1', 'u1', '', {
+        status: 'done',
+        finishReason: 'tool_calls',
+        toolCalls: [executeCall],
+      }),
+      toolResult as unknown as MessageRecord,
+      userMessage('u2', 'a1', 'undo'),
+    ]
+    const wire = assembleContext({
+      path,
+      systemPrompt: '',
+      requestModel: gpt4oMini.id,
+      attachment: noAttachment,
+    })
+    expect(wire).toContainEqual(
+      expect.objectContaining({
+        role: 'assistant',
+        toolCalls: [
+          expect.objectContaining({
+            id: executeCall.id,
+            name: executeCall.name,
+            arguments: executeCall.arguments,
+          }),
+        ],
+      }),
+    )
+    expect(wire).toContainEqual({
+      role: 'tool',
+      content: toolResult.content,
+      toolCallId: 'call_fusion_cube',
+    })
+    expect(wire.map((message) => message.role)).toEqual([
+      'user',
+      'assistant',
+      'tool',
+      'user',
+    ])
+  })
+
+  test('completed toolCalls results become role:tool on a later user send when history has no tool turn', () => {
+    const result = JSON.stringify({ success: true, cubeMm: 10 })
+    const path = [
+      userMessage('u1', null, cubeAsk),
+      assistantMessage('a1', 'u1', 'The 10 mm cube is in the open design.', {
+        status: 'done',
+        finishReason: 'stop',
+        toolCalls: [
+          {
+            id: 'call_fusion_cube',
+            name: fusionToolNames.execute,
+            arguments: cubeExecuteArguments,
+            status: 'completed',
+            result,
+          },
+        ],
+      }),
+      userMessage('u2', 'a1', 'undo'),
+    ]
+    const wire = assembleContext({
+      path,
+      systemPrompt: '',
+      requestModel: gpt4oMini.id,
+      attachment: noAttachment,
+    })
+    expect(wire.map((message) => message.role)).toEqual([
+      'user',
+      'assistant',
+      'tool',
+      'user',
+    ])
+    expect(wire).toContainEqual({
+      role: 'tool',
+      content: result,
+      toolCallId: 'call_fusion_cube',
+    })
+    expect(wire.filter((message) => message.role === 'tool')).toHaveLength(1)
   })
 })
 

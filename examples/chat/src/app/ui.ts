@@ -9,6 +9,15 @@ export type AppSettingsSection =
   | 'data'
   | 'privacy'
   | 'keyboard'
+  | 'mcp'
+export const appSettingsSectionIds = [
+  'account',
+  'appearance',
+  'data',
+  'privacy',
+  'keyboard',
+  'mcp',
+] as const satisfies readonly AppSettingsSection[]
 export type ChatSettingsSection = 'prompt' | 'advanced' | 'privacy' | 'routing'
 export type PickerRequest = null | {
   purpose: 'chat' | 'regenerate' | 'compare'

@@ -115,12 +115,18 @@ export const dialogSurfaceStyles = `
   }
 
   & [data-dialog-body] {
+    display: flex;
+    flex-direction: column;
     flex: 1;
     min-height: 0;
     overflow: auto;
     overscroll-behavior: contain;
     padding: var(--space-2) var(--space-5) var(--space-5);
     font-size: var(--text-base);
+  }
+
+  & [data-dialog-body]:has([data-tabs-panes]) {
+    overflow: hidden;
   }
 
   & [data-dialog-footer] {

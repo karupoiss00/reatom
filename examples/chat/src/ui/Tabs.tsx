@@ -28,11 +28,36 @@ export const Tabs = <Id extends string>({
   const tabId = (id: Id) => `${baseId}-tab-${id}`
   const panelId = (id: Id) => `${baseId}-panel-${id}`
   const hasPanels = items.some((item) => item.panel)
+  const paneMinHeight = atom(0, `${baseId}.paneMinHeight`)
   const layoutOrientation = atom<'horizontal' | 'vertical'>(
     orientation,
     `${baseId}.layoutOrientation`,
   )
   const compactLayoutQuery = '(max-width: 560px)'
+
+  const rememberPaneHeight = (node: HTMLElement) => {
+    let frame = 0
+    const record = () => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => {
+        const child = node.firstElementChild
+        const height =
+          child instanceof HTMLElement
+            ? Math.max(child.scrollHeight, child.offsetHeight)
+            : Math.max(node.scrollHeight, node.offsetHeight)
+        if (height > 0) {
+          paneMinHeight.set((current) => (height > current ? height : current))
+        }
+      })
+    }
+    record()
+    const observer = new ResizeObserver(record)
+    observer.observe(node)
+    return () => {
+      cancelAnimationFrame(frame)
+      observer.disconnect()
+    }
+  }
 
   const focusTab = (tablist: HTMLElement, index: number) => {
     const tabs = [...tablist.querySelectorAll<HTMLElement>('[role="tab"]')]
@@ -65,8 +90,10 @@ export const Tabs = <Id extends string>({
       css={`
         display: flex;
         flex-direction: column;
+        flex: 1 1 auto;
         gap: var(--space-3);
         min-width: 0;
+        min-height: 0;
 
         &[data-orientation='vertical'] {
           flex-direction: row;
@@ -186,32 +213,93 @@ export const Tabs = <Id extends string>({
           </button>
         ))}
       </div>
-      {hasPanels
-        ? () => {
-            const current = items.find((item) => item.id === selected())
-            if (!current?.panel) return null
+      {hasPanels ? (
+        <div
+          data-tabs-panes=""
+          css:tabs-pane-min={() => `${paneMinHeight()}px`}
+          css={`
+            display: grid;
+            grid-template-rows: minmax(0, 1fr);
+            position: relative;
+            flex: 1 1 auto;
+            min-width: 0;
+            min-height: 0;
+            overflow: hidden;
+          `}
+        >
+          <div
+            data-tabs-sizer=""
+            attr:aria-hidden="true"
+            prop:inert={true}
+            css={`
+              grid-area: 1 / 1;
+              min-height: var(--tabs-pane-min, 0px);
+              visibility: hidden;
+              overflow: hidden;
+              pointer-events: none;
+            `}
+          />
+          {items.map((item) => {
+            if (!item.panel) return null
             return (
               <div
-                id={panelId(current.id)}
-                attr:role="tabpanel"
-                attr:aria-labelledby={tabId(current.id)}
-                attr:tabindex="0"
+                id={panelId(item.id)}
+                data-tabs-pane={item.id}
+                data-active={() => (selected() === item.id ? 'true' : null)}
+                attr:role={() => (selected() === item.id ? 'tabpanel' : null)}
+                attr:aria-labelledby={() =>
+                  selected() === item.id ? tabId(item.id) : null
+                }
+                attr:aria-hidden={() =>
+                  selected() === item.id ? null : 'true'
+                }
+                attr:tabindex={() => (selected() === item.id ? '0' : '-1')}
+                prop:inert={() => selected() !== item.id}
+                ref={(node: HTMLElement) => {
+                  const stopMeasure = rememberPaneHeight(node)
+                  const unsubscribe = selected.subscribe((id) => {
+                    if (id === item.id) node.scrollTop = 0
+                  })
+                  return () => {
+                    unsubscribe()
+                    stopMeasure()
+                  }
+                }}
                 css={`
-                  flex: 1;
                   min-width: 0;
-                  animation: ui-fade var(--duration-fast) var(--ease-enter);
+                  min-height: 0;
+                  overflow: hidden;
+                  pointer-events: none;
+                  visibility: hidden;
 
-                  &:focus-visible {
+                  &[data-active='true'] {
+                    grid-area: 1 / 1;
+                    max-height: 100%;
+                    overflow: auto;
+                    overscroll-behavior: contain;
+                    pointer-events: auto;
+                    visibility: visible;
+                    animation: ui-fade var(--duration-fast) var(--ease-enter);
+                  }
+
+                  &:not([data-active]) {
+                    position: absolute;
+                    inset-inline: 0;
+                    top: 0;
+                  }
+
+                  &[data-active='true']:focus-visible {
                     outline-offset: 4px;
                     border-radius: var(--radius-sm);
                   }
                 `}
               >
-                {current.panel()}
+                {item.panel()}
               </div>
             )
-          }
-        : null}
+          })}
+        </div>
+      ) : null}
     </div>
   )
 }

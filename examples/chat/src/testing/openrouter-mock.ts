@@ -47,6 +47,10 @@ const routes = {
   providers: '/api/v1/providers',
 } as const
 
+type ExternalFetchHandler = (
+  request: Request,
+) => Promise<Response | null> | Response | null
+
 let nativeFetch: typeof fetch | undefined
 let installed = false
 let generation = 0
@@ -54,6 +58,7 @@ let generationController = new AbortController()
 let captures: CapturedOpenRouterRequest[] = []
 let externalCaptures: CapturedOpenRouterRequest[] = []
 let externalAllow: ((url: URL) => boolean) | undefined
+let dedicatedExternal: ExternalFetchHandler | undefined
 let modelsList: readonly object[] | undefined
 let keyResponse: object | MockStatus | undefined
 let chatScript: MockChatScript | undefined
@@ -384,6 +389,8 @@ const mockedFetch: typeof fetch = async (input, init) => {
       headers: headerRecord(request.headers),
       body: undefined,
     })
+    const intercepted = await dedicatedExternal?.(request)
+    if (intercepted) return intercepted
     if (passesThrough(url)) {
       if (!nativeFetch) throw new Error('OpenRouter mock is not installed')
       return nativeFetch(input, init)
@@ -443,6 +450,10 @@ export const externalRequests = (): readonly CapturedOpenRouterRequest[] =>
 
 export const allowExternalPassthrough = (match: (url: URL) => boolean) => {
   externalAllow = match
+}
+
+export const interceptExternalFetch = (handler: ExternalFetchHandler) => {
+  dedicatedExternal = handler
 }
 
 export const requestsTo = (

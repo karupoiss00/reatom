@@ -28,11 +28,31 @@ export type WireContent =
       | { type: 'image_url'; imageUrl: { url: string } }
       | { type: 'file'; file: { filename: string; fileData: string } }
     >
+export type WireToolCallApproval =
+  | 'waiting'
+  | 'calling'
+  | 'completed'
+  | 'denied'
+  | 'error'
+export interface WireToolCall {
+  id: string
+  name: string
+  arguments: string
+  approval?: WireToolCallApproval
+}
 export interface WireMessage {
-  role: 'system' | 'user' | 'assistant'
+  role: 'system' | 'user' | 'assistant' | 'tool'
   content: WireContent
   reasoningDetails?: unknown[]
+  toolCallId?: string
+  toolCalls?: WireToolCall[]
 }
+export const wireMessageRoles = [
+  'system',
+  'user',
+  'assistant',
+  'tool',
+] as const satisfies readonly WireMessage['role'][]
 export type StreamEvent =
   | { kind: 'id'; id: string }
   | { kind: 'provider'; name: string }
@@ -49,6 +69,27 @@ export type StreamEvent =
       message: string
       metadata?: Record<string, unknown>
     }
+  | {
+      kind: 'tool_calls'
+      calls: Array<{
+        id: string
+        name: string
+        arguments: string
+      }>
+    }
+export const streamEventKinds = [
+  'id',
+  'provider',
+  'content',
+  'reasoning',
+  'reasoning-details',
+  'refusal',
+  'citations',
+  'finish',
+  'usage',
+  'error',
+  'tool_calls',
+] as const satisfies readonly StreamEvent['kind'][]
 export type SendBlockCode =
   | 'no-key'
   | 'no-model'

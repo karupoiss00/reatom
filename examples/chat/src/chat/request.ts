@@ -1,4 +1,5 @@
 import type {
+  ChatFunctionTool,
   ChatMessages,
   ChatRequest,
   ProviderPreferences,
@@ -12,35 +13,63 @@ import type {
 } from '../storage/types'
 import type { RequestOverrides, WireMessage } from './types'
 
+export type McpToolSchema = {
+  name: string
+  description: string
+  inputSchema: {
+    type: 'object'
+    properties: Record<string, unknown>
+    required?: string[]
+  }
+}
+
+const textContent = (content: WireMessage['content']): string =>
+  typeof content === 'string'
+    ? content
+    : content.map((part) => (part.type === 'text' ? part.text : '')).join('')
+
 const toSdkMessage = (message: WireMessage): ChatMessages => {
   if (message.role === 'system') {
     return {
       role: 'system',
-      content:
-        typeof message.content === 'string'
-          ? message.content
-          : message.content
-              .map((part) => (part.type === 'text' ? part.text : ''))
-              .join(''),
+      content: textContent(message.content),
+    }
+  }
+  if (message.role === 'tool') {
+    return {
+      role: 'tool',
+      content: textContent(message.content),
+      toolCallId: message.toolCallId ?? '',
     }
   }
   if (message.role === 'assistant') {
-    const content =
-      typeof message.content === 'string'
-        ? message.content
-        : message.content
-            .map((part) => (part.type === 'text' ? part.text : ''))
-            .join('')
-    return message.reasoningDetails && message.reasoningDetails.length > 0
-      ? {
-          role: 'assistant',
-          content,
-          reasoningDetails: message.reasoningDetails as never,
-        }
-      : { role: 'assistant', content }
+    const content = textContent(message.content)
+    const sdk: ChatMessages = { role: 'assistant', content }
+    if (message.reasoningDetails && message.reasoningDetails.length > 0) {
+      sdk.reasoningDetails = message.reasoningDetails as never
+    }
+    if (message.toolCalls && message.toolCalls.length > 0) {
+      sdk.toolCalls = message.toolCalls.map((call) => ({
+        id: call.id,
+        type: 'function',
+        function: { name: call.name, arguments: call.arguments },
+      }))
+    }
+    return sdk
   }
   return { role: 'user', content: message.content as never }
 }
+
+const webSearchTool = { type: 'openrouter:web_search' } as ChatFunctionTool
+
+const toFunctionTool = (tool: McpToolSchema): ChatFunctionTool => ({
+  type: 'function',
+  function: {
+    name: tool.name,
+    description: tool.description,
+    parameters: tool.inputSchema,
+  },
+})
 
 const providerPreferences = (
   settings: ChatSettings,
@@ -83,6 +112,7 @@ export const buildChatRequest = (args: {
   settings: ChatSettings
   globalPrivacy: PrivacySettings
   overrides?: RequestOverrides
+  mcpTools?: readonly McpToolSchema[]
 }): ChatRequest => {
   const overrides = args.overrides ?? {}
   const modelId = (overrides.model ?? args.modelId).trim()
@@ -116,8 +146,13 @@ export const buildChatRequest = (args: {
   )
   if (effort) request.reasoning = { effort }
 
-  if (args.settings.webSearch && !overrides.noWebSearch) {
-    request.tools = [{ type: 'openrouter:web_search' } as never]
+  const tools: ChatFunctionTool[] = []
+  if (args.settings.mcpEnabled && args.mcpTools && args.mcpTools.length > 0) {
+    tools.push(...args.mcpTools.map(toFunctionTool))
   }
+  if (args.settings.webSearch && !overrides.noWebSearch) {
+    tools.push(webSearchTool)
+  }
+  if (tools.length > 0) request.tools = tools
   return request
 }

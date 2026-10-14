@@ -1,5 +1,7 @@
-import { ThemeSwitch } from '../layout/ThemeSwitch'
+import { ui } from '../../app/ui'
+import { Button } from '../../ui'
 import { KeyChip } from '../keychip/KeyChip'
+import { ThemeSwitch } from '../layout/ThemeSwitch'
 import type { ChatSlotProps } from '../slots'
 import { ChatHeaderChips } from './ChatHeaderChips'
 import { ChatMenu } from './ChatMenu'
@@ -50,10 +52,23 @@ export const ChatHeader = ({ chat }: ChatSlotProps) => (
         min-width: 0;
         max-width: 100%;
         margin-inline-start: auto;
+
+        @media (min-width: 761px) {
+          flex-wrap: nowrap;
+        }
       `}
     >
       <ChatHeaderChips chat={chat} />
       <KeyChip />
+      <Button
+        data-slot="AppSettingsOpen"
+        aria-label="Settings"
+        icon="settings"
+        size="sm"
+        on:click={() => ui.appSettings.set('mcp')}
+      >
+        Settings
+      </Button>
       <ChatMenu />
       <ThemeSwitch />
     </div>

@@ -25,6 +25,11 @@ export interface PrivacySettings {
   denyDataCollection: boolean
   zdr: boolean
 }
+export interface McpServerPref {
+  id: string
+  url: string
+  name?: string
+}
 export type RoutingSettings =
   | { mode: 'auto'; allowFallbacks: boolean }
   | { mode: 'order' | 'only'; providers: string[]; allowFallbacks: boolean }
@@ -34,6 +39,7 @@ export interface ChatSettings {
   privacyOverride: PrivacySettings | null // null = "Using global privacy"
   routing: RoutingSettings // default { mode: 'auto', allowFallbacks: true }
   webSearch: boolean // default false
+  mcpEnabled?: boolean // default false
 }
 export type ChatMetaField =
   | 'title'
@@ -99,6 +105,19 @@ export type AssistantStatus =
   | 'error'
   | 'cut-off'
   | 'refused'
+export type ToolCallStatus =
+  | 'waiting'
+  | 'calling'
+  | 'completed'
+  | 'denied'
+  | 'error'
+export interface ToolCallRecord {
+  id: string
+  name: string
+  arguments: string
+  status: ToolCallStatus
+  result?: string
+}
 interface MessageBase {
   id: MessageId
   chatId: ChatId
@@ -140,6 +159,7 @@ export interface AssistantMessage extends MessageBase {
   citations: Citation[]
   ownerTab: TabId
   compareGroup: string | null // F-25
+  toolCalls?: ToolCallRecord[]
 }
 export type MessageRecord = UserMessage | AssistantMessage
 export interface DraftRecord {

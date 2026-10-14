@@ -36,11 +36,13 @@ import type { TabId } from '../platform'
 import * as platform from '../platform'
 import * as routes from '../routes'
 import type {
+  AssistantMessage,
   AttachmentBlob,
   ChatId,
   ChatRecord,
   ChatSettings,
   DbHealth,
+  McpServerPref,
   MessageId,
   MessageRecord,
   PresetId,
@@ -129,6 +131,8 @@ export type StorageContract = Contract<
     Is<typeof prefs.webSearchNoticeSeen, Atom<boolean>>,
     Is<typeof prefs.unlimitedAckHashes, Atom<string[]>>,
     Is<typeof prefs.persistDenied, Atom<boolean>>,
+    Is<typeof prefs.mcpServers, Atom<McpServerPref[]>>,
+    Is<typeof prefs.rewriteMcpLoopbackUrl, (url: string) => string>,
   ]
 >
 
@@ -370,6 +374,10 @@ export type DataContract = Contract<
 export type AppContract = Contract<
   [
     Is<
+      AppSettingsSection,
+      'account' | 'appearance' | 'data' | 'privacy' | 'keyboard' | 'mcp'
+    >,
+    Is<
       typeof app.ui,
       {
         appSettings: Atom<AppSettingsSection | null>
@@ -411,6 +419,7 @@ export type AppContract = Contract<
         escape: Action<[]>
         editLastUserMessage: Action<[]>
         openShortcuts: Action<[]>
+        openSettings: Action<[]>
       }
     >,
     Is<typeof routes.activeChatId, Computed<ChatId | 'new'>>,
@@ -435,5 +444,27 @@ export type SharedTypeContract = Contract<
       { type: 'message-deleted'; chatId: ChatId; messageId: MessageId }
     >,
     Is<NodeSlotProps['node'], Computed<ThreadNode>>,
+    Is<ChatSettings['mcpEnabled'], boolean | undefined>,
+    Is<WireMessage['role'], 'system' | 'user' | 'assistant' | 'tool'>,
+    Is<
+      Extract<StreamEvent, { kind: 'tool_calls' }>,
+      {
+        kind: 'tool_calls'
+        calls: Array<{
+          id: string
+          name: string
+          arguments: string
+        }>
+      }
+    >,
+    Is<
+      NonNullable<AssistantMessage['toolCalls']>[number],
+      {
+        id: string
+        name: string
+        arguments: string
+        status: 'waiting' | 'calling' | 'completed' | 'denied' | 'error'
+      }
+    >,
   ]
 >
