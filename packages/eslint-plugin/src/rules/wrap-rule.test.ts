@@ -1,5 +1,10 @@
-import { wrapRule } from './wrap-rule'
+import { createRequire } from 'node:module'
+
 import { RuleTester } from '@typescript-eslint/rule-tester'
+
+import { wrapRule } from './wrap-rule'
+
+const require = createRequire(import.meta.url)
 
 RuleTester.afterAll = (fn: () => void) => fn()
 RuleTester.describe = (name: string, fn: () => void) => fn()

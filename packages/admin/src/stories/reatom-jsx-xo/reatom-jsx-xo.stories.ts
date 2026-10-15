@@ -1,5 +1,4 @@
 import type { Meta, StoryObj } from '@storybook/html'
-import { mswLoader } from 'msw-storybook-addon'
 import { expect, waitFor } from 'storybook/test'
 
 import { button, createActor, heading, role } from '../../../.storybook/helpers'
@@ -52,7 +51,6 @@ const meta = {
   parameters: {
     layout: 'fullscreen',
   },
-  loaders: [mswLoader],
   beforeEach: (ctx) => void I.init(ctx),
 } satisfies Meta
 
@@ -142,6 +140,7 @@ export const WinningDebuggingJourney: Story = {
     })
 
     await searchAdminLogs('')
+    await navigateAdminRoute('State')
 
     await waitFor(() => {
       const adminText = getAdminText()
@@ -190,7 +189,6 @@ export const TimelineAfterWinningGame: Story = {
 
 export const GithubStarsFetchFailure: Story = {
   name: 'GitHub stars fetch failure',
-  loaders: [mswLoader],
   parameters: {
     msw: {
       handlers: {

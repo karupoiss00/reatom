@@ -10,23 +10,23 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@openrouter/sdk": "1.4.22",
+    "@openrouter/sdk": "1.4.25",
     "@reatom/core": "1001.*.*",
     "@reatom/jsx": "1001.*.*",
-    "dompurify": "^3.4.16",
-    "idb": "^8.0.3",
+    "dompurify": "^3.4.17",
+    "idb": "^8.0.4",
     "katex": "^0.19.0",
-    "marked": "^18.1.0"
+    "marked": "^18.1.1"
   },
   "devDependencies": {
-    "@vitest/browser": "^4.1.7",
-    "@vitest/browser-playwright": "^4.1.7",
+    "@vitest/browser": "^5.0.4",
+    "@vitest/browser-playwright": "^5.0.4",
     "axe-core": "^4.14.0",
-    "kahraman": "0.3.1",
-    "playwright": "^1.60.0",
-    "storybook": "10.4.6",
+    "kahraman": "0.4.0",
+    "playwright": "^1.64.1",
+    "storybook": "10.6.2",
     "typescript": "^7.0.2",
-    "vite": "^8.0.14",
-    "vitest": "^4.1.7"
+    "vite": "^8.3.4",
+    "vitest": "^5.0.4"
   }
 }

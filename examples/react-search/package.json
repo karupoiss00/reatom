@@ -6,23 +6,27 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run"
   },
   "dependencies": {
-    "@mantine/core": "^7.17.4",
-    "@mantine/hooks": "^7.17.4",
+    "@mantine/core": "^9.7.2",
+    "@mantine/hooks": "^9.7.2",
     "@reatom/core": "1001.*.*",
+    "@reatom/opentelemetry": "workspace:*",
     "@reatom/react": "1001.*.*",
-    "@tabler/icons-react": "^3.31.0",
-    "react": "^19.2.6",
-    "react-dom": "^19.2.6",
-    "zod": "^4.4.3"
+    "@tabler/icons-react": "^3.49.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@types/react": "^19.2.15",
-    "@types/react-dom": "^19.2.0",
-    "@vitejs/plugin-react": "^6.0.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "@vitest/browser-playwright": "catalog:",
     "typescript": "^7.0.2",
-    "vite": "^8.0.14"
+    "vite": "^8.3.4",
+    "vitest": "catalog:"
   }
 }

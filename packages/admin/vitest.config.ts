@@ -6,6 +6,10 @@ import { playwright } from '@vitest/browser-playwright'
 import { defineConfig } from 'vitest/config'
 
 const dir = dirname(fileURLToPath(import.meta.url))
+const storybookIncludeTags = process.env['STORYBOOK_INCLUDE_TAGS']
+  ?.split(',')
+  .map((tag) => tag.trim())
+  .filter(Boolean)
 
 export default defineConfig({
   plugins: [
@@ -67,6 +71,9 @@ export default defineConfig({
           storybookTest({
             configDir: resolve(dir, '.storybook'),
             storybookScript: 'pnpm storybook --no-open',
+            ...(storybookIncludeTags?.length
+              ? { tags: { include: storybookIncludeTags } }
+              : {}),
           }),
         ],
         test: {

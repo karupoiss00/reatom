@@ -34,7 +34,7 @@
     "deps": {
       "neverBundle": [
         "magic-string",
-        "typescript"
+        "@typescript/typescript6"
       ]
     }
   },
@@ -48,8 +48,8 @@
     }
   },
   "dependencies": {
-    "magic-string": "^0.30.21",
-    "typescript": "catalog:"
+    "@typescript/typescript6": "^6.0.2",
+    "magic-string": "^1.4.3"
   },
   "devDependencies": {
     "@reatom/core": "workspace:^",

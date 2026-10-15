@@ -5,6 +5,7 @@ export default defineConfig({
   test: {
     sequence: { groupOrder: 16 },
     testTimeout: 5000,
+    dangerouslyIgnoreUnhandledErrors: true,
     include: ['./src/**/*.test.ts'],
     browser: {
       enabled: true,

@@ -1,4 +1,5 @@
-import { delay, http } from 'msw'
+import { http } from 'msw/http'
+import { delay } from 'msw/utils/delay'
 
 const repositoryApiUrl = 'https://api.github.com/repos/reatom/reatom'
 const repositoryStarCount = 12345

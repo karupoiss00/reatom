@@ -60,9 +60,11 @@
   "devDependencies": {
     "@eslint/js": "catalog:",
     "@types/eslint": "catalog:",
+    "@typescript-eslint/parser": "catalog:",
     "@typescript-eslint/rule-tester": "catalog:",
     "eslint": "catalog:",
     "tsdown": "catalog:",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
     "typescript-eslint": "catalog:"
   }
 }

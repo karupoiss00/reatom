@@ -11,6 +11,7 @@ const installDocument = (
   visibilityState: DocumentVisibilityState = 'visible',
 ): MockDocument => {
   const page = Object.assign(new EventTarget(), { visibilityState })
+  vi.stubGlobal('window', globalThis)
   vi.stubGlobal('document', page)
   return page
 }

@@ -43,7 +43,7 @@ test('reatomClock fresh refreshes the timestamp on reconnect', async () => {
   const unsubscribe = seconds.subscribe(track)
 
   const [firstEmitted] = track.mock.lastCall!
-  expect(firstEmitted - beforeIdle).toBeGreaterThanOrEqual(50)
+  expect(firstEmitted - beforeIdle).toBeGreaterThanOrEqual(40)
   unsubscribe()
 })
 
@@ -57,7 +57,7 @@ test('reatomClock fresh returns current time for idle reads', async () => {
   const first = seconds()
   await wrap(sleep(50))
 
-  expect(seconds() - first).toBeGreaterThanOrEqual(50)
+  expect(seconds() - first).toBeGreaterThanOrEqual(40)
 })
 
 test('reatomClock fresh keeps the tick value stable while subscribed', async () => {

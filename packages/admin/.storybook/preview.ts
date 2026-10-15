@@ -1,8 +1,10 @@
 /// <reference path="../src/global.d.ts" />
-import { urlAtom } from '@reatom/core'
+import { noop, urlAtom } from '@reatom/core'
 import kahramanPreview, { type KahramanParameters } from 'kahraman/preview'
-import { initialize, mswLoader } from 'msw-storybook-addon'
+import { setupWorker } from 'msw/browser'
+import { mswLoader } from 'msw-storybook-addon/csf3'
 
+import { ADMIN_FRAME } from '../src/root'
 import { reatomJsxXoHandlers } from '../src/stories/reatom-jsx-xo/mocks/handlers'
 import {
   clearAdminStorage,
@@ -16,36 +18,41 @@ type ViewportGlobal = { value?: string } | string | undefined
 type PreviewGlobals = Record<string, ViewportGlobal>
 type PreviewContext = {
   globals: PreviewGlobals
-  parameters?: KahramanParameters
+  parameters?: KahramanParameters & Record<string, unknown>
 }
 
-initialize(
-  {
-    onUnhandledRequest: 'bypass',
+async function startMswWorker() {
+  const worker = setupWorker()
+  await worker.start({
+    onUnhandledFrame: 'bypass',
     quiet: true,
     serviceWorker: {
       url: `${import.meta.env['BASE_URL']}mockServiceWorker.js`,
     },
-  },
-  [reatomJsxXoHandlers.githubStars],
-)
+  })
+  return worker
+}
+
+function isolateUrlAtomFromCanvasHistory() {
+  urlAtom.sync.set(() => noop)
+  urlAtom.catchLinks.set(false)
+}
 
 const preview = {
   parameters: {
-    a11y: { test: 'off' },
+    a11y: { test: 'todo' },
     msw: {
       handlers: reatomJsxXoHandlers,
     },
   },
-  loaders: [mswLoader],
+  loaders: [mswLoader(startMswWorker)],
   async beforeEach(context: PreviewContext) {
     kahramanPreview.beforeEach(context)
     const { globals } = context
 
     urlAtom.routes = {}
-    if (typeof window !== 'undefined' && window.location.pathname !== '/') {
-      window.history.replaceState({}, '', '/')
-    }
+    isolateUrlAtomFromCanvasHistory()
+    ADMIN_FRAME.run(isolateUrlAtomFromCanvasHistory)
     clearAdminStorage()
 
     if (import.meta.env['VITEST']) {
