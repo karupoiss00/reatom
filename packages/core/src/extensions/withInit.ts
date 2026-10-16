@@ -100,11 +100,11 @@ export let withInit = <Target extends AtomLike>(
  * @returns {Ext<Target>} An extension that can be applied to an atom
  */
 export let withInitHook = <Target extends AtomLike>(
-  hook: (initState: AtomState<Target>) => any,
+  hook: (initState: AtomState<Target>, target: Target) => any,
   queue: QueueKind = 'hook',
 ): Ext<Target> =>
   withInit((state) => {
     let frame = top()
-    _enqueue(() => frame.run(hook, frame.state), queue)
+    _enqueue(() => frame.run(hook, frame.state, frame.atom as Target), queue)
     return state
   })
