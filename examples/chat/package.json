@@ -11,8 +11,10 @@
   },
   "dependencies": {
     "@openrouter/sdk": "1.4.25",
+    "@reatom/admin": "workspace:*",
     "@reatom/core": "1001.*.*",
     "@reatom/jsx": "1001.*.*",
+    "@reatom/opentelemetry": "workspace:*",
     "dompurify": "^3.4.17",
     "idb": "^8.0.4",
     "katex": "^0.19.0",

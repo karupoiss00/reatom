@@ -47,7 +47,7 @@ export const issuesResource = computed(async () => {
 
   await wrap(sleep(250))
 
-  return searchIssues(filters)
+  return await wrap(searchIssues(filters))
 }, 'issuesResource').extend(withAsyncData())
 
 export const isIssuesLoading = computed(

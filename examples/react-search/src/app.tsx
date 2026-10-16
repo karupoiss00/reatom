@@ -1,5 +1,6 @@
 import { MantineProvider, ColorSchemeScript } from '@mantine/core'
 import { MainAppShell } from './components/layout/AppShell'
+import { ConsentBanner } from './components/layout/ConsentBanner'
 import { SearchPage } from './components/search'
 import IssuePage from './components/issue/IssuePage'
 import { currentPageAtom } from './navigation/model'
@@ -15,6 +16,7 @@ export const App = reatomComponent(() => {
           {currentPage === 'search' && <SearchPage />}
           {currentPage === 'issueDetail' && <IssuePage />}
         </MainAppShell>
+        <ConsentBanner />
       </MantineProvider>
     </>
   )

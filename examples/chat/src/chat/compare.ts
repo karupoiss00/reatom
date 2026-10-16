@@ -32,14 +32,24 @@ import type {
 } from '../storage/types'
 import { acquireStreamLock } from '../sync'
 import { ui } from '../app/ui'
-import { activeChat, chatModelInternals, getChatModel, sendBlockContributors } from './chatModel'
+import {
+  activeChat,
+  chatModelInternals,
+  getChatModel,
+  sendBlockContributors,
+} from './chatModel'
 import { assembleContext, contextCharacterCount } from './context'
 import { createChat, patchChat } from './library'
 import { streamItemToEvents } from './parse'
 import { buildChatRequest } from './request'
 import { chatTitle } from './title'
 import { ancestorChain, selectionKeyOf } from './tree'
-import type { ChatModel, SendBlockContributor, SendInput, StreamEvent } from './types'
+import type {
+  ChatModel,
+  SendBlockContributor,
+  SendInput,
+  StreamEvent,
+} from './types'
 
 const holdDraft = '\u200b'
 const compareEstimateKey = 'compare-requests'
@@ -267,7 +277,9 @@ const classifyContext = (input: {
       ? { id: fallbackId, name: modelName(fallbackId) }
       : null,
     longerContextModels: [...byId.values()]
-      .filter((candidate) => candidate.contextLength > (model?.contextLength ?? 0))
+      .filter(
+        (candidate) => candidate.contextLength > (model?.contextLength ?? 0),
+      )
       .sort((left, right) => right.contextLength - left.contextLength)
       .slice(0, 3)
       .map((candidate) => ({
@@ -399,7 +411,8 @@ const consumeLane = async (input: {
       let next = message
       switch (event.kind) {
         case 'id':
-          if (next.generationId === null) next = { ...next, generationId: event.id }
+          if (next.generationId === null)
+            next = { ...next, generationId: event.id }
           break
         case 'provider':
           next = { ...next, provider: event.name }
@@ -432,7 +445,8 @@ const consumeLane = async (input: {
         default:
           break
       }
-      if (next !== message) commit(raiseEstimate(next, input.model, input.inputTokens))
+      if (next !== message)
+        commit(raiseEstimate(next, input.model, input.inputTokens))
     }
   }
 
@@ -563,17 +577,6 @@ const modelIdFromPickerClick = (target: Element) => {
   return row?.getAttribute('data-model-id') ?? null
 }
 
-const sendArmedCompare = () => {
-  const session = compareSession()
-  const chat = activeChat()
-  if (!session || session.phase !== 'armed' || session.chatId !== chat.id) return
-  if (ui.picker() !== null || chat.sendBlock()) return
-  const text = chat.draft.text()
-  const attachments = chat.draft.attachments()
-  if (text.trim().length === 0 && attachments.length === 0) return
-  void compareSend(chat.id, { text, attachments: [...attachments] }, session.models)
-}
-
 let contributorBound = false
 
 export const bindCompareChrome = () => {
@@ -593,16 +596,12 @@ export const bindCompareChrome = () => {
       event.stopPropagation()
       return
     }
-    if (!target.closest('[data-slot="Composer"] [data-send]')) return
-    const session = compareSession()
-    if (!session || session.phase !== 'armed') return
-    event.preventDefault()
-    event.stopPropagation()
-    sendArmedCompare()
   })
   const onKeyDown = wrap((event: KeyboardEvent) => {
     if (event.key === 'Enter' && ui.picker()?.purpose === 'compare') {
-      const active = document.querySelector('[data-model-id][data-active="true"]')
+      const active = document.querySelector(
+        '[data-model-id][data-active="true"]',
+      )
       const modelId = active?.getAttribute('data-model-id')
       if (modelId) {
         chooseCompareModel(modelId)
@@ -612,17 +611,6 @@ export const bindCompareChrome = () => {
       event.stopPropagation()
       return
     }
-    if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return
-    if (event.altKey || event.metaKey || event.ctrlKey) return
-    if (ui.picker() !== null) return
-    const target = event.target
-    if (!(target instanceof HTMLTextAreaElement)) return
-    if (!target.closest('[data-slot="Composer"]')) return
-    const session = compareSession()
-    if (!session || session.phase !== 'armed') return
-    event.preventDefault()
-    event.stopPropagation()
-    sendArmedCompare()
   })
   window.addEventListener('click', onClick, true)
   window.addEventListener('keydown', onKeyDown, true)
@@ -640,8 +628,10 @@ export const compareSend = action(
   ): Promise<void> => {
     requestPersistOnce()
     const session = compareSession()
-    if (!session || session.phase !== 'armed' || session.chatId !== chatId) return
-    if (session.models[0] !== models[0] || session.models[1] !== models[1]) return
+    if (!session || session.phase !== 'armed' || session.chatId !== chatId)
+      return
+    if (session.models[0] !== models[0] || session.models[1] !== models[1])
+      return
     if (models[0] === models[1]) return
     const text = input.text
     const attachments = input.attachments.map((item) => ({ ...item }))
@@ -778,7 +768,9 @@ export const compareSend = action(
           settings,
           globalPrivacy: privacy,
         })
-        const iterator = streamChat(request, { signal: control.controller.signal })
+        const iterator = streamChat(request, {
+          signal: control.controller.signal,
+        })
         const started = iterator.next()
         const task = consumeLane({
           chat,

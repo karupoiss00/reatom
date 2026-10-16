@@ -1,5 +1,7 @@
 import { Group, Title, ActionIcon, useMantineColorScheme, Burger } from '@mantine/core';
 import { IconSun, IconMoon, IconBrandGithub } from '@tabler/icons-react';
+import { GitHubAuthPanel } from './GitHubAuthPanel';
+import { TelemetryRecordsHint } from './TelemetryRecordsHint';
 
 interface AppHeaderProps {
   opened: boolean;
@@ -18,6 +20,8 @@ export function AppHeader({ opened, toggle }: AppHeaderProps) {
       </Group>
       
       <Group>
+        {import.meta.env.DEV && <TelemetryRecordsHint />}
+        <GitHubAuthPanel />
         <ActionIcon
           variant="default"
           onClick={() => toggleColorScheme()}

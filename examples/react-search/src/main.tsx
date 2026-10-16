@@ -1,5 +1,6 @@
 import '@mantine/core/styles.css'
-import './debug' // import before the app!
+import './setup'
+import './debug'
 
 import ReactDOM from 'react-dom/client'
 

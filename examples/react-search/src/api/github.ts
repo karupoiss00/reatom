@@ -1,10 +1,67 @@
+import { abortVar, action, atom, wrap } from '@reatom/core'
+
+import { otel } from '../setup'
 import { SearchFilters, IssuesResponse, Label } from './types'
 
-export const searchIssues = async (
-  filters: SearchFilters,
-  signal?: AbortSignal,
-): Promise<IssuesResponse> => {
-  // Build query string
+export const githubAuth = atom({ token: '' }, 'github.auth')
+
+const githubAcceptHeaders = (token: string) => {
+  const headers: Record<string, string> = {
+    Accept: 'application/vnd.github.v3+json',
+  }
+  if (token) headers.Authorization = `Bearer ${token}`
+  return headers
+}
+
+const originOf = (value: string | undefined) => {
+  if (!value) return
+  try {
+    return new URL(value).origin
+  } catch {
+    return
+  }
+}
+
+const isTraceparentOrigin = (url: string) => {
+  const requestOrigin = originOf(url)
+  if (!requestOrigin) return false
+  const allowed = new Set<string>()
+  const collectorOrigin = originOf(import.meta.env.VITE_OTEL_ENDPOINT)
+  if (collectorOrigin) allowed.add(collectorOrigin)
+  if (typeof location !== 'undefined') allowed.add(location.origin)
+  return allowed.has(requestOrigin)
+}
+
+const headersFor = (url: string, token: string) => {
+  const headers = githubAcceptHeaders(token)
+  if (!isTraceparentOrigin(url)) return headers
+  const traceparent = otel.traceparent()
+  return traceparent ? { ...headers, traceparent } : headers
+}
+
+const fetchGithub = async (url: string, token: string, signal?: AbortSignal) => {
+  return await wrap(fetch(url, { signal, headers: headersFor(url, token) }))
+}
+
+const enhanceIssue = (issue: {
+  repository_url: string
+  [key: string]: unknown
+}) => {
+  const repoUrlParts = issue.repository_url.split('/')
+  const repoOwner = repoUrlParts[repoUrlParts.length - 2]
+  const repoName = repoUrlParts[repoUrlParts.length - 1]
+
+  return {
+    ...issue,
+    repository: {
+      name: repoName,
+      full_name: `${repoOwner}/${repoName}`,
+      html_url: `https://github.com/${repoOwner}/${repoName}`,
+    },
+  }
+}
+
+export const searchIssues = action(async (filters: SearchFilters) => {
   let q = filters.query
 
   if (filters.state) {
@@ -33,7 +90,6 @@ export const searchIssues = async (
     q += ` mentions:${filters.mentions}`
   }
 
-  // Build URL with query parameters
   const params = new URLSearchParams({
     q,
     page: filters.page.toString(),
@@ -49,45 +105,24 @@ export const searchIssues = async (
   }
 
   const url = `https://api.github.com/search/issues?${params.toString()}`
-
-  // Fetch data
-  const response = await fetch(url, {
-    signal,
-    headers: {
-      Accept: 'application/vnd.github.v3+json',
-    },
-  })
+  const { token } = githubAuth()
+  const response = await fetchGithub(url, token, abortVar.get()?.signal)
 
   if (!response.ok) {
     const error = new Error(`HTTP Error: ${response.statusText}`)
-    const meta = await response.json().catch(() => ({}))
+    const meta = await wrap(response.json().catch(() => ({})))
     throw Object.assign(error, meta)
   }
 
-  const data = await response.json()
-
-  // Enhance issues with repository information
-  const enhancedItems = data.items.map((issue: any) => {
-    // Extract repo info from repository_url
-    const repoUrlParts = issue.repository_url.split('/')
-    const repoOwner = repoUrlParts[repoUrlParts.length - 2]
-    const repoName = repoUrlParts[repoUrlParts.length - 1]
-
-    return {
-      ...issue,
-      repository: {
-        name: repoName,
-        full_name: `${repoOwner}/${repoName}`,
-        html_url: `https://github.com/${repoOwner}/${repoName}`,
-      },
-    }
-  })
+  const data = (await wrap(response.json())) as IssuesResponse & {
+    items: Array<{ repository_url: string; [key: string]: unknown }>
+  }
 
   return {
     ...data,
-    items: enhancedItems,
-  }
-}
+    items: data.items.map(enhanceIssue),
+  } as IssuesResponse
+}, 'github.searchIssues').extend(otel.withOTel({ kind: 'client' }))
 
 export const mockLabels: Label[] = [
   {
@@ -100,7 +135,7 @@ export const mockLabels: Label[] = [
     id: 2,
     name: 'enhancement',
     color: 'a2eeef',
-    description: 'New feature or request',
+    description: 'A new feature or request',
   },
   {
     id: 3,
@@ -122,9 +157,7 @@ export const mockLabels: Label[] = [
   },
 ]
 
-// Additional API functions for fetching labels, languages, etc.
 export const fetchLabels = async (): Promise<Label[]> => {
-  // This could be a curated list or fetched from GitHub API
   return mockLabels
 }
 
@@ -142,6 +175,5 @@ export const mockLanguages: string[] = [
 ]
 
 export const fetchPopularLanguages = async (): Promise<string[]> => {
-  // This could be a curated list or fetched from GitHub API
   return mockLanguages
 }

@@ -1,4 +1,3 @@
-import React, { useEffect } from 'react'
 import { reatomComponent } from '@reatom/react'
 import { navigation } from '../../navigation/model'
 import {

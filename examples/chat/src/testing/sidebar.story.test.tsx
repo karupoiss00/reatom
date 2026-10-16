@@ -1,12 +1,6 @@
-import { addCallHook, context } from '@reatom/core'
+import { addCallHook, context, isAbort } from '@reatom/core'
 import { mount } from '@reatom/jsx'
-import {
-  button,
-  createActor,
-  role,
-  text,
-  type UserEvent,
-} from 'kahraman'
+import { button, createActor, role, text, type UserEvent } from 'kahraman'
 import { userEvent } from 'storybook/test'
 import { afterEach, expect, test } from 'vitest'
 import { page } from 'vitest/browser'
@@ -130,7 +124,9 @@ const remount = async () => {
   document.body.replaceChildren(root)
   extraUnmount = mount(root, <App />).unmount
   await boot()
-  await expect.poll(() => document.querySelector('[data-slot="Sidebar"]')).toBeTruthy()
+  await expect
+    .poll(() => document.querySelector('[data-slot="Sidebar"]'))
+    .toBeTruthy()
   I.init({ canvasElement: document.body, userEvent: keyboard })
 }
 
@@ -171,7 +167,9 @@ test('Lena groups, renames, pins, and deletes chats from the sidebar', async () 
 
   await I.see(chats().options({ timeout: 10_000 }).wait())
   await I.see(role('status', 'Loading chats').within(chats()))
-  expect(document.querySelectorAll('[data-slot="Sidebar"] [data-skeleton]').length).toBeGreaterThan(3)
+  expect(
+    document.querySelectorAll('[data-slot="Sidebar"] [data-skeleton]').length,
+  ).toBeGreaterThan(3)
   expect(document.body.textContent ?? '').not.toContain('No chats yet')
   await settle()
   await shoot('loading')
@@ -183,7 +181,9 @@ test('Lena groups, renames, pins, and deletes chats from the sidebar', async () 
   repo.listChats = originalListChats
 
   await I.see(text('No chats yet').within(chats()))
-  expect(document.querySelector('[data-slot="Sidebar"] [data-skeleton]')).toBeNull()
+  expect(
+    document.querySelector('[data-slot="Sidebar"] [data-skeleton]'),
+  ).toBeNull()
   const beforeNew = library.chats().length
   await I.click(button('New chat').within(chats()))
   await I.click(button('New chat').within(chats()))
@@ -343,17 +343,23 @@ test('Lena groups, renames, pins, and deletes chats from the sidebar', async () 
   await keyboard.keyboard('{Enter}')
   await I.see(exactButton('Morning glaze'))
 
-  await I.click(role('menuitem', 'Rename').within(await openActions('Morning glaze')))
+  await I.click(
+    role('menuitem', 'Rename').within(await openActions('Morning glaze')),
+  )
   await I.see(role('textbox', 'Chat title').wait())
   await keyboard.clear(titleField()!)
   await keyboard.keyboard('Dawn glaze')
   await settle()
   await shoot('renaming')
   await keyboard.keyboard('{Enter}')
-  await expect.poll(async () => (await repo.getChat('morning'))?.title).toBe('Dawn glaze')
+  await expect
+    .poll(async () => (await repo.getChat('morning'))?.title)
+    .toBe('Dawn glaze')
   await I.see(exactButton('Dawn glaze').wait())
 
-  await I.click(role('menuitem', 'Pin').within(await openActions('Night firing')))
+  await I.click(
+    role('menuitem', 'Pin').within(await openActions('Night firing')),
+  )
   await I.see(text('Night firing').within(group('Pinned')).wait())
   await expect
     .poll(async () => (await repo.getChat('night'))?.pinnedAt ?? null)
@@ -399,7 +405,10 @@ test('Lena groups, renames, pins, and deletes chats from the sidebar', async () 
       },
     ],
   })
-  const pendingSend = send('new', { text: 'Keep this partial', attachments: [] })
+  const pendingSend = send('new', {
+    text: 'Keep this partial',
+    attachments: [],
+  })
   await I.see(exactButton('Keep this partial').wait())
   await I.see(text('Partial').wait())
   await I.see(role('img', 'Generating').within(row('Keep this partial')))
@@ -407,24 +416,38 @@ test('Lena groups, renames, pins, and deletes chats from the sidebar', async () 
   await settle()
   await shoot('generating')
 
-  await I.click(role('menuitem', 'Delete').within(await openActions('Keep this partial')))
+  await I.click(
+    role('menuitem', 'Delete').within(await openActions('Keep this partial')),
+  )
   expect(activeChatId()).toBe('new')
-  await pendingSend
+  await pendingSend.catch((error: unknown) => {
+    if (!isAbort(error)) throw error
+  })
   await I.see(button('Undo').wait())
   expect(deletedToast()).toContain('Chat deleted · Undo')
-  expect(document.querySelectorAll('[data-toast-key="chat-deleted"]')).toHaveLength(1)
-  expect(library.chats().some((chat) => chat.title === 'Keep this partial')).toBe(false)
-  await expect.poll(async () => {
-    const stored = (await repo.listChats()).find((chat) => chat.title === 'Keep this partial')
-    const assistant = stored
-      ? (await repo.listMessages(stored.id)).find((message) => message.role === 'assistant')
-      : undefined
-    return Boolean(
-      stored?.deletedAt != null &&
+  expect(
+    document.querySelectorAll('[data-toast-key="chat-deleted"]'),
+  ).toHaveLength(1)
+  expect(
+    library.chats().some((chat) => chat.title === 'Keep this partial'),
+  ).toBe(false)
+  await expect
+    .poll(async () => {
+      const stored = (await repo.listChats()).find(
+        (chat) => chat.title === 'Keep this partial',
+      )
+      const assistant = stored
+        ? (await repo.listMessages(stored.id)).find(
+            (message) => message.role === 'assistant',
+          )
+        : undefined
+      return Boolean(
+        stored?.deletedAt != null &&
         assistant?.content === 'Partial' &&
         assistant.status === 'stopped',
-    )
-  }).toBe(true)
+      )
+    })
+    .toBe(true)
   await settle()
   await shoot('deleting')
   await I.click(button('Undo'))
@@ -432,14 +455,22 @@ test('Lena groups, renames, pins, and deletes chats from the sidebar', async () 
   await I.click(exactButton('Keep this partial'))
   await I.see(text('Partial').wait())
 
-  await I.click(role('menuitem', 'Delete').within(await openActions('Shelf layout')))
+  await I.click(
+    role('menuitem', 'Delete').within(await openActions('Shelf layout')),
+  )
   await I.see(button('Undo'))
   expect(deletedToast()).toContain('Chat deleted · Undo')
   await new Promise((resolve) => setTimeout(resolve, 6_500))
-  await I.click(role('menuitem', 'Delete').within(await openActions('Clay order')))
-  await I.click(role('menuitem', 'Delete').within(await openActions('September kiln')))
+  await I.click(
+    role('menuitem', 'Delete').within(await openActions('Clay order')),
+  )
+  await I.click(
+    role('menuitem', 'Delete').within(await openActions('September kiln')),
+  )
   expect(deletedToast()).toContain('3 chats deleted · Undo')
-  expect(document.querySelectorAll('[data-toast-key="chat-deleted"]')).toHaveLength(1)
+  expect(
+    document.querySelectorAll('[data-toast-key="chat-deleted"]'),
+  ).toHaveLength(1)
   await new Promise((resolve) => setTimeout(resolve, 2_000))
   expect(deletedToast()).toContain('3 chats deleted · Undo')
   await I.click(button('Undo'))
@@ -459,7 +490,9 @@ test('Lena groups, renames, pins, and deletes chats from the sidebar', async () 
     (await repo.listMessages('shelf')).map((message) => message.content).sort(),
   ).toEqual(['Remember this glaze', 'Version one', 'Version two'].sort())
 
-  await I.click(role('menuitem', 'Delete').within(await openActions('Shelf layout')))
+  await I.click(
+    role('menuitem', 'Delete').within(await openActions('Shelf layout')),
+  )
   await expect
     .poll(async () => (await repo.getChat('shelf'))?.deletedAt ?? null)
     .not.toBeNull()
@@ -470,13 +503,19 @@ test('Lena groups, renames, pins, and deletes chats from the sidebar', async () 
   expect(await repo.getChat('shelf')).toBeUndefined()
   expect(await repo.listMessages('shelf')).toEqual([])
 
-  await I.click(role('menuitem', 'Delete').within(await openActions('Clay order')))
+  await I.click(
+    role('menuitem', 'Delete').within(await openActions('Clay order')),
+  )
   expect(deletedToast()).toContain('Chat deleted · Undo')
-  await expect.poll(async () => repo.getChat('clay'), { timeout: 12_000 }).toBeUndefined()
+  await expect
+    .poll(async () => repo.getChat('clay'), { timeout: 12_000 })
+    .toBeUndefined()
   expect(await repo.listMessages('clay')).toEqual([])
   await I.dontSee(exactButton('Clay order'))
 
-  await I.click(role('menuitem', 'Export').within(await openActions('Kiln notes')))
+  await I.click(
+    role('menuitem', 'Export').within(await openActions('Kiln notes')),
+  )
   expect(exported).toEqual(['kiln'])
 
   forgetKey()

@@ -4,6 +4,7 @@ import {
   addCallHook,
   computed,
   isAbort,
+  throwAbort,
   withAbort,
   withAsync,
   wrap,
@@ -17,11 +18,7 @@ import { catalogById } from '../catalog/catalog'
 import { curatedDefaults, modelName } from '../catalog/resolveModel'
 import type { CatalogModel } from '../catalog/types'
 import { timings } from '../app/timings'
-import {
-  classifyFailure,
-  fromSdkError,
-  fromStreamErrorChunk,
-} from '../errors'
+import { classifyFailure, fromSdkError, fromStreamErrorChunk } from '../errors'
 import {
   acquireMcpCall,
   isMcpWriteTool,
@@ -158,7 +155,9 @@ const unresolvedToolCalls = (message: AssistantMessage) =>
     (call) => call.status === 'waiting' || call.status === 'calling',
   )
 
-const connectedMcpTools = (settings: ChatSettings): McpToolSchema[] | undefined => {
+const connectedMcpTools = (
+  settings: ChatSettings,
+): McpToolSchema[] | undefined => {
   if (!settings.mcpEnabled || !mcpReady()) return undefined
   const tools = mcpTools()
   if (tools.length === 0) return undefined
@@ -344,7 +343,9 @@ const longerContextModels = (
   byId: Map<string, CatalogModel>,
 ) =>
   [...byId.values()]
-    .filter((candidate) => candidate.contextLength > (model?.contextLength ?? 0))
+    .filter(
+      (candidate) => candidate.contextLength > (model?.contextLength ?? 0),
+    )
     .sort((a, b) => b.contextLength - a.contextLength)
     .slice(0, 3)
     .map((candidate) => ({
@@ -606,7 +607,10 @@ const planTurn = (
           ...createChatRecord({
             id: chatId,
             at,
-            title: chatTitle(user.content) || user.attachments[0]?.name || 'New chat',
+            title:
+              chatTitle(user.content) ||
+              user.attachments[0]?.name ||
+              'New chat',
             model: chatRecordModel,
             presetId: getChatModel('new').presetId(),
             settings,
@@ -757,7 +761,8 @@ const streamReply = async (
     let next = message
     switch (event.kind) {
       case 'id':
-        if (next.generationId === null) next = { ...next, generationId: event.id }
+        if (next.generationId === null)
+          next = { ...next, generationId: event.id }
         break
       case 'provider':
         next = { ...next, provider: event.name }
@@ -822,10 +827,16 @@ const streamReply = async (
         next = { ...next, refusal: (next.refusal ?? '') + event.text }
         break
       case 'citations':
-        next = { ...next, citations: mergeCitations(next.citations, event.items) }
+        next = {
+          ...next,
+          citations: mergeCitations(next.citations, event.items),
+        }
         break
       case 'tool_calls':
-        next = { ...next, toolCalls: mergeToolCalls(next.toolCalls, event.calls) }
+        next = {
+          ...next,
+          toolCalls: mergeToolCalls(next.toolCalls, event.calls),
+        }
         break
       case 'finish':
         finishReason = event.reason
@@ -856,7 +867,8 @@ const streamReply = async (
         const headerProvider = item.headers?.get('x-provider-name')
         if (headerProvider) commit({ ...message, provider: headerProvider })
       }
-      for (const event of streamItemToEvents(item)) applyEvent(event, item.raw ?? item.chunk)
+      for (const event of streamItemToEvents(item))
+        applyEvent(event, item.raw ?? item.chunk)
       scheduleFlush()
     }
   } catch (error) {
@@ -1021,7 +1033,12 @@ const runReply = async (spec: ReplySpec): Promise<void> => {
       await wrap(chatModelInternals(chatId).loadMessages())
     }
     lock = await wrap(acquireStreamLock(chatId))
-    if (!lock || stream.controller.signal.aborted) return
+    if (!lock || stream.controller.signal.aborted) {
+      if (stream.stopRequested || stream.controller.signal.aborted) {
+        throwAbort('stopped')
+      }
+      return
+    }
 
     const chatModel = getChatModel(chatId)
     if (spec.chatId === 'new') {
@@ -1070,9 +1087,15 @@ const runReply = async (spec: ReplySpec): Promise<void> => {
     if (freeing) await wrap(freeing)
   }
 
-  if (!outcome || !plan) return
+  if (!outcome || !plan) {
+    if (stream.stopRequested || stream.controller.signal.aborted) {
+      throwAbort('stopped')
+    }
+    return
+  }
   await wrap(finishTurn(plan.chatModel, chatId, outcome.message))
   await wrap(autoRunRememberedReads(chatId, outcome.message.id))
+  if (outcome.message.status === 'stopped') throwAbort('stopped')
 }
 
 const finishTurn = async (
@@ -1102,9 +1125,11 @@ const finishTurn = async (
   refreshKeyMeta()
 
   if (finalMessage.usage === null && finalMessage.generationId !== null) {
-    settleGenerationCost(chatId, finalMessage.id, finalMessage.generationId).catch(
-      () => {},
-    )
+    settleGenerationCost(
+      chatId,
+      finalMessage.id,
+      finalMessage.generationId,
+    ).catch(() => {})
   }
 }
 
@@ -1194,7 +1219,10 @@ const followUpAfterTools = async (
   await wrap(autoRunRememberedReads(chatId, outcome.message.id))
 }
 
-const autoRunRememberedReads = async (chatId: ChatId, assistantId: MessageId) => {
+const autoRunRememberedReads = async (
+  chatId: ChatId,
+  assistantId: MessageId,
+) => {
   const chatModel = getChatModel(chatId)
   const message = chatModel.messages().get(assistantId)
   if (!message || message.role !== 'assistant') return
@@ -1237,7 +1265,11 @@ const installMcpAllowLifetime = () => {
 }
 
 export const allowToolOnce = action(
-  async (chatId: ChatId, messageId: MessageId, callId: string): Promise<void> => {
+  async (
+    chatId: ChatId,
+    messageId: MessageId,
+    callId: string,
+  ): Promise<void> => {
     installMcpAllowLifetime()
     if (mcpAllowInFlight) return
     const chatModel = getChatModel(chatId)
@@ -1295,7 +1327,11 @@ export const allowToolOnce = action(
 ).extend(withAsync(), withAbort('manual'))
 
 export const denyTool = action(
-  async (chatId: ChatId, messageId: MessageId, callId: string): Promise<void> => {
+  async (
+    chatId: ChatId,
+    messageId: MessageId,
+    callId: string,
+  ): Promise<void> => {
     const chatModel = getChatModel(chatId)
     const current = chatModel.messages().get(messageId)
     if (!current || current.role !== 'assistant') return
@@ -1314,7 +1350,11 @@ export const denyTool = action(
 ).extend(withAsync())
 
 export const alwaysAllowTool = action(
-  async (chatId: ChatId, messageId: MessageId, callId: string): Promise<void> => {
+  async (
+    chatId: ChatId,
+    messageId: MessageId,
+    callId: string,
+  ): Promise<void> => {
     const chatModel = getChatModel(chatId)
     const current = chatModel.messages().get(messageId)
     if (!current || current.role !== 'assistant') return
@@ -1353,7 +1393,11 @@ export const regenerate = action(
 ).extend(withAsync())
 
 export const editAndSend = action(
-  async (chatId: ChatId, userId: MessageId, input: SendInput): Promise<void> => {
+  async (
+    chatId: ChatId,
+    userId: MessageId,
+    input: SendInput,
+  ): Promise<void> => {
     await runReply({ kind: 'edit', chatId, userId, input })
   },
   'chat.engine.editAndSend',
@@ -1392,7 +1436,10 @@ export const continueReply = action(
     const settings = chatSettingsOf(chatId)
     const existing = chatModel.messages().get(assistantId)
     if (!settings || !existing || existing.role !== 'assistant') return
-    if (existing.content.length === 0 || liveStatuses.includes(existing.status)) {
+    if (
+      existing.content.length === 0 ||
+      liveStatuses.includes(existing.status)
+    ) {
       return
     }
     const path = ancestorChain(chatModel.messages(), assistantId)
@@ -1468,7 +1515,11 @@ export const continueReply = action(
         }
         if (event.kind === 'finish') {
           finishReason = event.reason
-          commit({ ...message, finishReason: event.reason, rev: message.rev + 1 })
+          commit({
+            ...message,
+            finishReason: event.reason,
+            rev: message.rev + 1,
+          })
           return
         }
         if (event.kind === 'error') {
@@ -1482,7 +1533,9 @@ export const continueReply = action(
       }
 
       try {
-        const iterator = streamChat(request, { signal: stream.controller.signal })
+        const iterator = streamChat(request, {
+          signal: stream.controller.signal,
+        })
         while (true) {
           const step = await wrap(iterator.next())
           if (step.done) break

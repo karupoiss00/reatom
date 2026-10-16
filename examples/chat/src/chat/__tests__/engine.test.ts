@@ -1,4 +1,4 @@
-import { context } from '@reatom/core'
+import { context, isAbort } from '@reatom/core'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { overrideTimings } from '../../app/timings'
@@ -13,11 +13,7 @@ import { createMemoryRepo } from '../../storage/memoryRepo'
 import { setRepoBackend } from '../../storage/repo'
 import { syncReceived } from '../../sync'
 import type { SyncBus, SyncEvent } from '../../sync/types'
-import type {
-  AssistantMessage,
-  MessageRecord,
-  Repo,
-} from '../../storage/types'
+import type { AssistantMessage, MessageRecord, Repo } from '../../storage/types'
 import {
   chatBodies,
   mockChatStream,
@@ -85,6 +81,14 @@ const chunk = (
 
 const input = (text: string) => ({ text, attachments: [] })
 
+const settled = async (pending: Promise<unknown>) => {
+  try {
+    await pending
+  } catch (error) {
+    if (!isAbort(error)) throw error
+  }
+}
+
 const bodies = () => chatBodies() as WireBody[]
 
 const onlyChatId = () => {
@@ -95,7 +99,9 @@ const onlyChatId = () => {
 
 const assistants = (chatId: string) =>
   [...getChatModel(chatId).messages().values()]
-    .filter((message): message is AssistantMessage => message.role === 'assistant')
+    .filter(
+      (message): message is AssistantMessage => message.role === 'assistant',
+    )
     .sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id))
 
 const lastAssistant = (chatId: string) => assistants(chatId).at(-1)!
@@ -122,7 +128,10 @@ beforeEach(async () => {
   putMessageLog = []
   const putMessage = backend.putMessage.bind(backend)
   backend.putMessage = async (message) => {
-    putMessageLog.push({ at: performance.now(), message: structuredClone(message) })
+    putMessageLog.push({
+      at: performance.now(),
+      message: structuredClone(message),
+    })
     await putMessage(message)
   }
   setRepoBackend(backend)
@@ -175,11 +184,18 @@ describe('F-05 send and stream', () => {
       status: 'done',
       content: 'Hello',
       generationId: plainTextScript[0]!.data.id,
-      usage: { cost: 0.000012, isByok: false, promptTokens: 10, completionTokens: 4 },
+      usage: {
+        cost: 0.000012,
+        isByok: false,
+        promptTokens: 10,
+        completionTokens: 4,
+      },
     })
     expect(library.chats()[0]!.title).toBe('Hello there')
     const stored = await backend.listMessages(chatId)
-    expect(stored.find((message) => message.role === 'assistant')).toMatchObject({
+    expect(
+      stored.find((message) => message.role === 'assistant'),
+    ).toMatchObject({
       status: 'done',
       content: 'Hello',
     })
@@ -213,16 +229,21 @@ describe('F-05 send and stream', () => {
       messageId: lastAssistant(chatId).id,
       local: true,
     })
-    await pending
+    await settled(pending)
     expect(lastAssistant(chatId).status).toBe('done')
   })
 
   test('During a stream: Enter is ignored, and no second POST is sent during or after the stream until the next Enter (R-6).', async () => {
-    mockChatStream({ chunks: [{ data: chunk({ content: 'Partial' }) }], hang: true })
+    mockChatStream({
+      chunks: [{ data: chunk({ content: 'Partial' }) }],
+      hang: true,
+    })
     const first = send('new', input('First'))
     const chatId = await waitForActiveChat()
     await waitForStatus(chatId, 'streaming')
-    expect(getChatModel(chatId).sendBlock()).toMatchObject({ code: 'streaming' })
+    expect(getChatModel(chatId).sendBlock()).toMatchObject({
+      code: 'streaming',
+    })
 
     await send(chatId, input('Ignored'))
     await retry(chatId, lastAssistant(chatId).id)
@@ -230,12 +251,14 @@ describe('F-05 send and stream', () => {
     expect(generatingChats().has(chatId)).toBe(true)
 
     stop(chatId)
-    await first
+    await settled(first)
     await new Promise((resolve) => setTimeout(resolve, 50))
     expect(bodies()).toHaveLength(1)
     expect(generatingChats().has(chatId)).toBe(false)
     expect(
-      [...getChatModel(chatId).messages().values()].filter((m) => m.role === 'user'),
+      [...getChatModel(chatId).messages().values()].filter(
+        (m) => m.role === 'user',
+      ),
     ).toHaveLength(1)
   })
 
@@ -244,7 +267,7 @@ describe('F-05 send and stream', () => {
     const first = send('new', input('One'))
     expect(getChatModel('new').sendBlock()).toMatchObject({ code: 'streaming' })
     const second = send('new', input('Two'))
-    await first
+    await settled(first)
     await second
     expect(bodies()).toHaveLength(1)
     expect(library.chats()).toHaveLength(1)
@@ -258,7 +281,7 @@ describe('F-05 send and stream', () => {
       expect.objectContaining({ local: true }),
     )
     stop('new')
-    await pending
+    await settled(pending)
     expect(bodies()).toHaveLength(0)
     expect(library.chats()).toHaveLength(0)
     expect(getChatModel('new').sendBlock()).toMatchObject({ code: 'empty' })
@@ -278,7 +301,10 @@ describe('F-05 send and stream', () => {
       }
       await putMessage(message)
     }
-    mockChatStream({ chunks: [{ data: chunk({ content: 'Partial' }) }], hang: true })
+    mockChatStream({
+      chunks: [{ data: chunk({ content: 'Partial' }) }],
+      hang: true,
+    })
     const pending = send('new', input('Save me'))
     const chatId = await waitForActiveChat()
     await waitForStatus(chatId, 'streaming')
@@ -287,7 +313,7 @@ describe('F-05 send and stream', () => {
       .toBe('quota')
     expect(getChatModel(chatId).unsaved()).toBe(true)
     stop(chatId)
-    await pending
+    await settled(pending)
     expect(lastAssistant(chatId).status).toBe('stopped')
     expect(writeFailure()?.reason).toBe('quota')
     expect(getChatModel(chatId).unsaved()).toBe(true)
@@ -334,7 +360,9 @@ describe('F-05 send and stream', () => {
     const users = [...getChatModel(chatId).messages().values()].filter(
       (message) => message.role === 'user',
     )
-    expect(users.map((message) => message.content)).toEqual(['Lost connection?'])
+    expect(users.map((message) => message.content)).toEqual([
+      'Lost connection?',
+    ])
   })
 
   test('streamLifecycle reports started, first-token and completed', async () => {
@@ -373,7 +401,9 @@ describe('F-05b keep the reply', () => {
     await send('new', input('Stream slowly'))
     const chatId = onlyChatId()
     const assistantId = lastAssistant(chatId).id
-    const writes = putMessageLog.filter((entry) => entry.message.id === assistantId)
+    const writes = putMessageLog.filter(
+      (entry) => entry.message.id === assistantId,
+    )
     const streamingWrites = writes.filter(
       (entry) => (entry.message as AssistantMessage).status === 'streaming',
     )
@@ -395,7 +425,12 @@ describe('F-05b keep the reply', () => {
   })
 
   test('Within 1 s of reload, no spinner remains and the message shows "Interrupted" and Retry. Retry follows R-3 and R-5', async () => {
-    const chat = createChatRecord({ id: 'chat-1', at: 1, title: 'Reloaded', model: gpt4oMini.id })
+    const chat = createChatRecord({
+      id: 'chat-1',
+      at: 1,
+      title: 'Reloaded',
+      model: gpt4oMini.id,
+    })
     await backend.createChat(chat)
     await backend.putMessage(userMessage('u1', null, 'Question'))
     await backend.putMessage(
@@ -415,16 +450,24 @@ describe('F-05b keep the reply', () => {
     const recovered = (await backend.listMessages('chat-1')).find(
       (message) => message.id === 'a1',
     )
-    expect(recovered).toMatchObject({ status: 'interrupted', content: 'So far' })
+    expect(recovered).toMatchObject({
+      status: 'interrupted',
+      content: 'So far',
+    })
     await expect
       .poll(() => getChatModel('chat-1').messages().get('a1'))
       .toMatchObject({ status: 'interrupted' })
 
     mockChatStream(plainTextScript)
     await retry('chat-1', 'a1')
-    expect(bodies()[0]!.messages).toEqual([{ role: 'user', content: 'Question' }])
+    expect(bodies()[0]!.messages).toEqual([
+      { role: 'user', content: 'Question' },
+    ])
     const path = getChatModel('chat-1').path()
-    expect(path.at(-1)).toMatchObject({ versions: ['a1', expect.any(String)], versionIndex: 1 })
+    expect(path.at(-1)).toMatchObject({
+      versions: ['a1', expect.any(String)],
+      versionIndex: 1,
+    })
     expect(getChatModel('chat-1').messages().get('a1')).toMatchObject({
       content: 'So far',
       status: 'interrupted',
@@ -432,24 +475,29 @@ describe('F-05b keep the reply', () => {
   })
 
   test('recovery leaves a live local stream alone', async () => {
-    mockChatStream({ chunks: [{ data: chunk({ content: 'Live' }) }], hang: true })
+    mockChatStream({
+      chunks: [{ data: chunk({ content: 'Live' }) }],
+      hang: true,
+    })
     const pending = send('new', input('Keep going'))
     const chatId = await waitForActiveChat()
     await waitForStatus(chatId, 'streaming')
     await recoverInterrupted()
     expect(lastAssistant(chatId).status).toBe('streaming')
     stop(chatId)
-    await pending
+    await settled(pending)
   })
 })
 
 describe('F-06 stop', () => {
-  test('The fetch\'s AbortSignal is aborted within 100 ms of the click or keypress.', async () => {
+  test("The fetch's AbortSignal is aborted within 100 ms of the click or keypress.", async () => {
     const signals: AbortSignal[] = []
     const mockedFetch = globalThis.fetch
     globalThis.fetch = (resource, init) => {
-      const request = resource instanceof Request ? resource : new Request(resource, init)
-      if (request.url.endsWith('/chat/completions')) signals.push(request.signal)
+      const request =
+        resource instanceof Request ? resource : new Request(resource, init)
+      if (request.url.endsWith('/chat/completions'))
+        signals.push(request.signal)
       return mockedFetch(resource, init)
     }
     try {
@@ -467,7 +515,7 @@ describe('F-06 stop', () => {
       })
       const clickedAt = performance.now()
       stop(chatId)
-      await pending
+      await settled(pending)
       expect(signals[0]!.aborted).toBe(true)
       expect(abortedAt - clickedAt).toBeLessThan(100)
       expect(lastAssistant(chatId)).toMatchObject({
@@ -478,7 +526,10 @@ describe('F-06 stop', () => {
       const stored = (await backend.listMessages(chatId)).find(
         (message) => message.id === lastAssistant(chatId).id,
       )
-      expect(stored).toMatchObject({ status: 'stopped', content: 'Partial answer' })
+      expect(stored).toMatchObject({
+        status: 'stopped',
+        content: 'Partial answer',
+      })
     } finally {
       globalThis.fetch = mockedFetch
     }
@@ -493,7 +544,7 @@ describe('F-06 stop', () => {
     const chatId = await waitForActiveChat()
     await waitForStatus(chatId, 'streaming')
     stop(chatId)
-    await pending
+    await settled(pending)
     await send(chatId, input('Second'))
     expect(bodies()[1]!.messages).toEqual([
       { role: 'user', content: 'First' },
@@ -509,7 +560,7 @@ describe('F-06 stop', () => {
     await expect.poll(() => bodies().length).toBe(1)
     await new Promise((resolve) => setTimeout(resolve, 30))
     stop(chatId)
-    await pending
+    await settled(pending)
     expect(lastAssistant(chatId)).toMatchObject({
       status: 'stopped',
       content: '',
@@ -526,17 +577,23 @@ describe('F-06 stop', () => {
     const chatId = await waitForActiveChat()
     await expect.poll(() => bodies().length).toBe(1)
     stop(chatId)
-    await pending
-    expect(lastAssistant(chatId)).toMatchObject({ status: 'stopped', content: '' })
+    await settled(pending)
+    expect(lastAssistant(chatId)).toMatchObject({
+      status: 'stopped',
+      content: '',
+    })
   })
 
   test('A Stop during thinking keeps the reasoning and labels it "Stopped while thinking".', async () => {
-    mockChatStream({ chunks: [{ data: chunk({ reasoning: 'Considering' }) }], hang: true })
+    mockChatStream({
+      chunks: [{ data: chunk({ reasoning: 'Considering' }) }],
+      hang: true,
+    })
     const pending = send('new', input('Think'))
     const chatId = await waitForActiveChat()
     await waitForStatus(chatId, 'streaming')
     stop(chatId)
-    await pending
+    await settled(pending)
     expect(lastAssistant(chatId)).toMatchObject({
       status: 'stopped',
       reasoning: { text: 'Considering', stoppedWhileThinking: true },
@@ -544,14 +601,17 @@ describe('F-06 stop', () => {
   })
 
   test('If a generation id was seen, the app polls GET /generation?id=<that id> with backoff (1, 2, 4, 8, 16, then 29 s; at most 60 s in total).', async () => {
-    mockChatStream({ chunks: [{ data: chunk({ content: 'Partial' }) }], hang: true })
+    mockChatStream({
+      chunks: [{ data: chunk({ content: 'Partial' }) }],
+      hang: true,
+    })
     mockGeneration({ status: 404 })
     const pending = send('new', input('Poll me'))
     const chatId = await waitForActiveChat()
     await waitForStatus(chatId, 'streaming')
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
     stop(chatId)
-    await pending
+    await settled(pending)
 
     const generationCalls = () => requestsTo('/generation').length
     const checkpoints: Array<[number, number]> = [
@@ -570,21 +630,27 @@ describe('F-06 stop', () => {
       await vi.advanceTimersByTimeAsync(advanceMs)
       expect(generationCalls()).toBe(expectedCalls)
     }
-    expect(new URL(requestsTo('/generation')[0]!.url).searchParams.get('id')).toBe(
-      'gen-live',
-    )
-    expect(lastAssistant(chatId)).toMatchObject({ status: 'stopped', usage: null })
+    expect(
+      new URL(requestsTo('/generation')[0]!.url).searchParams.get('id'),
+    ).toBe('gen-live')
+    expect(lastAssistant(chatId)).toMatchObject({
+      status: 'stopped',
+      usage: null,
+    })
   })
 
   test('When data.total_cost arrives, the line shows the exact amount', async () => {
-    mockChatStream({ chunks: [{ data: chunk({ content: 'Partial' }) }], hang: true })
+    mockChatStream({
+      chunks: [{ data: chunk({ content: 'Partial' }) }],
+      hang: true,
+    })
     mockGeneration(generationRecord)
     const pending = send('new', input('Settle'))
     const chatId = await waitForActiveChat()
     await waitForStatus(chatId, 'streaming')
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     stop(chatId)
-    await pending
+    await settled(pending)
     await vi.advanceTimersByTimeAsync(1000)
     vi.useRealTimers()
     await expect
@@ -602,7 +668,7 @@ describe('F-06 stop', () => {
 })
 
 describe('F-10 reasoning and F-11 cost', () => {
-  test('reasoning_details received for a turn are sent back unchanged on the next request, subject to R-3\'s same-model rule.', async () => {
+  test("reasoning_details received for a turn are sent back unchanged on the next request, subject to R-3's same-model rule.", async () => {
     mockChatStreams([reasoningScript, plainTextScript, plainTextScript])
     await send('new', input('Think first'))
     const chatId = onlyChatId()
@@ -655,7 +721,7 @@ describe('F-10 reasoning and F-11 cost', () => {
       const message = lastAssistant(chatId)
       if (message) estimates.push(message.estimateCost)
     })
-    await pending
+    await settled(pending)
     unsubscribe()
     for (let index = 1; index < estimates.length; index++) {
       expect(estimates[index]!).toBeGreaterThanOrEqual(estimates[index - 1]!)
@@ -671,12 +737,17 @@ describe('F-10 reasoning and F-11 cost', () => {
     const chatId = onlyChatId()
     expect(lastAssistant(chatId)).toMatchObject({
       provider: 'Perplexity',
-      citations: [{ url: 'https://example.com/a', title: 'Alpha', domain: 'example.com' }],
+      citations: [
+        { url: 'https://example.com/a', title: 'Alpha', domain: 'example.com' },
+      ],
     })
   })
 
   test('the provider falls back to the X-Provider-Name header', async () => {
-    mockChatStream({ chunks: plainTextScript, headers: { 'X-Provider-Name': 'Groq' } })
+    mockChatStream({
+      chunks: plainTextScript,
+      headers: { 'X-Provider-Name': 'Groq' },
+    })
     await send('new', input('Header'))
     expect(lastAssistant(onlyChatId()).provider).toBe('Groq')
   })
@@ -688,13 +759,23 @@ describe('F-12 / F-12b / R-5 versions', () => {
     await send('new', input('Question'))
     const chatId = onlyChatId()
     const failed = lastAssistant(chatId)
-    expect(failed).toMatchObject({ status: 'error', content: '', error: { code: 503 } })
+    expect(failed).toMatchObject({
+      status: 'error',
+      content: '',
+      error: { code: 503 },
+    })
 
     await retry(chatId, failed.id)
-    expect(bodies()[1]!.messages).toEqual([{ role: 'user', content: 'Question' }])
-    await expect.poll(() => getChatModel(chatId).messages().has(failed.id)).toBe(false)
+    expect(bodies()[1]!.messages).toEqual([
+      { role: 'user', content: 'Question' },
+    ])
+    await expect
+      .poll(() => getChatModel(chatId).messages().has(failed.id))
+      .toBe(false)
     expect(
-      (await backend.listMessages(chatId)).some((message) => message.id === failed.id),
+      (await backend.listMessages(chatId)).some(
+        (message) => message.id === failed.id,
+      ),
     ).toBe(false)
     expect(getChatModel(chatId).path().at(-1)).toMatchObject({
       versions: [lastAssistant(chatId).id],
@@ -714,7 +795,9 @@ describe('F-12 / F-12b / R-5 versions', () => {
     })
 
     await retry(chatId, partial.id)
-    expect(bodies()[1]!.messages).toEqual([{ role: 'user', content: 'Question' }])
+    expect(bodies()[1]!.messages).toEqual([
+      { role: 'user', content: 'Question' },
+    ])
     const lastNode = getChatModel(chatId).path().at(-1)!
     expect(lastNode.versions).toEqual([partial.id, lastAssistant(chatId).id])
     expect(lastNode.versionIndex).toBe(1)
@@ -744,12 +827,11 @@ describe('F-12 / F-12b / R-5 versions', () => {
       { role: 'assistant', content: 'Hello' },
       { role: 'user', content: 'Follow-up' },
     ])
-    expect(getChatModel(chatId).path().map((node) => node.message.role)).toEqual([
-      'user',
-      'assistant',
-      'user',
-      'assistant',
-    ])
+    expect(
+      getChatModel(chatId)
+        .path()
+        .map((node) => node.message.role),
+    ).toEqual(['user', 'assistant', 'user', 'assistant'])
   })
 
   test('The body ends at the edited user message and contains nothing after it (R-3).', async () => {
@@ -762,7 +844,10 @@ describe('F-12 / F-12b / R-5 versions', () => {
     await editAndSend(chatId, original.id, input('Edited'))
     expect(bodies()[2]!.messages).toEqual([{ role: 'user', content: 'Edited' }])
     const path = getChatModel(chatId).path()
-    expect(path[0]).toMatchObject({ versionIndex: 1, message: { content: 'Edited' } })
+    expect(path[0]).toMatchObject({
+      versionIndex: 1,
+      message: { content: 'Edited' },
+    })
     expect(path[0]!.versions).toHaveLength(2)
     expect(path).toHaveLength(2)
 
@@ -856,21 +941,29 @@ describe('F-19 privacy', () => {
       .toBe('Be brief')
     await send(chatId, input('Two'))
     expect(bodies()[1]).not.toHaveProperty('provider')
-    expect(bodies()[1]!.messages[0]).toEqual({ role: 'system', content: 'Be brief' })
+    expect(bodies()[1]!.messages[0]).toEqual({
+      role: 'system',
+      content: 'Be brief',
+    })
   })
 })
 
 describe('F-13 delete while streaming', () => {
   test('Deleting the open chat aborts its stream, keeps the partial text in the tombstone, and Undo restores it.', async () => {
-    mockChatStream({ chunks: [{ data: chunk({ content: 'Partial' }) }], hang: true })
+    mockChatStream({
+      chunks: [{ data: chunk({ content: 'Partial' }) }],
+      hang: true,
+    })
     const pending = send('new', input('Delete me'))
     const chatId = await waitForActiveChat()
     await waitForStatus(chatId, 'streaming')
     deleteChats([chatId])
-    await pending
+    await settled(pending)
     expect(library.chats()).toHaveLength(0)
     const stored = await backend.listMessages(chatId)
-    expect(stored.find((message) => message.role === 'assistant')).toMatchObject({
+    expect(
+      stored.find((message) => message.role === 'assistant'),
+    ).toMatchObject({
       status: 'stopped',
       content: 'Partial',
     })
@@ -879,7 +972,7 @@ describe('F-13 delete while streaming', () => {
     expect((await backend.getChat(chatId))!.deletedAt).toBeNull()
   })
 
-  test('After 8 s, the chat\'s records are gone', async () => {
+  test("After 8 s, the chat's records are gone", async () => {
     overrideTimings({ undoMs: 200 })
     mockChatStream(plainTextScript)
     await send('new', input('Short lived'))
@@ -887,7 +980,9 @@ describe('F-13 delete while streaming', () => {
     deleteChats([chatId])
     expect(libraryRecords()[0]!.deletedByTab).toBe(tabId)
     await expect
-      .poll(async () => (await backend.getChat(chatId)) ?? null, { timeout: 2000 })
+      .poll(async () => (await backend.getChat(chatId)) ?? null, {
+        timeout: 2000,
+      })
       .toBeNull()
     expect(await backend.listMessages(chatId)).toEqual([])
   })
@@ -908,7 +1003,11 @@ const midStreamRateLimitScript = [
 
 describe('F-17b / F-18 mid-stream errors are mapped by their SSE error code', () => {
   test('A mid-stream 429 keeps the partial text under the rate-limit card; the next request includes it and regenerate omits the replaced version', async () => {
-    mockChatStreams([midStreamRateLimitScript, plainTextScript, plainTextScript])
+    mockChatStreams([
+      midStreamRateLimitScript,
+      plainTextScript,
+      plainTextScript,
+    ])
     await send('new', input('Question'))
     const chatId = onlyChatId()
     const partial = lastAssistant(chatId)
@@ -921,7 +1020,9 @@ describe('F-17b / F-18 mid-stream errors are mapped by their SSE error code', ()
     expect(partial.error!.title).not.toContain('mid-reply')
     expectStreamErrorAdapted(429, true)
     expect(
-      (await backend.listMessages(chatId)).find((message) => message.id === partial.id),
+      (await backend.listMessages(chatId)).find(
+        (message) => message.id === partial.id,
+      ),
     ).toMatchObject({ status: 'error', content: 'Partial' })
 
     await send(chatId, input('Follow-up'))
@@ -932,7 +1033,9 @@ describe('F-17b / F-18 mid-stream errors are mapped by their SSE error code', ()
     ])
 
     await regenerate(chatId, partial.id)
-    expect(bodies()[2]!.messages).toEqual([{ role: 'user', content: 'Question' }])
+    expect(bodies()[2]!.messages).toEqual([
+      { role: 'user', content: 'Question' },
+    ])
   })
 
   test('A mid-stream 502 after some text says "The provider disconnected mid-reply (502)."', async () => {
@@ -967,13 +1070,21 @@ describe('F-17b / F-18 mid-stream errors are mapped by their SSE error code', ()
     mockChatStream([
       {
         data: chunk({ content: '' }, 'error', {
-          error: { code: 502, message: 'Bad gateway', metadata: { error_type: 'server' } },
+          error: {
+            code: 502,
+            message: 'Bad gateway',
+            metadata: { error_type: 'server' },
+          },
         }),
       },
     ])
     await send('new', input('Question'))
     const failed = lastAssistant(onlyChatId())
-    expect(failed).toMatchObject({ status: 'error', content: '', error: { code: 502 } })
+    expect(failed).toMatchObject({
+      status: 'error',
+      content: '',
+      error: { code: 502 },
+    })
     expect(failed.error!.title).not.toContain('mid-reply')
     expectStreamErrorAdapted(502, false)
   })
@@ -997,14 +1108,22 @@ describe('Sync publisher', () => {
     const chatId = onlyChatId()
     const failed = lastAssistant(chatId)
     syncReceived({ type: 'message-deleted', chatId, messageId: failed.id })
-    await expect.poll(() => getChatModel(chatId).messages().has(failed.id)).toBe(false)
+    await expect
+      .poll(() => getChatModel(chatId).messages().has(failed.id))
+      .toBe(false)
   })
 
   test('Stream and message events go through the injected publisher with the live tab id', async () => {
     const responder = new BroadcastChannel('atelier.tabs')
-    responder.onmessage = (event: MessageEvent<{ type: string; tabId: string; nonce: string }>) => {
+    responder.onmessage = (
+      event: MessageEvent<{ type: string; tabId: string; nonce: string }>,
+    ) => {
       if (event.data?.type !== 'claim') return
-      responder.postMessage({ type: 'taken', tabId: event.data.tabId, nonce: event.data.nonce })
+      responder.postMessage({
+        type: 'taken',
+        tabId: event.data.tabId,
+        nonce: event.data.nonce,
+      })
     }
     const bootTab = tabId
     const claimedTab = await claimTabId()
@@ -1016,8 +1135,18 @@ describe('Sync publisher', () => {
     await send('new', input('Question'))
     const chatId = onlyChatId()
     expect(lastAssistant(chatId).ownerTab).toBe(claimedTab)
-    expect(published).toContainEqual({ type: 'stream', chatId, tabId: claimedTab, active: true })
-    expect(published).toContainEqual({ type: 'stream', chatId, tabId: claimedTab, active: false })
+    expect(published).toContainEqual({
+      type: 'stream',
+      chatId,
+      tabId: claimedTab,
+      active: true,
+    })
+    expect(published).toContainEqual({
+      type: 'stream',
+      chatId,
+      tabId: claimedTab,
+      active: false,
+    })
     expect(published.some((event) => event.type === 'message')).toBe(true)
   })
 })

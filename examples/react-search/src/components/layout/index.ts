@@ -1,2 +1,5 @@
 export * from './AppHeader'
 export * from './AppShell'
+export * from './ConsentBanner'
+export * from './GitHubAuthPanel'
+export * from './TelemetryRecordsHint'

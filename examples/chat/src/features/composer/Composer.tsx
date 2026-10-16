@@ -1,5 +1,6 @@
 import { computed, peek } from '@reatom/core'
 
+import { compareSend, compareSession } from '../../chat/compare'
 import { send, stop } from '../../chat/engine'
 import { modelName } from '../../catalog'
 import { requestPersistOnce } from '../../platform/storage-api'
@@ -30,10 +31,18 @@ export const Composer = ({ chat }: ChatSlotProps) => {
   const sendDraft = () => {
     requestPersistOnce()
     if (chat.streaming()?.local || chat.sendBlock()) return
-    send(chat.id, {
-      text: chat.draft.text(),
-      attachments: chat.draft.attachments(),
-    })
+    const text = chat.draft.text()
+    const attachments = chat.draft.attachments()
+    const session = compareSession()
+    if (session?.phase === 'armed' && session.chatId === chat.id) {
+      void compareSend(
+        chat.id,
+        { text, attachments: [...attachments] },
+        session.models,
+      )
+      return
+    }
+    send(chat.id, { text, attachments })
   }
 
   const onKeyDown = (event: KeyboardEvent) => {
@@ -57,7 +66,8 @@ export const Composer = ({ chat }: ChatSlotProps) => {
 
   const focusWelcomeField = (form: HTMLFormElement) => {
     if (chat.id !== 'new' || chat.path().length > 0) return
-    if (peek(openLayerCount) > 0 || document.querySelector('dialog[open]')) return
+    if (peek(openLayerCount) > 0 || document.querySelector('dialog[open]'))
+      return
     const field = form.querySelector('textarea')
     if (!(field instanceof HTMLTextAreaElement)) return
     field.focus({ preventScroll: true })

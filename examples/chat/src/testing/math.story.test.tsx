@@ -1,4 +1,4 @@
-import '../setup'
+import '../render/math'
 
 import { button, createActor, text, type UserEvent } from 'kahraman'
 import { userEvent } from 'storybook/test'
@@ -72,8 +72,9 @@ const sendButton = () =>
     '[data-slot="Composer"] [data-send]',
   )
 
-const assistants = () =>
-  [...document.querySelectorAll<HTMLElement>('[data-slot="AssistantMessage"]')]
+const assistants = () => [
+  ...document.querySelectorAll<HTMLElement>('[data-slot="AssistantMessage"]'),
+]
 
 const bodyOf = (article: Element | undefined) =>
   article?.querySelector<HTMLElement>('[data-message-body]') ?? null
@@ -152,7 +153,11 @@ test('Maya reads LaTeX in a reply', async () => {
     viewport: desktop,
     timings: { flushMs: 40 },
   })
-  mockGeneration({ ...generationRecord, id: 'gen-math-1', total_cost: 0.000012 })
+  mockGeneration({
+    ...generationRecord,
+    id: 'gen-math-1',
+    total_cost: 0.000012,
+  })
   I.init({ canvasElement: document.body, userEvent: keyboard })
   performance.clearResourceTimings()
   resources.length = 0
@@ -214,7 +219,11 @@ test('Maya reads LaTeX in a reply', async () => {
   const integralBox = integralRow.getBoundingClientRect()
   const column = rendered!.getBoundingClientRect()
   expect(
-    Math.abs(integralBox.left + integralBox.width / 2 - (column.left + column.width / 2)),
+    Math.abs(
+      integralBox.left +
+        integralBox.width / 2 -
+        (column.left + column.width / 2),
+    ),
   ).toBeLessThan(16)
 
   expect(energy).toBeTruthy()
@@ -268,9 +277,7 @@ test('Maya reads LaTeX in a reply', async () => {
   })
   setDraft('Show a broken formula')
   await keyboard.keyboard('{Enter}')
-  await expect
-    .poll(() => assistants().length, { timeout: 6_000 })
-    .toBe(2)
+  await expect.poll(() => assistants().length, { timeout: 6_000 }).toBe(2)
   const invalidBody = () => bodyOf(assistants()[1])
   await expect
     .poll(() => invalidBody()?.innerText ?? '', { timeout: 6_000 })
@@ -290,17 +297,18 @@ test('Maya reads LaTeX in a reply', async () => {
   const paragraphs = [...(broken?.querySelectorAll('p') ?? [])].map(
     (paragraph) => paragraph.textContent ?? '',
   )
-  expect(paragraphs.some((paragraph) => paragraph.includes('opening paragraph'))).toBe(
-    true,
-  )
-  expect(paragraphs.some((paragraph) => paragraph.includes('closing paragraph'))).toBe(
-    true,
-  )
+  expect(
+    paragraphs.some((paragraph) => paragraph.includes('opening paragraph')),
+  ).toBe(true)
+  expect(
+    paragraphs.some((paragraph) => paragraph.includes('closing paragraph')),
+  ).toBe(true)
 
   broken?.scrollIntoView({ block: 'center', inline: 'nearest' })
   await settle()
   onScreen(fallback!)
-  for (const paragraph of broken?.querySelectorAll('p') ?? []) onScreen(paragraph)
+  for (const paragraph of broken?.querySelectorAll('p') ?? [])
+    onScreen(paragraph)
   await I.see(text(/The opening paragraph remains/))
   await shoot('invalid')
 
