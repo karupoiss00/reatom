@@ -14,6 +14,10 @@ import { withToJson } from '../extensions/withToJson'
 import { peek } from '../methods'
 import type { Fn, Rec } from '../utils'
 import { isObject } from '../utils'
+import {
+  endLinkedListBatching,
+  startLinkedListBatching,
+} from './linkedListBatching'
 
 type State<T> = T extends Atom<infer Value> ? Value : T
 
@@ -66,8 +70,8 @@ export interface LinkedListAtom<
   /**
    * Applies all mutations of `cb` as one update. Inside `cb`, `find` walks the
    * in-progress state. Mutators relink nodes in place, so `list()`, `array` and
-   * `map` mix the old and the new state until `cb` returns, and `reatomMap`
-   * throws.
+   * `map` mix the old and the new state until `cb` returns, and `reatomMap` and
+   * `reatomView` throw when they have to recompute.
    */
   batch: Action<[cb: Fn]>
 
@@ -558,6 +562,7 @@ export function reatomLinkedList<
         head,
         tail,
       }
+      startLinkedListBatching(linkedList)
 
       try {
         result = cb()
@@ -565,6 +570,7 @@ export function reatomLinkedList<
         return STATE
       } finally {
         STATE = null
+        endLinkedListBatching(linkedList)
       }
     })
 
