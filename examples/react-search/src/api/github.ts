@@ -39,7 +39,11 @@ const headersFor = (url: string, token: string) => {
   return traceparent ? { ...headers, traceparent } : headers
 }
 
-const fetchGithub = async (url: string, token: string, signal?: AbortSignal) => {
+const fetchGithub = async (
+  url: string,
+  token: string,
+  signal?: AbortSignal,
+) => {
   return await wrap(fetch(url, { signal, headers: headersFor(url, token) }))
 }
 

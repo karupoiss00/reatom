@@ -7,5 +7,8 @@ export const saveDraftBroken = action(() => {
 }, 'drafts.saveBroken')
 
 export const saveDraft = action(() => {
-  setTimeout(wrap(() => notifySaved()), 300)
+  setTimeout(
+    wrap(() => notifySaved()),
+    300,
+  )
 }, 'drafts.save')

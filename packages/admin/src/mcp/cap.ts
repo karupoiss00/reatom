@@ -117,10 +117,7 @@ function markLargeAttributeValues(value: unknown): unknown {
       next[key] = marked
       continue
     }
-    if (
-      (key === 'value' || key === 'body') &&
-      markerBeatsValue(inner)
-    ) {
+    if ((key === 'value' || key === 'body') && markerBeatsValue(inner)) {
       next[key] = truncatedMarker(inner)
       continue
     }
@@ -206,20 +203,14 @@ export function packCappedResponse<T, R>(
       : Math.max(0, options.limit)
   const window = options.items.slice(0, limit)
 
-  const build = (
-    count: number,
-    items: T[],
-    valuesTruncated: boolean,
-  ): R => {
+  const build = (count: number, items: T[], valuesTruncated: boolean): R => {
     const more = count < options.items.length
     const header: AdminMcpHeader = {
       ...options.header,
       truncated: more,
       ...(valuesTruncated ? { valuesTruncated: true } : {}),
     }
-    const nextCursor = more
-      ? encodeCursor(options.offset + count)
-      : undefined
+    const nextCursor = more ? encodeCursor(options.offset + count) : undefined
     return options.wrap({ items, header, nextCursor })
   }
 
@@ -250,9 +241,7 @@ export function packCappedResponse<T, R>(
   packed = build(best, window.slice(0, best), false)
   if (jsonUtf8Bytes(packed) <= ADMIN_MCP_MAX_BYTES) return packed
 
-  const first = options.shrinkItem
-    ? options.shrinkItem(window[0]!)
-    : window[0]!
+  const first = options.shrinkItem ? options.shrinkItem(window[0]!) : window[0]!
   packed = build(1, [first], true)
   if (jsonUtf8Bytes(packed) <= ADMIN_MCP_MAX_BYTES) return packed
 

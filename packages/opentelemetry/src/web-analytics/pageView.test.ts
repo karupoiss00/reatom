@@ -7,8 +7,7 @@ import {
   type WebAnalyticsCreateOptions,
 } from './connectWebAnalytics.ts'
 
-const LANDING =
-  'https://shop.test/home?utm_source=google&gclid=abc#promo'
+const LANDING = 'https://shop.test/home?utm_source=google&gclid=abc#promo'
 const STRIPPED_FULL = 'https://shop.test/home'
 const STRIPPED_PATH = '/home'
 
@@ -94,11 +93,13 @@ const installShopWindow = (options?: {
     options?.navigationApi === false
       ? undefined
       : {
-          addEventListener: vi.fn((type: string, fn: (event?: Event) => void) => {
-            const set = navigationListeners.get(type) ?? new Set()
-            set.add(fn)
-            navigationListeners.set(type, set)
-          }),
+          addEventListener: vi.fn(
+            (type: string, fn: (event?: Event) => void) => {
+              const set = navigationListeners.get(type) ?? new Set()
+              set.add(fn)
+              navigationListeners.set(type, set)
+            },
+          ),
           removeEventListener: vi.fn(
             (type: string, fn: (event?: Event) => void) => {
               navigationListeners.get(type)?.delete(fn)
@@ -317,7 +318,9 @@ const expectOtelFetchUrlsOnly = (urls: string[]) => {
 
 const connectSite = (
   overrides: Partial<WebAnalyticsCreateOptions> = {},
-  fetchMock = vi.fn<typeof fetch>(async () => new Response('{}', { status: 200 })),
+  fetchMock = vi.fn<typeof fetch>(
+    async () => new Response('{}', { status: 200 }),
+  ),
 ) => {
   const analytics = remember(
     connectWebAnalytics({
@@ -335,14 +338,15 @@ test('WA-2 / F-08: consent true records one app.page_view with stripped url and 
     async () => new Response('{}', { status: 200 }),
   )
 
-  const analytics = context.start(() =>
-    connectSite(
-      {
-        name: 'page-view-consent',
-        consent: true,
-      },
-      fetchMock,
-    ).analytics,
+  const analytics = context.start(
+    () =>
+      connectSite(
+        {
+          name: 'page-view-consent',
+          consent: true,
+        },
+        fetchMock,
+      ).analytics,
   )
 
   const views = collectPageViews(readRecords(analytics.otel))
@@ -383,7 +387,9 @@ test.each([false, undefined] as const)(
             consent,
           }
 
-    const analytics = context.start(() => connectSite(overrides, fetchMock).analytics)
+    const analytics = context.start(
+      () => connectSite(overrides, fetchMock).analytics,
+    )
 
     expect(collectPageViews(readRecords(analytics.otel))).toEqual([])
 
@@ -398,12 +404,13 @@ test.each([false, undefined] as const)(
 test('WA-2: navigation-api foreign pushState emits a second app.page_view', () => {
   const shop = installShopWindow()
 
-  const analytics = context.start(() =>
-    connectSite({
-      name: 'page-view-nav',
-      consent: true,
-      navigation: 'navigation-api',
-    }).analytics,
+  const analytics = context.start(
+    () =>
+      connectSite({
+        name: 'page-view-nav',
+        consent: true,
+        navigation: 'navigation-api',
+      }).analytics,
   )
 
   expect(collectPageViews(readRecords(analytics.otel))).toHaveLength(1)
@@ -413,19 +420,20 @@ test('WA-2: navigation-api foreign pushState emits a second app.page_view', () =
 
   const views = collectPageViews(readRecords(analytics.otel))
   expect(views.length).toBeGreaterThanOrEqual(2)
-  expect(views.every((view) => view.attributes['event.name'] === 'app.page_view')).toBe(
-    true,
-  )
+  expect(
+    views.every((view) => view.attributes['event.name'] === 'app.page_view'),
+  ).toBe(true)
 })
 
 test('WA-2: connect once does not emit two app.page_view logs for one load', () => {
   installShopWindow()
 
-  const analytics = context.start(() =>
-    connectSite({
-      name: 'page-view-once',
-      consent: true,
-    }).analytics,
+  const analytics = context.start(
+    () =>
+      connectSite({
+        name: 'page-view-once',
+        consent: true,
+      }).analytics,
   )
 
   expect(collectPageViews(readRecords(analytics.otel))).toHaveLength(1)
@@ -434,17 +442,19 @@ test('WA-2: connect once does not emit two app.page_view logs for one load', () 
 test('WA-2 / F-09: a second connectWebAnalytics on a new instance is a new page view', () => {
   installShopWindow()
 
-  const first = context.start(() =>
-    connectSite({
-      name: 'page-view-first',
-      consent: true,
-    }).analytics,
+  const first = context.start(
+    () =>
+      connectSite({
+        name: 'page-view-first',
+        consent: true,
+      }).analytics,
   )
-  const second = context.start(() =>
-    connectSite({
-      name: 'page-view-second',
-      consent: true,
-    }).analytics,
+  const second = context.start(
+    () =>
+      connectSite({
+        name: 'page-view-second',
+        consent: true,
+      }).analytics,
   )
 
   expect(first.otel).not.toBe(second.otel)
@@ -455,18 +465,17 @@ test('WA-2 / F-09: a second connectWebAnalytics on a new instance is a new page 
 test('WA-2 / F-09: double connectWebAnalytics on the same instance still throws', () => {
   installShopWindow()
 
-  const analytics = context.start(() =>
-    connectSite({
-      name: 'page-view-double',
-      consent: true,
-    }).analytics,
+  const analytics = context.start(
+    () =>
+      connectSite({
+        name: 'page-view-double',
+        consent: true,
+      }).analytics,
   )
 
   expect(collectPageViews(readRecords(analytics.otel))).toHaveLength(1)
   expect(() =>
-    context.start(() =>
-      connectWebAnalytics(analytics.otel, { consent: true }),
-    ),
+    context.start(() => connectWebAnalytics(analytics.otel, { consent: true })),
   ).toThrowError(/analytics/i)
   expect(collectPageViews(readRecords(analytics.otel))).toHaveLength(1)
 })
@@ -509,9 +518,9 @@ test('F-08: dispose then reconnect on the same path records one app.page_view; a
   shop.clickSpaLink('/product/1')
   context.start(() => second.pageView())
   expect(collectPageViews(readRecords(otel))).toHaveLength(2)
-  expect(
-    collectPageViews(readRecords(otel))[1]!.attributes['url.path'],
-  ).toBe('/product/1')
+  expect(collectPageViews(readRecords(otel))[1]!.attributes['url.path']).toBe(
+    '/product/1',
+  )
 
   shop.clickSpaLink('/home')
   context.start(() => second.pageView())
@@ -586,16 +595,17 @@ test('WA-2: page views use the instance pipeline, never a unique analytics URL',
     async () => new Response('{}', { status: 200 }),
   )
 
-  const analytics = context.start(() =>
-    connectSite(
-      {
-        name: 'page-view-pipeline',
-        endpoint: 'https://collector.test',
-        keepRecords: true,
-        consent: true,
-      },
-      fetchMock,
-    ).analytics,
+  const analytics = context.start(
+    () =>
+      connectSite(
+        {
+          name: 'page-view-pipeline',
+          endpoint: 'https://collector.test',
+          keepRecords: true,
+          consent: true,
+        },
+        fetchMock,
+      ).analytics,
   )
 
   expect(collectPageViews(readRecords(analytics.otel))).toHaveLength(1)

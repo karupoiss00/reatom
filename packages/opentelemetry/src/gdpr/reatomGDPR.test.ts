@@ -1,4 +1,3 @@
-
 import { context, wrap } from '@reatom/core'
 import { afterEach, expect, test, vi } from 'vitest'
 
@@ -77,7 +76,6 @@ test('F-10: submit writes category booleans onto each instance options', async (
     expect(consentOf(widget.otel)).toEqual(expected)
     expect(host.fetchMock).not.toHaveBeenCalled()
     expect(widget.fetchMock).not.toHaveBeenCalled()
-
   })
 })
 

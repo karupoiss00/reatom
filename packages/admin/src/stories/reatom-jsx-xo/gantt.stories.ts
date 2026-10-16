@@ -453,9 +453,10 @@ export const FilterCalculatorNarrowsRows: Story = {
     const keys = within(
       adminUi().getByRole('group', { name: 'Calculator keys' }),
     )
-    expect(
-      keys.getByRole('button', { name: 'Insert AND' }),
-    ).toHaveProperty('disabled', true)
+    expect(keys.getByRole('button', { name: 'Insert AND' })).toHaveProperty(
+      'disabled',
+      true,
+    )
     await userEvent.click(keys.getByRole('button', { name: 'Insert name' }))
     await userEvent.click(
       keys.getByRole('button', { name: 'Insert contains (:)' }),

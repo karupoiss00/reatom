@@ -49,13 +49,17 @@ const mapFoldedOffset = (text: string, foldedIndex: number) => {
   let high = text.length
   while (low < high) {
     const mid = (low + high) >>> 1
-    if (normalizeForSearch(text.slice(0, mid)).length < foldedIndex) low = mid + 1
+    if (normalizeForSearch(text.slice(0, mid)).length < foldedIndex)
+      low = mid + 1
     else high = mid
   }
   return low
 }
 
-export const snippetAround = (text: string, foldedQuery: string): SearchSnippet | null => {
+export const snippetAround = (
+  text: string,
+  foldedQuery: string,
+): SearchSnippet | null => {
   if (foldedQuery.length === 0) return null
   const folded = normalizeForSearch(text)
   const at = folded.indexOf(foldedQuery)

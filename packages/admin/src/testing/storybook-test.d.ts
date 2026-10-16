@@ -7,9 +7,7 @@ export interface WaitForOptions {
 }
 
 export type RoleNameMatcher =
-  | RegExp
-  | string
-  | ((accessibleName: string, element: Element) => boolean)
+  RegExp | string | ((accessibleName: string, element: Element) => boolean)
 
 export interface ByRoleOptions {
   busy?: boolean

@@ -20,7 +20,12 @@ import {
   type SearchResultGroup,
 } from './query'
 
-export type { IndexedMessage, SearchHit, SearchResultGroup, SearchSnippet } from './query'
+export type {
+  IndexedMessage,
+  SearchHit,
+  SearchResultGroup,
+  SearchSnippet,
+} from './query'
 export { isCombiningOnlyQuery, normalizeForSearch }
 
 const searchDebounceMs = 32
@@ -29,10 +34,9 @@ const recentLimit = 8
 export const searchQuery = atom('', 'search.query')
 export const searchError = atom<string | null>(null, 'search.error')
 export const searchGroups = atom<SearchResultGroup[]>([], 'search.groups')
-export const searchPhase = atom<'idle' | 'pending' | 'results' | 'none' | 'error'>(
-  'idle',
-  'search.phase',
-)
+export const searchPhase = atom<
+  'idle' | 'pending' | 'results' | 'none' | 'error'
+>('idle', 'search.phase')
 export const activeHit = atom(-1, 'search.activeHit')
 
 const searchIndex = atom<{ docs: IndexedMessage[]; generation: number } | null>(
@@ -86,7 +90,10 @@ export const indexedCount = computed(
 
 export const recentChats = computed(() => {
   return [...library.chats()]
-    .sort((a, b) => b.lastActivityAt - a.lastActivityAt || b.createdAt - a.createdAt)
+    .sort(
+      (a, b) =>
+        b.lastActivityAt - a.lastActivityAt || b.createdAt - a.createdAt,
+    )
     .slice(0, recentLimit)
 }, 'search.recentChats')
 
@@ -145,7 +152,8 @@ export const runSearch = action(async () => {
   if (!ui.search()) return
   const trimmed = searchQuery().trim()
   const cached = searchIndex()
-  if (cached && cached.generation === corpusGeneration) publishSearch(cached.docs, trimmed)
+  if (cached && cached.generation === corpusGeneration)
+    publishSearch(cached.docs, trimmed)
   else searchPhase.set('pending')
   await wrap(sleep(searchDebounceMs))
   if (!ui.search()) return

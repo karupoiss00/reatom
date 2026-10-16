@@ -515,7 +515,11 @@ export const createWithOTel = ({
       }
       seen.add(traceId)
       const next = continuations.get(traceId)
-      if (next && !seen.has(next.traceId) && !overBudget(next.traceId, startMs)) {
+      if (
+        next &&
+        !seen.has(next.traceId) &&
+        !overBudget(next.traceId, startMs)
+      ) {
         noteSpan(next.traceId, startMs)
         return { parent: next, links, reason: 'budget', freshRoot: false }
       }
@@ -618,7 +622,8 @@ export const createWithOTel = ({
     const fallback = fallbackTrace?.()
     if (!fallback) return { pair: undefined, reason: 'root' }
     if (sameSpan(fallback, page)) return { pair: fallback, reason: 'route' }
-    if (sameSpan(fallback, explicit)) return { pair: fallback, reason: 'explicit' }
+    if (sameSpan(fallback, explicit))
+      return { pair: fallback, reason: 'explicit' }
     return { pair: fallback, reason: 'session' }
   }
 
@@ -1082,9 +1087,7 @@ export const createWithOTel = ({
         'reatom.kind': kind,
         'reatom.frame.id': causes.assign(frame),
         'reatom.cause.ids': causes.causeIds(frame),
-        ...(parentReason
-          ? { 'reatom.parent.reason': parentReason }
-          : {}),
+        ...(parentReason ? { 'reatom.parent.reason': parentReason } : {}),
         ...readCallAttributes(settings, { params, state, prevState }),
       }
       if (

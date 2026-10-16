@@ -45,9 +45,7 @@ export const buildLogRecord = (input: LogRecordInput): OtlpLogRecord => {
     spanId: input.spanId,
     timeUnixNano: msToNano(input.timeMs),
     severityNumber:
-      input.eventName === EXCEPTION_EVENT_NAME
-        ? SEVERITY_ERROR
-        : SEVERITY_INFO,
+      input.eventName === EXCEPTION_EVENT_NAME ? SEVERITY_ERROR : SEVERITY_INFO,
     attributes: [
       {
         key: 'event.name',

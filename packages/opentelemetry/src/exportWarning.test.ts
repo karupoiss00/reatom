@@ -37,9 +37,8 @@ const start = (
 const joinedWarn = (call: unknown[] | undefined) =>
   (call ?? []).map(String).join(' ')
 
-const hasDroppedReason = (
-  droppedByReason: Readonly<Record<string, number>>,
-) => Object.values(droppedByReason).some((count) => count > 0)
+const hasDroppedReason = (droppedByReason: Readonly<Record<string, number>>) =>
+  Object.values(droppedByReason).some((count) => count > 0)
 
 test('CORS fetch rejection warns once, drops the batch, and does not throw into the app', async () => {
   const unhandled: unknown[] = []

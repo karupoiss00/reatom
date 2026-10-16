@@ -280,8 +280,7 @@ test('screenshot amounts keep their units and do not collapse together', () => {
   for (const amount of [0, 0.0004, 0.04, largeReply, shortReply, draft]) {
     const text = formatUsd(amount)
     const parts = formatCostChipAmount(amount)
-    const chip =
-      `${parts.sign}${parts.unit === '$' ? '$' : ''}${parts.figure}${parts.unit === '¢' ? '¢' : ''}`
+    const chip = `${parts.sign}${parts.unit === '$' ? '$' : ''}${parts.figure}${parts.unit === '¢' ? '¢' : ''}`
     expect(text).toBe(chip)
     expect(text).not.toBe('$0.04¢')
     expect(text).not.toBe('$0.00$')

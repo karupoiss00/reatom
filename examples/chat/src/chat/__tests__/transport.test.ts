@@ -67,9 +67,9 @@ describe('streamChat transport', () => {
     expect(hooked).toHaveLength(2)
     expect(sent).toEqual(hooked)
     expect(hooked[0]).not.toBe(hooked[1])
-    expect(requestsTo('/api/v1/chat/completions')[0]?.headers.authorization).toBe(
-      'Bearer sk-or-v1-test',
-    )
+    expect(
+      requestsTo('/api/v1/chat/completions')[0]?.headers.authorization,
+    ).toBe('Bearer sk-or-v1-test')
   })
 })
 
@@ -102,7 +102,9 @@ describe('Stream error adapter wiring', () => {
     await send('new', input('Question'))
 
     expect(errorAdapters.fromStreamErrorChunk).toHaveBeenCalledWith(
-      expect.objectContaining({ error: expect.objectContaining({ code: 503 }) }),
+      expect.objectContaining({
+        error: expect.objectContaining({ code: 503 }),
+      }),
       { contentReceived: false },
     )
     expect(errorAdapters.classifyFailure).toHaveBeenCalledWith(

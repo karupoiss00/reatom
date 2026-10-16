@@ -78,7 +78,13 @@ test('formats url parts with intrinsic getters and drops userinfo, values and ha
     return 'nope'
   }
   const url = new URL('https://user:pass@a.b:8443/p?q=1&x=2&q=3#secret')
-  for (const key of ['href', 'search', 'toJSON', 'toString', Symbol.toStringTag]) {
+  for (const key of [
+    'href',
+    'search',
+    'toJSON',
+    'toString',
+    Symbol.toStringTag,
+  ]) {
     Object.defineProperty(url, key, { configurable: true, get: unexpected })
   }
   const flagged = new URL('https://a.b/p?flag&a=1&flag')
@@ -88,9 +94,9 @@ test('formats url parts with intrinsic getters and drops userinfo, values and ha
   expect(createValueCapture().capture('state', flagged)).toBe(
     'https://a.b/p?flag&a',
   )
-  expect(createValueCapture().capture('state', new URL('https://a.b/p#h'))).toBe(
-    'https://a.b/p',
-  )
+  expect(
+    createValueCapture().capture('state', new URL('https://a.b/p#h')),
+  ).toBe('https://a.b/p')
   expect(reads).toBe(0)
 })
 
@@ -189,7 +195,9 @@ test('serializes map and set entries with budgets, redaction and intrinsic itera
 })
 
 test('stops map traversal on the shared entry and byte budgets', () => {
-  const wide = new Map(Array.from({ length: 500 }, (_, index) => [index, index]))
+  const wide = new Map(
+    Array.from({ length: 500 }, (_, index) => [index, index]),
+  )
   const wideResult = createValueCapture().capture('state', wide) as {
     '@map': OtlpAttrValue[]
   }
@@ -225,7 +233,14 @@ test('names class instances from the constructor data descriptor', () => {
   expect(
     capture.capture('node', Object.create(HTMLInputElement.prototype)),
   ).toBe('[HTMLInputElement]')
-  expect(capture.capture('state', new (class { n = 1 })())).toBe('[Opaque]')
+  expect(
+    capture.capture(
+      'state',
+      new (class {
+        n = 1
+      })(),
+    ),
+  ).toBe('[Opaque]')
 
   const prototype = {}
   Object.defineProperty(prototype, 'constructor', {

@@ -47,7 +47,9 @@ function expectRoundTrip(source: string) {
   if (!again.ok) return
   expect(stringifyCalculator(again)).toBe(canonical)
   expect(again.expression.operator).toBe(parsed.expression.operator)
-  expect(again.expression.children).toHaveLength(parsed.expression.children.length)
+  expect(again.expression.children).toHaveLength(
+    parsed.expression.children.length,
+  )
 }
 
 test('calculator parser round-trips FilterGroup for the spec example', () => {
@@ -95,8 +97,7 @@ test('name=X and kind=X keep equals and match case-insensitively', () => {
 })
 
 test('highlightCalculator covers the source with distinct token kinds', () => {
-  const colorful =
-    'name:explode AND (state:"out of stock" OR kind:action)'
+  const colorful = 'name:explode AND (state:"out of stock" OR kind:action)'
   expect(
     highlightCalculator(colorful)
       .map((span) => span.text)
@@ -176,7 +177,9 @@ test('engine matches new calculator targets on AdminRecord', () => {
   if (!parsed.ok) return
 
   const hit = record()
-  expect(evaluateRecordExpression(hit, parsed.expression, parsed.tags)).toBe(true)
+  expect(evaluateRecordExpression(hit, parsed.expression, parsed.tags)).toBe(
+    true,
+  )
 
   expect(
     evaluateRecordExpression(
@@ -213,7 +216,11 @@ test('engine matches new calculator targets on AdminRecord', () => {
     ),
   ).toBe(false)
   expect(
-    evaluateRecordExpression(record(), guestBlocked.expression, guestBlocked.tags),
+    evaluateRecordExpression(
+      record(),
+      guestBlocked.expression,
+      guestBlocked.tags,
+    ),
   ).toBe(true)
 
   const errors = parseCalculator('errors:true')
@@ -226,9 +233,9 @@ test('engine matches new calculator targets on AdminRecord', () => {
       errors.tags,
     ),
   ).toBe(true)
-  expect(evaluateRecordExpression(record(), errors.expression, errors.tags)).toBe(
-    false,
-  )
+  expect(
+    evaluateRecordExpression(record(), errors.expression, errors.tags),
+  ).toBe(false)
 })
 
 test('cause> walks ancestors and cause< matches direct children', () => {
@@ -363,12 +370,7 @@ test('spans>N matches every record in traces with more than N spans', () => {
       .map((item) => item.name),
   ).toEqual(['explode', 'retry', 'exception'])
   expect(
-    evaluateRecordExpression(
-      solo,
-      overOne.expression,
-      overOne.tags,
-      records,
-    ),
+    evaluateRecordExpression(solo, overOne.expression, overOne.tags, records),
   ).toBe(false)
 
   const equalsTwo = parseCalculator('spans=2')
@@ -433,13 +435,13 @@ test('payload and state matchers also see local value text', () => {
   expect(
     evaluateRecordExpression(local, payload.expression, payload.tags),
   ).toBe(true)
-  expect(
-    evaluateRecordExpression(local, state.expression, state.tags),
-  ).toBe(true)
+  expect(evaluateRecordExpression(local, state.expression, state.tags)).toBe(
+    true,
+  )
   expect(
     evaluateRecordExpression(masked, payload.expression, payload.tags),
   ).toBe(false)
-  expect(
-    evaluateRecordExpression(local, stars.expression, stars.tags),
-  ).toBe(true)
+  expect(evaluateRecordExpression(local, stars.expression, stars.tags)).toBe(
+    true,
+  )
 })

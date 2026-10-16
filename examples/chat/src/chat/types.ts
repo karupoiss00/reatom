@@ -29,11 +29,7 @@ export type WireContent =
       | { type: 'file'; file: { filename: string; fileData: string } }
     >
 export type WireToolCallApproval =
-  | 'waiting'
-  | 'calling'
-  | 'completed'
-  | 'denied'
-  | 'error'
+  'waiting' | 'calling' | 'completed' | 'denied' | 'error'
 export interface WireToolCall {
   id: string
   name: string

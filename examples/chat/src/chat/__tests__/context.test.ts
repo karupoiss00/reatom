@@ -75,7 +75,11 @@ describe('R-3 context policy', () => {
   })
 
   test('A Stopped, Interrupted, or Connection-lost assistant reply is included verbatim in the next manual send', () => {
-    for (const status of ['stopped', 'interrupted', 'connection-lost'] as const) {
+    for (const status of [
+      'stopped',
+      'interrupted',
+      'connection-lost',
+    ] as const) {
       const path = [
         userMessage('u1', null, 'Tell me a story'),
         assistantMessage('a1', 'u1', 'Once upon a', { status }),
@@ -129,7 +133,7 @@ describe('R-3 context policy', () => {
     expect(JSON.stringify(wire)).not.toContain("can't help")
   })
 
-  test('Retry and Regenerate end the request at that turn\'s user message and omit every assistant version of that turn.', () => {
+  test("Retry and Regenerate end the request at that turn's user message and omit every assistant version of that turn.", () => {
     const path = [
       userMessage('u1', null, 'Question'),
       assistantMessage('a1', 'u1', 'Version one'),
@@ -145,7 +149,7 @@ describe('R-3 context policy', () => {
     ).toEqual([{ role: 'user', content: 'Question' }])
   })
 
-  test('reasoning_details are sent back only for assistant messages whose stored model id equals the request\'s model.', () => {
+  test("reasoning_details are sent back only for assistant messages whose stored model id equals the request's model.", () => {
     const details = [{ type: 'reasoning.text', text: 'think' }]
     const path = [
       userMessage('u1', null, 'Hi'),
@@ -186,8 +190,20 @@ describe('R-3 context policy', () => {
     const path = [
       userMessage('u1', null, 'Describe', {
         attachments: [
-          { id: 'img', kind: 'image', name: 'a.png', mime: 'image/png', size: 3 },
-          { id: 'doc', kind: 'pdf', name: 'a.pdf', mime: 'application/pdf', size: 3 },
+          {
+            id: 'img',
+            kind: 'image',
+            name: 'a.png',
+            mime: 'image/png',
+            size: 3,
+          },
+          {
+            id: 'doc',
+            kind: 'pdf',
+            name: 'a.pdf',
+            mime: 'application/pdf',
+            size: 3,
+          },
         ],
       }),
     ]
@@ -210,7 +226,10 @@ describe('R-3 context policy', () => {
           { type: 'image_url', imageUrl: { url: 'data:image/png;base64,AAA' } },
           {
             type: 'file',
-            file: { filename: 'a.pdf', fileData: 'data:application/pdf;base64,BBB' },
+            file: {
+              filename: 'a.pdf',
+              fileData: 'data:application/pdf;base64,BBB',
+            },
           },
         ],
       },
@@ -291,7 +310,12 @@ describe('request builder', () => {
 
   test('sends only supported parameters, reasoning only as { effort }, never reasoning_effort', () => {
     const settings = settingsWith({
-      params: { temperature: 0.4, topP: 0.9, maxTokens: 300, reasoningEffort: 'high' },
+      params: {
+        temperature: 0.4,
+        topP: 0.9,
+        maxTokens: 300,
+        reasoningEffort: 'high',
+      },
     })
     const forMini = buildChatRequest({
       modelId: gpt4oMini.id,
@@ -358,7 +382,10 @@ describe('request builder', () => {
 describe('chunk parsing', () => {
   test('reads id, content, finish and usage (cost + is_byok) from wire chunks', () => {
     const events = plainTextScript.flatMap((chunk) => chunkToEvents(chunk.data))
-    expect(events).toContainEqual({ kind: 'id', id: plainTextScript[0]!.data.id })
+    expect(events).toContainEqual({
+      kind: 'id',
+      id: plainTextScript[0]!.data.id,
+    })
     expect(events).toContainEqual({ kind: 'content', text: 'Hello' })
     expect(events).toContainEqual({ kind: 'finish', reason: 'stop' })
     expect(events).toContainEqual({
@@ -396,7 +423,9 @@ describe('chunk parsing', () => {
         id: 'gen-x',
         choices: [
           {
-            delta: { reasoningDetails: [{ type: 'reasoning.text', text: 't' }] },
+            delta: {
+              reasoningDetails: [{ type: 'reasoning.text', text: 't' }],
+            },
             finishReason: 'length',
           },
         ],
@@ -410,7 +439,10 @@ describe('chunk parsing', () => {
       }),
     ).toEqual([
       { kind: 'id', id: 'gen-x' },
-      { kind: 'reasoning-details', details: [{ type: 'reasoning.text', text: 't' }] },
+      {
+        kind: 'reasoning-details',
+        details: [{ type: 'reasoning.text', text: 't' }],
+      },
       { kind: 'finish', reason: 'length' },
       {
         kind: 'usage',
@@ -431,7 +463,9 @@ describe('chunk parsing', () => {
     expect(events).toContainEqual({ kind: 'provider', name: 'Perplexity' })
     expect(events).toContainEqual({
       kind: 'citations',
-      items: [{ url: 'https://example.com/a', title: 'Alpha', domain: 'example.com' }],
+      items: [
+        { url: 'https://example.com/a', title: 'Alpha', domain: 'example.com' },
+      ],
     })
   })
 

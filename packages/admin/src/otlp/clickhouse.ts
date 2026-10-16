@@ -86,7 +86,9 @@ function mapToAttributes(raw: unknown): Record<string, unknown> {
   return attributes
 }
 
-function resourceFromRow(row: Record<string, unknown>): Record<string, unknown> {
+function resourceFromRow(
+  row: Record<string, unknown>,
+): Record<string, unknown> {
   const resource = mapToAttributes(row.ResourceAttributes)
   if (typeof row.ServiceName === 'string' && row.ServiceName !== '') {
     resource['service.name'] = row.ServiceName
@@ -230,7 +232,10 @@ function isMissingEventNameColumn(error: unknown): boolean {
   )
 }
 
-/** Pull recent `otel_traces` / `otel_logs` rows and map them to T-063 ingest items. */
+/**
+ * Pull recent `otel_traces` / `otel_logs` rows and map them to T-063 ingest
+ * items.
+ */
 export async function fetchClickHouseExport(
   credentials: ClickHouseCredentials,
   options: { fetch: typeof fetch; signal: AbortSignal },

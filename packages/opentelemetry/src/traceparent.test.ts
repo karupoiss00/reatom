@@ -1,4 +1,3 @@
-
 import { action, bind, context, wrap } from '@reatom/core'
 import { expect, test } from 'vitest'
 
@@ -197,7 +196,9 @@ test('a later context does not stay on the first remote parent', () => {
     expect(first).toBeDefined()
     expect(partsOf(first!).traceId).toBe('4bf92f3577b34da6a3ce929d0e0e4736')
     expect(second).toBeDefined()
-    expect(partsOf(second!).traceId).not.toBe('4bf92f3577b34da6a3ce929d0e0e4736')
+    expect(partsOf(second!).traceId).not.toBe(
+      '4bf92f3577b34da6a3ce929d0e0e4736',
+    )
   } finally {
     otel.dispose()
   }

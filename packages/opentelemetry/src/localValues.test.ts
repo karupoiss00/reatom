@@ -56,7 +56,11 @@ const stringAttr = (record: RawRecord, key: string) =>
 const spanNamed = (records: readonly unknown[], name: string) =>
   records.find((record) => isRecord(record) && record.name === name)
 
-const logsNamed = (records: readonly unknown[], eventName: string, name?: string) =>
+const logsNamed = (
+  records: readonly unknown[],
+  eventName: string,
+  name?: string,
+) =>
   records.filter(
     (record) =>
       isRecord(record) &&
@@ -95,10 +99,7 @@ const normalizeJson = (value: unknown): unknown => {
 
 const sameWork = () => {
   const input = { sku: 'sku-1', password: 'same-secret' }
-  const act = action(
-    (value: typeof input) => ({ echo: value.sku }),
-    'lv.same',
-  )
+  const act = action((value: typeof input) => ({ echo: value.sku }), 'lv.same')
   act(input)
   const box = atom(0, 'lv.same.box')
   action(() => box.set(3), 'lv.same.set')()
@@ -116,7 +117,8 @@ test('localValues is off by default and localValuesOf misses every record', () =
   })
   const records = otel.records()
   expect(records.length).toBeGreaterThan(0)
-  for (const record of records) expect(otel.localValuesOf(record)).toBeUndefined()
+  for (const record of records)
+    expect(otel.localValuesOf(record)).toBeUndefined()
   expect(otel.localValuesOf(null)).toBeUndefined()
   expect(otel.localValuesOf(1)).toBeUndefined()
   expect(otel.localValuesOf('lv.default')).toBeUndefined()
@@ -145,7 +147,9 @@ test('fetch bodies and records JSON match with localValues on and off', async ()
         )
         .sort(),
       records: JSON.stringify(normalizeJson(otel.records())),
-      raw: calls.map((call) => call.body).join('\n') + JSON.stringify(otel.records()),
+      raw:
+        calls.map((call) => call.body).join('\n') +
+        JSON.stringify(otel.records()),
       local: span ? otel.localValuesOf(span) : undefined,
       input,
     }
@@ -316,16 +320,22 @@ test('per-target captureValues false is skipped for true and kept for all', () =
       otel.withOTel({ captureValues: false }),
     )
     target(hidden)
-    expect(otel.localValuesOf(spanNamed(otel.records(), 'lv.hidden'))).toBeUndefined()
+    expect(
+      otel.localValuesOf(spanNamed(otel.records(), 'lv.hidden')),
+    ).toBeUndefined()
     otel.options.set((current) => ({ ...current, localValues: 'all' }))
     target(shown)
   })
-  const spans = otel.records().filter((record) => isRecord(record) && record.name === 'lv.hidden')
+  const spans = otel
+    .records()
+    .filter((record) => isRecord(record) && record.name === 'lv.hidden')
   expect(spans).toHaveLength(2)
   expect(otel.localValuesOf(spans[0])).toBeUndefined()
   expect(otel.localValuesOf(spans[1])?.payload).toBe(shown)
   expect(otel.localValuesOf(spans[1])?.params?.[0]).toBe(shown)
-  expect(JSON.stringify(otel.records())).not.toContain('per-target-all-sentinel')
+  expect(JSON.stringify(otel.records())).not.toContain(
+    'per-target-all-sentinel',
+  )
 })
 
 test('filter, enabled false, and private names still produce nothing', () => {
@@ -349,9 +359,9 @@ test('filter, enabled false, and private names still produce nothing', () => {
     .map((record) => record.name)
     .filter((name) => name?.startsWith('lv.') || name?.startsWith('_lv.'))
   expect(names).toEqual(['lv.keep'])
-  expect(otel.localValuesOf(spanNamed(otel.records(), 'lv.keep'))?.payload).toBe(
-    secret,
-  )
+  expect(
+    otel.localValuesOf(spanNamed(otel.records(), 'lv.keep'))?.payload,
+  ).toBe(secret)
 })
 
 test('an oversized span is stored with values only when localValues is on', () => {
@@ -443,8 +453,12 @@ test('a full export queue still stores the refused span locally when localValues
   expect(on.secondSpan).toBeDefined()
   expect(on.otel.localValuesOf(on.secondSpan)?.payload).toBe(on.second)
   expect(on.fetchMock).toHaveBeenCalledTimes(1)
-  expect(String(on.fetchMock.mock.calls[0]?.[1]?.body)).toContain('lv.cap.first')
-  expect(String(on.fetchMock.mock.calls[0]?.[1]?.body)).not.toContain('lv.cap.second')
+  expect(String(on.fetchMock.mock.calls[0]?.[1]?.body)).toContain(
+    'lv.cap.first',
+  )
+  expect(String(on.fetchMock.mock.calls[0]?.[1]?.body)).not.toContain(
+    'lv.cap.second',
+  )
   expect(on.otel.stats().exported).toBe(0)
 })
 
@@ -456,7 +470,9 @@ test('a full export queue does not store spans without live values locally', asy
     maxQueueSize: 4,
     maxBatchSize: 1,
     warnContextLoss: false,
-    fetch: vi.fn<typeof globalThis.fetch>(() => new Promise<Response>(() => {})),
+    fetch: vi.fn<typeof globalThis.fetch>(
+      () => new Promise<Response>(() => {}),
+    ),
   })
   context.start(() => {
     for (let index = 0; index < 4; index++) action(() => 1, 'lv.cap.fill')()
@@ -478,13 +494,17 @@ test('options.set toggles localValues at runtime', () => {
   context.start(() => {
     const target = action((value: object) => value, 'lv.toggle')
     target(first)
-    expect(otel.localValuesOf(spanNamed(otel.records(), 'lv.toggle'))).toBeUndefined()
+    expect(
+      otel.localValuesOf(spanNamed(otel.records(), 'lv.toggle')),
+    ).toBeUndefined()
     otel.options.set((current) => ({ ...current, localValues: true }))
     target(second)
     otel.options.set((current) => ({ ...current, localValues: false }))
     target(third)
   })
-  const spans = otel.records().filter((record) => isRecord(record) && record.name === 'lv.toggle')
+  const spans = otel
+    .records()
+    .filter((record) => isRecord(record) && record.name === 'lv.toggle')
   expect(spans).toHaveLength(3)
   expect(otel.localValuesOf(spans[0])).toBeUndefined()
   expect(otel.localValuesOf(spans[1])?.payload).toBe(second)
@@ -544,7 +564,9 @@ test('abort, suspense, and pending keep only the specified keys', async () => {
   )
   expect(suspenseLocal).toEqual({ params: [suspenseInput] })
 
-  const pendingLocal = otel.localValuesOf(spanNamed(otel.records(), 'lv.pending'))
+  const pendingLocal = otel.localValuesOf(
+    spanNamed(otel.records(), 'lv.pending'),
+  )
   expect(pendingLocal).toEqual({ params: [pendingInput] })
 })
 
@@ -554,14 +576,14 @@ test('a computed diamond span keeps the state reference', () => {
   context.start(() => {
     const left = atom({ label: 'diamond-old' }, 'lv.left')
     const right = atom(1, 'lv.right')
-    const total = computed(
-      () => ({ from: left(), n: right() }),
-      'lv.total',
-    )
+    const total = computed(() => ({ from: left(), n: right() }), 'lv.total')
     total.subscribe((state) => {
       seen.push(state)
     })
-    const setLeft = action(() => left.set({ label: 'diamond-left' }), 'lv.setLeft')
+    const setLeft = action(
+      () => left.set({ label: 'diamond-left' }),
+      'lv.setLeft',
+    )
     const setRight = action(() => right.set(2), 'lv.setRight')
     otel.traceVar.set(otel.createTrace({ name: 'lv.trace.left' }))
     setLeft()

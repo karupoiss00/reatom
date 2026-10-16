@@ -24,7 +24,10 @@ export interface TimerAtom extends Atom<number> {
    * rejects and the countdown resets.
    */
   interval: NumberAtom
-  /** Pause flag for the active countdown; change it with `pause` / `resume` / `toggle`. */
+  /**
+   * Pause flag for the active countdown; change it with `pause` / `resume` /
+   * `toggle`.
+   */
   paused: Computed<boolean>
   /** `'idle' | 'running' | 'paused'`. */
   status: Computed<TimerStatus>
@@ -44,7 +47,10 @@ export interface TimerAtom extends Atom<number> {
    * Rejects (and resets the countdown) on invalid arguments, an invalid
    * `interval`, or when the caller's frame is aborted.
    */
-  start: Action<[durationMs: number, passedMs?: number], Promise<TimerSettleReason>>
+  start: Action<
+    [durationMs: number, passedMs?: number],
+    Promise<TimerSettleReason>
+  >
   /** Cancel the active countdown (`start` resolves with `'stopped'`). */
   stop: Action<[], void>
   /** Pause while counting; no-op when idle. */
@@ -89,10 +95,9 @@ const assertValidInterval = (intervalMs: number) => {
  * Creates a countdown timer.
  *
  * The base state is the internal timestamp of the last tick, used for progress
- * tracking; do not set it manually. Countdown state
- * (`remains`, `progress`, `status`) is derived from that timestamp and an
- * internal target set by `start`. The timer ticks only while a countdown is
- * running.
+ * tracking; do not set it manually. Countdown state (`remains`, `progress`,
+ * `status`) is derived from that timestamp and an internal target set by
+ * `start`. The timer ticks only while a countdown is running.
  *
  * For absolute wall time without a countdown, use {@link clock} /
  * {@link reatomClock}.
@@ -116,9 +121,7 @@ const assertValidInterval = (intervalMs: number) => {
  * @see {@link clock} Wall-clock singleton
  * @see {@link reatomClock} Custom-interval wall clock
  */
-export const reatomTimer = (
-  options: string | TimerOptions = {},
-): TimerAtom => {
+export const reatomTimer = (options: string | TimerOptions = {}): TimerAtom => {
   const {
     name = named('timerAtom'),
     interval: intervalInit = 1000,

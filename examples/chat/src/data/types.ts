@@ -17,5 +17,4 @@ export interface ExportBundle {
   presets: PresetRecord[]
 }
 export type ImportResult =
-  | { ok: true; count: number }
-  | { ok: false; reason: 'invalid' | 'too-large' }
+  { ok: true; count: number } | { ok: false; reason: 'invalid' | 'too-large' }

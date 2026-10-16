@@ -46,8 +46,8 @@ function ganttRowByLabel(canvas: HTMLElement, label: string): HTMLElement {
 function rowByName(canvas: HTMLElement, name: string): HTMLElement {
   const rows = [...canvas.querySelectorAll('[data-testid="log-row"]')]
   const match = rows.find((row) =>
-    (row.querySelector('[data-testid="log-item-name"]')?.textContent ??
-      ''
+    (
+      row.querySelector('[data-testid="log-item-name"]')?.textContent ?? ''
     ).includes(name),
   )
   if (!(match instanceof HTMLElement)) {
@@ -81,7 +81,9 @@ function isHorizontalSplit(root: HTMLElement): boolean {
   const splitPane = root.querySelector('[data-reatom-name="SplitPane"]')
   if (!(splitPane instanceof HTMLElement)) return false
 
-  const splitVar = getComputedStyle(splitPane).getPropertyValue('--split').trim()
+  const splitVar = getComputedStyle(splitPane)
+    .getPropertyValue('--split')
+    .trim()
   if (!splitVar) return false
 
   if (splitPaneTracks(splitPane).length >= 3) return true
@@ -91,9 +93,7 @@ function isHorizontalSplit(root: HTMLElement): boolean {
   if (!(left instanceof HTMLElement) || !(right instanceof HTMLElement)) {
     return false
   }
-  return (
-    left.getBoundingClientRect().right < right.getBoundingClientRect().left
-  )
+  return left.getBoundingClientRect().right < right.getBoundingClientRect().left
 }
 
 async function waitForHorizontalSplit(root: HTMLElement): Promise<void> {
@@ -181,9 +181,9 @@ export const FixtureChrome: Story = {
 
     clickElement(tabByLabel(canvasElement, 'Activity'))
     await waitFor(() => {
-      expect(canvasElement.querySelectorAll('[data-testid="log-row"]').length).toBe(
-        7,
-      )
+      expect(
+        canvasElement.querySelectorAll('[data-testid="log-row"]').length,
+      ).toBe(7)
     })
     clickElement(rowByName(canvasElement, 'route goods'))
     clickElement(tabByLabel(canvasElement, 'Cause Chain'))
@@ -212,8 +212,8 @@ export const FixtureChrome: Story = {
         '[data-testid="otlp-state-tree"]',
       )
       expect(tree).toBeInstanceOf(HTMLElement)
-      const leaf = [...(tree?.querySelectorAll('button') ?? [])].find((button) =>
-        (button.textContent ?? '').includes('checked'),
+      const leaf = [...(tree?.querySelectorAll('button') ?? [])].find(
+        (button) => (button.textContent ?? '').includes('checked'),
       )
       expect(leaf).toBeInstanceOf(HTMLElement)
     })
@@ -228,9 +228,9 @@ export const FixtureChrome: Story = {
           'aria-selected',
         ),
       ).toBe('true')
-      expect(canvasElement.querySelector('[data-testid="gantt-axis"]')).toBeInstanceOf(
-        HTMLElement,
-      )
+      expect(
+        canvasElement.querySelector('[data-testid="gantt-axis"]'),
+      ).toBeInstanceOf(HTMLElement)
       expect(
         canvasElement.querySelector('[data-testid="otlp-timeline-chart"]'),
       ).toBeNull()
@@ -263,9 +263,9 @@ export const FixtureChrome: Story = {
     })
 
     expect(canvasPath()).toBe(startPath)
-    expect(canvasElement.querySelector('[aria-label="Activity"]')).toBeInstanceOf(
-      HTMLElement,
-    )
+    expect(
+      canvasElement.querySelector('[aria-label="Activity"]'),
+    ).toBeInstanceOf(HTMLElement)
     expect(canvasElement.querySelector('[aria-label="State"]')).toBeInstanceOf(
       HTMLElement,
     )
@@ -275,9 +275,9 @@ export const FixtureChrome: Story = {
     expect(canvasElement.querySelector('[aria-label="Graph"]')).toBeInstanceOf(
       HTMLElement,
     )
-    expect(canvasElement.querySelector('[aria-label="Filters"]')).toBeInstanceOf(
-      HTMLElement,
-    )
+    expect(
+      canvasElement.querySelector('[aria-label="Filters"]'),
+    ).toBeInstanceOf(HTMLElement)
     clickElement(tabByLabel(canvasElement, 'Filters'))
     await waitFor(() => {
       expect(
@@ -289,9 +289,9 @@ export const FixtureChrome: Story = {
     })
     clickElement(tabByLabel(canvasElement, 'Activity'))
     await waitFor(() => {
-      expect(canvasElement.querySelectorAll('[data-testid="log-row"]').length).toBe(
-        7,
-      )
+      expect(
+        canvasElement.querySelectorAll('[data-testid="log-row"]').length,
+      ).toBe(7)
     })
     expect(canvasElement.textContent).toContain('7 records')
     if (startPath.includes('iframe.html')) {
@@ -379,13 +379,15 @@ export const TimelineGantt: Story = {
       const gantt = storyRoot.querySelector('[data-testid="otlp-gantt"]')
       expect(gantt).toBeInstanceOf(HTMLElement)
       expect(gantt?.getAttribute('aria-rowcount')).toBe('5')
-      expect(storyRoot.querySelectorAll('[data-testid="gantt-bar"]').length).toBe(
-        5,
-      )
+      expect(
+        storyRoot.querySelectorAll('[data-testid="gantt-bar"]').length,
+      ).toBe(5)
       expect(storyRoot.textContent).toContain('Follow on')
     })
 
-    const expandAll = storyRoot.querySelector('[data-testid="gantt-expand-all"]')
+    const expandAll = storyRoot.querySelector(
+      '[data-testid="gantt-expand-all"]',
+    )
     if (!(expandAll instanceof HTMLElement)) {
       throw new Error('Expand all missing')
     }
@@ -396,9 +398,9 @@ export const TimelineGantt: Story = {
           .querySelector('[data-testid="otlp-gantt"]')
           ?.getAttribute('aria-rowcount'),
       ).toBe('7')
-      expect(storyRoot.querySelectorAll('[data-testid="gantt-row"]').length).toBe(
-        7,
-      )
+      expect(
+        storyRoot.querySelectorAll('[data-testid="gantt-row"]').length,
+      ).toBe(7)
     })
 
     clickElement(ganttRowByLabel(storyRoot, 'tree.checked'))
@@ -426,9 +428,9 @@ export const TimelineGantt: Story = {
           .querySelector('[data-testid="otlp-gantt"]')
           ?.getAttribute('aria-rowcount'),
       ).toBe('6')
-      expect(storyRoot.querySelectorAll('[data-testid="gantt-row"]').length).toBe(
-        6,
-      )
+      expect(
+        storyRoot.querySelectorAll('[data-testid="gantt-row"]').length,
+      ).toBe(6)
     })
     const expand = storyRoot.querySelector(
       '[aria-label="Expand tree#12.toggle"]',
@@ -439,7 +441,9 @@ export const TimelineGantt: Story = {
     clickElement(expand)
     await waitFor(() => {
       expect(
-        ganttRowByLabel(storyRoot, 'tree.checked').getAttribute('aria-selected'),
+        ganttRowByLabel(storyRoot, 'tree.checked').getAttribute(
+          'aria-selected',
+        ),
       ).toBe('true')
     })
 
@@ -546,7 +550,9 @@ export const ClickHouseRemoteThenClear: Story = {
     if (!(snapshot instanceof HTMLElement)) {
       throw new Error('OTLP visual snapshot target missing')
     }
-    expect(storyRoot.querySelector('[data-testid="otlp-remote-panel"]')).toBeNull()
+    expect(
+      storyRoot.querySelector('[data-testid="otlp-remote-panel"]'),
+    ).toBeNull()
     await matchStoryRootScreenshot(snapshot, 'otlp-clickhouse-remote')
 
     const clear = [...storyRoot.querySelectorAll('button')].find(
@@ -576,9 +582,9 @@ export const ClickHouseRemoteThenClear: Story = {
 
     clickElement(tabByLabel(storyRoot, 'Timeline'))
     await waitFor(() => {
-      expect(storyRoot.querySelector('[data-testid="gantt-empty"]')).toBeInstanceOf(
-        HTMLElement,
-      )
+      expect(
+        storyRoot.querySelector('[data-testid="gantt-empty"]'),
+      ).toBeInstanceOf(HTMLElement)
       expect(storyRoot.textContent).toContain('No timeline yet')
     })
   },
@@ -943,7 +949,9 @@ export const FilterHideThenHighlightActivity: Story = {
       expect(calculator.value).toBe('name:explode')
     })
 
-    const hide = storyRoot.querySelector('[data-testid="otlp-filter-mode-hide"]')
+    const hide = storyRoot.querySelector(
+      '[data-testid="otlp-filter-mode-hide"]',
+    )
     if (!(hide instanceof HTMLElement)) {
       throw new Error('Hide mode missing')
     }

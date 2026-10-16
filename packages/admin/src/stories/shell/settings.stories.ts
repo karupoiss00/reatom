@@ -241,9 +241,8 @@ export const ColorTheme: Story = {
     )
     expect(shell().dataset.adminScheme).toBe('dark')
     const duskCanvas = getComputedStyle(shell()).backgroundColor
-    const duskAccent = getComputedStyle(shell()).getPropertyValue(
-      '--admin-accent',
-    )
+    const duskAccent =
+      getComputedStyle(shell()).getPropertyValue('--admin-accent')
 
     const accent = shell().querySelector('input[type="color"]')
     if (!(accent instanceof HTMLInputElement)) {
@@ -252,9 +251,8 @@ export const ColorTheme: Story = {
     accent.value = '#c2410c'
     accent.dispatchEvent(new Event('input', { bubbles: true }))
     await waitFor(() => {
-      const nextAccent = getComputedStyle(shell()).getPropertyValue(
-        '--admin-accent',
-      )
+      const nextAccent =
+        getComputedStyle(shell()).getPropertyValue('--admin-accent')
       expect(nextAccent).not.toBe(duskAccent)
       expect(getComputedStyle(shell()).backgroundColor).not.toBe(duskCanvas)
     })

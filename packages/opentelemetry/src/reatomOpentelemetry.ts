@@ -194,8 +194,8 @@ export interface OtelOptions {
   route?: RouteMode
   warnContextLoss?: boolean
   /**
-   * Spans kept on one trace before the next span starts a continuation.
-   * Default 1000. `Infinity` disables the count.
+   * Spans kept on one trace before the next span starts a continuation. Default
+   * 1000. `Infinity` disables the count.
    */
   maxSpansPerTrace?: number
   /**
@@ -345,8 +345,8 @@ export interface ReatomOpentelemetryInput {
    */
   warnContextLoss?: boolean
   /**
-   * Spans kept on one trace before the next span starts a continuation.
-   * Default 1000. `Infinity` disables the count.
+   * Spans kept on one trace before the next span starts a continuation. Default
+   * 1000. `Infinity` disables the count.
    */
   maxSpansPerTrace?: number
   /**

@@ -456,7 +456,7 @@ test('dispose() does not log abort warnings', async () => {
       async () => new Response('boom', { status: 503 }),
     )
     const otel = reatomOpentelemetry({
-    name: 'reatomOpentelemetry',
+      name: 'reatomOpentelemetry',
       endpoint: 'https://traces.example.com',
       serviceName: 'test-svc',
       batchInterval: 50,
@@ -495,7 +495,7 @@ test('default unload transport is keepalive fetch — sendBeacon is NOT called w
       async () => new Response('{}', { status: 200 }),
     )
     const otel = reatomOpentelemetry({
-    name: 'reatomOpentelemetry',
+      name: 'reatomOpentelemetry',
       endpoint: 'https://traces.example.com',
       serviceName: 'test-svc',
       batchInterval: 50,
@@ -535,7 +535,7 @@ test('beacon delivery failure surfaces an export warning', async () => {
       () => false,
     )
     const otel = reatomOpentelemetry({
-    name: 'reatomOpentelemetry',
+      name: 'reatomOpentelemetry',
       endpoint: 'https://traces.example.com',
       serviceName: 'test-svc',
       batchInterval: 50,

@@ -66,13 +66,13 @@ establish a pattern, and a component can implement a pattern while remaining dis
 
 For each candidate, compare existing system capabilities before recommending:
 
-| Action | Evidence needed |
-| --- | --- |
-| Reuse existing | Its public contract and actual behavior cover the identified consumers. |
-| Extend existing | A concrete unmet need belongs to its responsibility; identify compatibility and consumer impact. |
-| Adopt local entity | Its existing boundary is useful and reusable but lacks system governance. |
-| Extract new | A shared or independently justified responsibility lacks a suitable existing boundary. |
-| Keep local | Differences, coupling or extraction cost outweigh demonstrated reuse benefits. |
+| Action             | Evidence needed                                                                                  |
+| ------------------ | ------------------------------------------------------------------------------------------------ |
+| Reuse existing     | Its public contract and actual behavior cover the identified consumers.                          |
+| Extend existing    | A concrete unmet need belongs to its responsibility; identify compatibility and consumer impact. |
+| Adopt local entity | Its existing boundary is useful and reusable but lacks system governance.                        |
+| Extract new        | A shared or independently justified responsibility lacks a suitable existing boundary.           |
+| Keep local         | Differences, coupling or extraction cost outweigh demonstrated reuse benefits.                   |
 
 Inspect hidden/deprecated entities to understand overlap and history, but do not
 recommend them for new use without a separate craft availability decision. Check the

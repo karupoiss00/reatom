@@ -97,12 +97,12 @@ Use the established project instructions and their responsibility boundaries.
 
 ## UI eligibility and gradual adoption
 
-| State | New product use |
-| --- | --- |
-| discoverable | Eligible for comparison by contract. Verify actual implementation before claiming completion. |
-| hidden | Managed but not admitted; excluded from new selection and fallback. |
-| deprecated | Excluded from new selection and fallback. Preserve existing calls outside the task; follow documented migration guidance within it. |
-| unmanaged | No contract in the standard component/layout/pattern directories. Product build may inspect code/tests/consumers as a fallback after managed discovery finds no fit; report limited verification. This does not adopt it. |
+| State        | New product use                                                                                                                                                                                                           |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| discoverable | Eligible for comparison by contract. Verify actual implementation before claiming completion.                                                                                                                             |
+| hidden       | Managed but not admitted; excluded from new selection and fallback.                                                                                                                                                       |
+| deprecated   | Excluded from new selection and fallback. Preserve existing calls outside the task; follow documented migration guidance within it.                                                                                       |
+| unmanaged    | No contract in the standard component/layout/pattern directories. Product build may inspect code/tests/consumers as a fallback after managed discovery finds no fit; report limited verification. This does not adopt it. |
 
 Malformed entries, missing contracts and contradictory guidance are system defects,
 not unmanaged escape routes. Unknown status is excluded. Discovery lists only eligible

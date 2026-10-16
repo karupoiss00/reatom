@@ -10,17 +10,17 @@ What should `connectWebAnalytics` persist, for how long, how tabs share it, when
 
 ## Industry survey
 
-| Product | Visitor storage | Visitor life | Session timeout | Campaign rotates session? | Midnight rotates? | Login link |
-| --- | --- | --- | --- | --- | --- | --- |
-| Universal Analytics | first-party `_ga` cookie | 2 years (Chrome caps 400 d) | 30 min | yes | yes (property TZ) | User-ID, client stays |
-| GA4 | first-party cookie / `user_pseudo_id` | 2 years, Chrome-capped | 30 min, no max | **no** — new UTM attributes later events only | **no** | app sends `user_id`; device id stays |
-| Yandex Metrica | first-party cookie + `localStorage` on eTLD+1 | `_ym_uid` 1 year | 30 min (30–360) | first ad click-through is a new session; later tags in the same visit do not | no | `ClientID` + `userParams` from the app |
-| Matomo | first-party `_pk_id` / `_pk_ses` | 13 months / 30 min | 30 min | attribution cookie, not a hard rotate by default | no | `setUserId` keeps visitor id |
-| PostHog | local persistence + cookie | until cleared | 30 min idle **or 24 h max**; cross-tab | no; UTM is `$session_entry_*` | no | `identify(distinct_id)` merges anonymous into named; `reset()` on logout |
-| Amplitude | cookie / `localStorage` device UUID | until cleared | 30 min | no | no | `user_id` + `device_id`; Amplitude ID stitches server-side |
-| Mixpanel | cookie / `localStorage` `distinct_id` | until cleared | 30 min (product-side) | no | no | `identify` / `alias` |
-| Plausible | none on device | daily server hash of salt+domain+IP+UA | server-side visit | n/a | daily salt | none |
-| Umami | none by default | server-side; optional `distinct-id` | server-side | n/a | n/a | `umami.identify` / `data-distinct-id` from the app |
+| Product             | Visitor storage                               | Visitor life                           | Session timeout                        | Campaign rotates session?                                                    | Midnight rotates? | Login link                                                               |
+| ------------------- | --------------------------------------------- | -------------------------------------- | -------------------------------------- | ---------------------------------------------------------------------------- | ----------------- | ------------------------------------------------------------------------ |
+| Universal Analytics | first-party `_ga` cookie                      | 2 years (Chrome caps 400 d)            | 30 min                                 | yes                                                                          | yes (property TZ) | User-ID, client stays                                                    |
+| GA4                 | first-party cookie / `user_pseudo_id`         | 2 years, Chrome-capped                 | 30 min, no max                         | **no** — new UTM attributes later events only                                | **no**            | app sends `user_id`; device id stays                                     |
+| Yandex Metrica      | first-party cookie + `localStorage` on eTLD+1 | `_ym_uid` 1 year                       | 30 min (30–360)                        | first ad click-through is a new session; later tags in the same visit do not | no                | `ClientID` + `userParams` from the app                                   |
+| Matomo              | first-party `_pk_id` / `_pk_ses`              | 13 months / 30 min                     | 30 min                                 | attribution cookie, not a hard rotate by default                             | no                | `setUserId` keeps visitor id                                             |
+| PostHog             | local persistence + cookie                    | until cleared                          | 30 min idle **or 24 h max**; cross-tab | no; UTM is `$session_entry_*`                                                | no                | `identify(distinct_id)` merges anonymous into named; `reset()` on logout |
+| Amplitude           | cookie / `localStorage` device UUID           | until cleared                          | 30 min                                 | no                                                                           | no                | `user_id` + `device_id`; Amplitude ID stitches server-side               |
+| Mixpanel            | cookie / `localStorage` `distinct_id`         | until cleared                          | 30 min (product-side)                  | no                                                                           | no                | `identify` / `alias`                                                     |
+| Plausible           | none on device                                | daily server hash of salt+domain+IP+UA | server-side visit                      | n/a                                                                          | daily salt        | none                                                                     |
+| Umami               | none by default                               | server-side; optional `distinct-id`    | server-side                            | n/a                                                                          | n/a               | `umami.identify` / `data-distinct-id` from the app                       |
 
 The 30-minute idle timeout is the industry default. Campaign-change and midnight rotation are Universal Analytics / Metrica-flavoured, not GA4. Persistent random ids in first-party storage are the product-analytics default; cookieless daily hashes are the privacy-analytics default and are fingerprinting.
 
@@ -30,14 +30,14 @@ OpenTelemetry already names `session.id`, `session.previous_id`, and `session.st
 
 ### Options
 
-| Option | Pros | Cons |
-| --- | --- | --- |
-| **A. `localStorage` under `storageKey` (fallback)** | Same-origin, no cookie header cost, survives reload, `storage` events for other tabs, core `withLocalStorage` exists. Safari ITP is harsher on JS cookies than on `localStorage`. | Origin-scoped (not subdomain). Quota / private-mode eviction. ePrivacy treats it as “similar technology”: **no legal win versus a cookie**. |
-| **B. First-party cookie, optional `Domain=eTLD+1`** | Shared across `www` / `shop` / `app`. Matches Matomo / Metrica / GA. `withCookie` / `withCookieStore` exist. | Chrome `Max-Age` cap 400 days. Safari ITP often evicts JS-set cookies in ~7 days. Header cost. Still needs consent (R11). |
-| **C. `sessionStorage`** | Natural `perTab`. | Dies with the tab; no returning-visitor or cross-tab session. |
-| **D. Memory only (`persistVisitor: false`, and the pre-consent path)** | No device write. Required before consent ([03](../03-connect-web-analytics.md#consent-а4-а17а19-о18), ICO / CNIL: do not read or write the terminal before consent). | New visitor / session every load. Cannot link days. |
-| **E. IndexedDB** | Overkill for two small records. Offline queue is already a user extension (Т43). | Extra API, no `storage` event. |
-| **F. Device fingerprint or IP+UA hash (Plausible / Umami)** | No client persist. | **Out of scope.** See Fingerprinting. |
+| Option                                                                 | Pros                                                                                                                                                                              | Cons                                                                                                                                        |
+| ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| **A. `localStorage` under `storageKey` (fallback)**                    | Same-origin, no cookie header cost, survives reload, `storage` events for other tabs, core `withLocalStorage` exists. Safari ITP is harsher on JS cookies than on `localStorage`. | Origin-scoped (not subdomain). Quota / private-mode eviction. ePrivacy treats it as “similar technology”: **no legal win versus a cookie**. |
+| **B. First-party cookie, optional `Domain=eTLD+1`**                    | Shared across `www` / `shop` / `app`. Matches Matomo / Metrica / GA. `withCookie` / `withCookieStore` exist.                                                                      | Chrome `Max-Age` cap 400 days. Safari ITP often evicts JS-set cookies in ~7 days. Header cost. Still needs consent (R11).                   |
+| **C. `sessionStorage`**                                                | Natural `perTab`.                                                                                                                                                                 | Dies with the tab; no returning-visitor or cross-tab session.                                                                               |
+| **D. Memory only (`persistVisitor: false`, and the pre-consent path)** | No device write. Required before consent ([03](../03-connect-web-analytics.md#consent-а4-а17а19-о18), ICO / CNIL: do not read or write the terminal before consent).              | New visitor / session every load. Cannot link days.                                                                                         |
+| **E. IndexedDB**                                                       | Overkill for two small records. Offline queue is already a user extension (Т43).                                                                                                  | Extra API, no `storage` event.                                                                                                              |
+| **F. Device fingerprint or IP+UA hash (Plausible / Umami)**            | No client persist.                                                                                                                                                                | **Out of scope.** See Fingerprinting.                                                                                                       |
 
 Cookies and `localStorage` are the same ePrivacy class: PECR / ICO cover any store or access on the device, CNIL forbids read/write before consent. Choosing `localStorage` is an engineering default (size, ITP, no cookie header), not a consent shortcut.
 
@@ -60,12 +60,12 @@ Ids: `crypto.randomUUID()` when present, else 128 random bits as hex. Matches th
 
 400 days is Chrome’s cookie ceiling and sits next to Matomo’s 13 months. GA’s “2 years” is silently capped.
 
-| Option | Pros | Cons |
-| --- | --- | --- |
-| **A. Sliding 400 d: rewrite `lastSeen` on activity; rotate only if `createdAt` is older than 400 d (fallback)** | Returning yearly visitors keep the id (Chrome’s stated reason for 400 d). Predictable unique-user counts. | Long-lived identifier after consent. |
-| **B. Hard expire 400 d from last write** | Shorter if the user disappears. | A yearly visitor looks new. |
-| **C. 13 months (Matomo) / 1 year (Metrica `_ym_uid`)** | Familiar to EU analytics policies. | Arbitrary versus the Chrome cap we already document. |
-| **D. No persist / daily (Plausible)** | Minimal identity. | Needs a server hash (fingerprinting) or loses uniques. |
+| Option                                                                                                          | Pros                                                                                                      | Cons                                                   |
+| --------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| **A. Sliding 400 d: rewrite `lastSeen` on activity; rotate only if `createdAt` is older than 400 d (fallback)** | Returning yearly visitors keep the id (Chrome’s stated reason for 400 d). Predictable unique-user counts. | Long-lived identifier after consent.                   |
+| **B. Hard expire 400 d from last write**                                                                        | Shorter if the user disappears.                                                                           | A yearly visitor looks new.                            |
+| **C. 13 months (Matomo) / 1 year (Metrica `_ym_uid`)**                                                          | Familiar to EU analytics policies.                                                                        | Arbitrary versus the Chrome cap we already document.   |
+| **D. No persist / daily (Plausible)**                                                                           | Minimal identity.                                                                                         | Needs a server hash (fingerprinting) or loses uniques. |
 
 **Recommendation:** **A**. Refresh `lastSeen` (and the optional cookie `Max-Age`) on activity so a live visitor does not fall off at day 400 of a still-open relationship. Rotate `id` when `createdAt` exceeds 400 days; keep first-touch attribution on the old record only if the product later asks for it — v1 just mints a new visitor.
 
@@ -73,11 +73,11 @@ Ids: `crypto.randomUUID()` when present, else 128 random bits as hex. Matches th
 
 ### Session
 
-| Option | Pros | Cons |
-| --- | --- | --- |
+| Option                                     | Pros                                                   | Cons                                                                        |
+| ------------------------------------------ | ------------------------------------------------------ | --------------------------------------------------------------------------- |
 | **A. 30 min idle, no max (fallback, GA4)** | Industry default. Long support chats stay one session. | A forgotten tab can stay “the session” if something keeps writing activity. |
-| **B. 30 min idle or 24 h max (PostHog)** | Bounds replay-sized sessions. | Splits overnight work. |
-| **C. Configurable idle only** | Matches the option already named `sessionTimeout`. | Callers must opt into a max themselves. |
+| **B. 30 min idle or 24 h max (PostHog)**   | Bounds replay-sized sessions.                          | Splits overnight work.                                                      |
+| **C. Configurable idle only**              | Matches the option already named `sessionTimeout`.     | Callers must opt into a max themselves.                                     |
 
 **Recommendation:** **A** + **C**. Default `sessionTimeout: 30 * 60 * 1000`. No default max. A later `maxSessionDuration` is fine as an opt-in; do not add it to tier 0.
 
@@ -95,12 +95,12 @@ flowchart LR
   T2 -->|storage handler| M2[sessionAtom]
 ```
 
-| Option | Pros | Cons |
-| --- | --- | --- |
+| Option                                                     | Pros                                                                                                   | Cons                                                                                                                       |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
 | **A. Shared `localStorage` + `storage` events (fallback)** | Other tabs see writes; GA / Matomo / PostHog all share one session per browser profile. Zero new APIs. | `storage` does not fire in the writing tab (the atom already updated). Hidden iframes / partitioned contexts do not share. |
-| **B. `BroadcastChannel`** | Explicit messages, including same-tab if wanted. | Extra API, still same-origin, does not persist. Would sit on top of A, not replace it. |
-| **C. `perTab: true` via `sessionStorage`** | Widgets, kiosks, parallel research tabs. | Inflates session counts. Off by default. |
-| **D. Cookies only** | Shared by definition. | Default path is cookieless. |
+| **B. `BroadcastChannel`**                                  | Explicit messages, including same-tab if wanted.                                                       | Extra API, still same-origin, does not persist. Would sit on top of A, not replace it.                                     |
+| **C. `perTab: true` via `sessionStorage`**                 | Widgets, kiosks, parallel research tabs.                                                               | Inflates session counts. Off by default.                                                                                   |
+| **D. Cookies only**                                        | Shared by definition.                                                                                  | Default path is cookieless.                                                                                                |
 
 **Recommendation:** **A** after consent. The writing tab updates `sessionAtom` itself; other tabs apply the parsed `storage` event when `event.key` matches. Ignore malformed JSON. Instance isolation is the key prefix (test 5). **C** is the option. Do not propagate Reatom trace context across tabs (Т15 never).
 
@@ -110,11 +110,11 @@ Pre-consent: in-memory session id per page load, no `storage` writes, no `storag
 
 UA started a new session on a new campaign. GA4 does **not**: a mid-session UTM updates event attribution and leaves `ga_session_id` alone. Metrica starts a **new** session on the first advertising click-through, then ignores later tags in that visit. Spec 03 follows UA/Metrica, not GA4.
 
-| Option | Pros | Cons |
-| --- | --- | --- |
-| **A. Rotate on campaign change (fallback)** | Last-touch session matches the landing campaign. Comparable to UA and to Metrica’s first ad click. | Internal UTM links (`/?utm_source=header`) inflate sessions (the classic UA bug). GA4 reporters will see more sessions than GA4. |
-| **B. GA4-style: never rotate on UTM** | Stable sessions; attribution is a property, not a watershed. | Last-touch on `app.session.start` can disagree with a later `app.page_view`. |
-| **C. Rotate only on inbound campaign (not same-origin)** | Keeps A’s value, drops the internal-UTM trap. | Needs a same-origin check on referrer / Navigation API. |
+| Option                                                   | Pros                                                                                               | Cons                                                                                                                             |
+| -------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| **A. Rotate on campaign change (fallback)**              | Last-touch session matches the landing campaign. Comparable to UA and to Metrica’s first ad click. | Internal UTM links (`/?utm_source=header`) inflate sessions (the classic UA bug). GA4 reporters will see more sessions than GA4. |
+| **B. GA4-style: never rotate on UTM**                    | Stable sessions; attribution is a property, not a watershed.                                       | Last-touch on `app.session.start` can disagree with a later `app.page_view`.                                                     |
+| **C. Rotate only on inbound campaign (not same-origin)** | Keeps A’s value, drops the internal-UTM trap.                                                      | Needs a same-origin check on referrer / Navigation API.                                                                          |
 
 **Recommendation:** keep **A** as the default (fallback). Implement it as **C**’s filter so the default is not foot-guns:
 
@@ -129,11 +129,11 @@ Last-touch on the visitor still updates when a new inbound campaign arrives (att
 
 ## Midnight
 
-| Option | Pros | Cons |
-| --- | --- | --- |
-| **A. Off (GA4, PostHog, Amplitude, Metrica)** | A 23:50–00:20 checkout is one session. Daily uniques stay a backend `date_trunc` on timestamps. | Day-bucketed session counts can span two dates. |
-| **B. Local midnight (`rotateAtMidnight: true`)** | UA-shaped daily session reports without a warehouse rule. | Splits night-shift and live events. “Local” is the **browser** timezone, not a GA property timezone — document that. DST: `Date` local calendar is enough; do not hand-roll offsets. |
-| **C. UTC midnight** | Stable across travelers. | Wrong for “my Tuesday” reports. |
+| Option                                           | Pros                                                                                            | Cons                                                                                                                                                                                 |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **A. Off (GA4, PostHog, Amplitude, Metrica)**    | A 23:50–00:20 checkout is one session. Daily uniques stay a backend `date_trunc` on timestamps. | Day-bucketed session counts can span two dates.                                                                                                                                      |
+| **B. Local midnight (`rotateAtMidnight: true`)** | UA-shaped daily session reports without a warehouse rule.                                       | Splits night-shift and live events. “Local” is the **browser** timezone, not a GA property timezone — document that. DST: `Date` local calendar is enough; do not hand-roll offsets. |
+| **C. UTC midnight**                              | Stable across travelers.                                                                        | Wrong for “my Tuesday” reports.                                                                                                                                                      |
 
 **Recommendation:** default **A** (`rotateAtMidnight: false`). **B** is the named option. When it fires, treat it as any other rotation: new id, `session.previous_id`, `app.session.start`. Check on activity and on the visibility flush, not on a 00:00 timer in a background tab (timers lie under throttling).
 
@@ -154,13 +154,13 @@ sequenceDiagram
   Note over Analytics: visitor id unchanged
 ```
 
-| Option | Pros | Cons |
-| --- | --- | --- |
+| Option                                                                   | Pros                                                                                                                                                                                                | Cons                                                                         |
+| ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
 | **A. App sets `user.id` on `otel.options`; visitor id stays (fallback)** | Analytics never invents a login. OTel semconv `user.id`. Backend `GROUP BY visitor, user` stitches history. Matches GA4 User-ID + device id, Matomo `setUserId`, Amplitude `user_id` + `device_id`. | No cross-device. Shared computer keeps the visitor until storage is cleared. |
-| **B. Client `identify()` / alias table (PostHog, Mixpanel)** | Merge is immediate in the vendor. | Extra API (А9 killed manual analytics APIs). Alias graphs are a backend job. |
-| **C. Replace visitor id with `user.id`** | One column. | Breaks anonymous history; leaks the account id into the visitor key. |
-| **D. Cross-device stitch on the client** | — | Impossible without a server identity graph. Out of scope. |
-| **E. Hash email into `user.hash` automatically** | OTel has `user.hash`. | Spec: hashing is documented, per-site salt, **never automatic**. |
+| **B. Client `identify()` / alias table (PostHog, Mixpanel)**             | Merge is immediate in the vendor.                                                                                                                                                                   | Extra API (А9 killed manual analytics APIs). Alias graphs are a backend job. |
+| **C. Replace visitor id with `user.id`**                                 | One column.                                                                                                                                                                                         | Breaks anonymous history; leaks the account id into the visitor key.         |
+| **D. Cross-device stitch on the client**                                 | —                                                                                                                                                                                                   | Impossible without a server identity graph. Out of scope.                    |
+| **E. Hash email into `user.hash` automatically**                         | OTel has `user.hash`.                                                                                                                                                                               | Spec: hashing is documented, per-site salt, **never automatic**.             |
 
 **Recommendation:** **A**.
 
@@ -192,20 +192,20 @@ A random id the browser **stores after consent** is identification, not fingerpr
 
 Keep [03](../03-connect-web-analytics.md#identity-and-sessions-а14а16) as written:
 
-| Knob | Default |
-| --- | --- |
-| Visitor store | `localStorage` key from instance `name` |
-| Visitor life | 400 days from `createdAt`, sliding `lastSeen` |
-| Cookie | off; opt-in first-party + `Domain` for subdomains |
-| `persistVisitor` | `true` (false = memory) |
-| Session idle | 30 minutes, shared lastActivity |
-| Session max | none |
-| Campaign rotate | yes, inbound source/medium/campaign/click-id only |
-| Midnight rotate | `rotateAtMidnight: false` |
-| Cross-tab | shared; `perTab: true` uses `sessionStorage` |
-| Login | app sets `user.id`; visitor stays; no client stitch |
-| Fingerprint | never |
-| Pre-consent | memory session, no identity keys, no storage writes |
+| Knob             | Default                                             |
+| ---------------- | --------------------------------------------------- |
+| Visitor store    | `localStorage` key from instance `name`             |
+| Visitor life     | 400 days from `createdAt`, sliding `lastSeen`       |
+| Cookie           | off; opt-in first-party + `Domain` for subdomains   |
+| `persistVisitor` | `true` (false = memory)                             |
+| Session idle     | 30 minutes, shared lastActivity                     |
+| Session max      | none                                                |
+| Campaign rotate  | yes, inbound source/medium/campaign/click-id only   |
+| Midnight rotate  | `rotateAtMidnight: false`                           |
+| Cross-tab        | shared; `perTab: true` uses `sessionStorage`        |
+| Login            | app sets `user.id`; visitor stays; no client stitch |
+| Fingerprint      | never                                               |
+| Pre-consent      | memory session, no identity keys, no storage writes |
 
 WA-3 implements this. Tests already in 03: timeout + `session.previous_id` + two tabs share (3), instance isolation (5), `persistVisitor: false` (11), consent false writes nothing (4). Add: inbound UTM rotates, same-origin UTM does not; midnight option; login then logout keeps visitor and drops `user.id`.
 

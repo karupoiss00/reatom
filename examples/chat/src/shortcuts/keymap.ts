@@ -26,7 +26,11 @@ const sendComposer = () => {
 }
 
 const handleSwappedEnter = (event: KeyboardEvent) => {
-  if (event.key !== 'Enter' || !isComposerField(event.target) || isImeEnter(event))
+  if (
+    event.key !== 'Enter' ||
+    !isComposerField(event.target) ||
+    isImeEnter(event)
+  )
     return false
   if (event.altKey || sendKey() !== 'mod-enter') return false
   const mod = event.metaKey || event.ctrlKey

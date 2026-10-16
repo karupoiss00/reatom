@@ -71,7 +71,8 @@ export const sessionStorageKey = (storageKey: string) => `${storageKey}.session`
 export const webStorage = (kind: 'local' | 'session'): Storage | undefined => {
   if (typeof window === 'undefined') return
   try {
-    const area = kind === 'session' ? window.sessionStorage : window.localStorage
+    const area =
+      kind === 'session' ? window.sessionStorage : window.localStorage
     return typeof area?.getItem === 'function' ? area : undefined
   } catch {
     return
@@ -133,7 +134,11 @@ export const readCampaign = (
   params: readonly string[] = DEFAULT_ATTRIBUTION_PARAMS,
 ): Attribution => {
   const read = (param: string) => url.searchParams.get(param)
-  return takeCampaignParams(params, read, takeCampaignParams(EXTRA_CAMPAIGN_PARAMS, read))
+  return takeCampaignParams(
+    params,
+    read,
+    takeCampaignParams(EXTRA_CAMPAIGN_PARAMS, read),
+  )
 }
 
 const joinedFingerprint = (
@@ -151,7 +156,8 @@ const joinedFingerprint = (
 export const campaignFingerprint = (
   url: URL,
   params: readonly string[],
-): string => joinedFingerprint(params, (param) => url.searchParams.get(param) ?? undefined)
+): string =>
+  joinedFingerprint(params, (param) => url.searchParams.get(param) ?? undefined)
 
 export const fingerprintFromAttribution = (
   touch: Attribution | undefined,
@@ -266,7 +272,10 @@ const recordedPageViewKey = (instanceName: string, path: string) =>
 export const hasRecordedPageView = (instanceName: string, path: string) =>
   recordedPageViewsThisLoad().has(recordedPageViewKey(instanceName, path))
 
-export const rememberRecordedPageView = (instanceName: string, path: string) => {
+export const rememberRecordedPageView = (
+  instanceName: string,
+  path: string,
+) => {
   recordedPageViewsThisLoad().add(recordedPageViewKey(instanceName, path))
 }
 
@@ -297,10 +306,15 @@ const analyticsConsentField = (consent: object): unknown => {
   return record.analytics
 }
 
-const snapshotAllowsAnalytics = (snapshot: {
-  submitted?: boolean
-  categories?: { analytics?: boolean }
-} | null | undefined): boolean =>
+const snapshotAllowsAnalytics = (
+  snapshot:
+    | {
+        submitted?: boolean
+        categories?: { analytics?: boolean }
+      }
+    | null
+    | undefined,
+): boolean =>
   snapshot?.submitted === true && snapshot.categories?.analytics === true
 
 const liveConsent = (
@@ -323,10 +337,14 @@ export const resolveConsentSource = (
   }
   const snapshot = (consent as { snapshot?: unknown }).snapshot
   if (isConsentAtom(snapshot)) {
-    const snapshotAtom = snapshot as unknown as Atom<{
-      submitted?: boolean
-      categories?: { analytics?: boolean }
-    } | null | undefined>
+    const snapshotAtom = snapshot as unknown as Atom<
+      | {
+          submitted?: boolean
+          categories?: { analytics?: boolean }
+        }
+      | null
+      | undefined
+    >
     const allowedAtom = computed(
       () => snapshotAllowsAnalytics(snapshotAtom()),
       allowedAtomName,
@@ -360,4 +378,3 @@ export const readDocumentHasFocus = (): boolean =>
   typeof document !== 'undefined' &&
   typeof document.hasFocus === 'function' &&
   document.hasFocus()
-

@@ -105,7 +105,9 @@ export const openChatFromTail = action(async (chat: ChatModel) => {
     ...createChatRecord({
       id: chatId,
       at,
-      title: chatTitle(firstUser?.role === 'user' ? firstUser.content : '') || 'New chat',
+      title:
+        chatTitle(firstUser?.role === 'user' ? firstUser.content : '') ||
+        'New chat',
       model: chat.model(),
       settings: chat.settings(),
     }),

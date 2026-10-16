@@ -112,10 +112,7 @@ export interface WebAnalyticsOptions {
    * back door.
    */
   consent?:
-    | boolean
-    | BooleanReader
-    | AnalyticsConsentCategories
-    | AnalyticsConsentForm
+    boolean | BooleanReader | AnalyticsConsentCategories | AnalyticsConsentForm
   webVitals?: unknown
   autoPageViews?: boolean
   errors?: boolean
@@ -322,9 +319,7 @@ export function connectWebAnalytics(
   let openedPageViews = 0
   let consentedPageViews = 0
   let consentListenersReady = false
-  let flushPageEngagement = (
-    _reason: 'hide' | 'navigation' | 'consent',
-  ) => {}
+  let flushPageEngagement = (_reason: 'hide' | 'navigation' | 'consent') => {}
   let resetRamEngagement = (_restartClock: boolean) => {}
   let analyticsPageContext: TracePair | undefined
   const errorWindows = new Map<string, SignatureWindow>()

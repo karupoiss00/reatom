@@ -2,8 +2,7 @@ import type { OtlpAttrValue } from './toOtlpValue.ts'
 import { nonFiniteString } from './toOtlpValue.ts'
 
 export type CaptureValuesOptions =
-  | false
-  | { redact?: (key: string, value: unknown) => unknown }
+  false | { redact?: (key: string, value: unknown) => unknown }
 
 export type Serialize = (value: unknown, key: string) => unknown
 
@@ -21,8 +20,7 @@ const CONTACT_TOKEN = /^(?:e-?mail|emails?|phones?|mobile)$/i
 const AUTHOR_SEGMENT = /^author(?!i)/i
 const EMAIL_SCRUB = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g
 const PHONE_SCRUB = /(?<![\dA-Fa-f])\+?(?:[\s().-]*\d){10,15}(?![\dA-Fa-f])/g
-const JWT_SCRUB =
-  /\beyJ[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]*/g
+const JWT_SCRUB = /\beyJ[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]*/g
 const BEARER_SCRUB = /\bBearer\s+\S+/gi
 const MARKER_BYTES = 13 // JSON string including quotes; all fixed markers fit.
 
@@ -34,7 +32,10 @@ const nameSegments = (name: string): string[] =>
     .split(/[^A-Za-z0-9]+/)
     .filter((segment) => segment.length > 0)
 
-/** Segment match so `issueAuthor` is not `auth`. Object keys keep the substring regex. */
+/**
+ * Segment match so `issueAuthor` is not `auth`. Object keys keep the substring
+ * regex.
+ */
 export const isSensitiveName = (name: string): boolean => {
   if (CONTACT_TOKEN.test(name)) return true
   for (const segment of nameSegments(name)) {
@@ -58,7 +59,10 @@ const matchingParen = (source: string, open: number): number => {
   return -1
 }
 
-/** Best-effort parameter names from a function source. Empty when stripped or native. */
+/**
+ * Best-effort parameter names from a function source. Empty when stripped or
+ * native.
+ */
 export const parameterNames = (fn: unknown): readonly string[] => {
   if (typeof fn !== 'function') return []
   let source: string
@@ -144,10 +148,14 @@ const dateToISOString = Object.getOwnPropertyDescriptor(
   Date.prototype,
   'toISOString',
 )!.value as (this: Date) => string
-const mapSizeGetter = Object.getOwnPropertyDescriptor(Map.prototype, 'size')!
-  .get!
-const setSizeGetter = Object.getOwnPropertyDescriptor(Set.prototype, 'size')!
-  .get!
+const mapSizeGetter = Object.getOwnPropertyDescriptor(
+  Map.prototype,
+  'size',
+)!.get!
+const setSizeGetter = Object.getOwnPropertyDescriptor(
+  Set.prototype,
+  'size',
+)!.get!
 const mapEntriesFn = Object.getOwnPropertyDescriptor(Map.prototype, 'entries')!
   .value as (this: object) => object
 const setValuesFn = Object.getOwnPropertyDescriptor(Set.prototype, 'values')!
@@ -319,23 +327,22 @@ const stringPrefix = (value: string, maxUnits: number, maxBytes: number) => {
  * `[Atom <name>]` or `[Action <name>]` (a computed counts as an atom) from the
  * function's own data `name`; it is never called. Other functions stay
  * `[Function]`. `URL` becomes `protocol//host` plus pathname and, when a query
- * is present, `?` plus the deduped query keys. `Date` becomes an ISO string,
- * or `[Invalid Date]`. Other class instances become `[ClassName]` from the
- * prototype constructor's own data name, otherwise `[Opaque]` (DOM nodes
- * follow that rule). Redaction sees roots and readable child values before
+ * is present, `?` plus the deduped query keys. `Date` becomes an ISO string, or
+ * `[Invalid Date]`. Other class instances become `[ClassName]` from the
+ * prototype constructor's own data name, otherwise `[Opaque]` (DOM nodes follow
+ * that rule). Redaction sees roots and readable child values before
  * normalization. Keys matching password/secret/token and siblings become
- * `[redacted]` after that hook. Map values use `String(k)` as the redaction
- * key when `k` is a string. `names` redacts a whole root when the atom or
- * action name matches those words as segments (`login.password`,
- * `setPassword`), without treating `author` as `auth`. `entryNames` on
- * `capture` redact direct `params` elements by parameter name. Kept strings
- * replace email-like and phone-like text with `[email]` and `[phone]`,
- * JWT-shaped tokens with `[jwt]`, and `Bearer` tokens with `Bearer [redacted]`,
- * scanning at most 4096 characters. User `toJSON`, getters and
- * `Symbol.toStringTag` are not used. Hook failures and Proxy trap failures
- * propagate; there is no input fallback. Reflect.ownKeys can materialize all
- * keys; arbitrary Proxy traps and redact cannot have a hard CPU bound.
- * Descriptors/values are visited only on budget.
+ * `[redacted]` after that hook. Map values use `String(k)` as the redaction key
+ * when `k` is a string. `names` redacts a whole root when the atom or action
+ * name matches those words as segments (`login.password`, `setPassword`),
+ * without treating `author` as `auth`. `entryNames` on `capture` redact direct
+ * `params` elements by parameter name. Kept strings replace email-like and
+ * phone-like text with `[email]` and `[phone]`, JWT-shaped tokens with `[jwt]`,
+ * and `Bearer` tokens with `Bearer [redacted]`, scanning at most 4096
+ * characters. User `toJSON`, getters and `Symbol.toStringTag` are not used.
+ * Hook failures and Proxy trap failures propagate; there is no input fallback.
+ * Reflect.ownKeys can materialize all keys; arbitrary Proxy traps and redact
+ * cannot have a hard CPU bound. Descriptors/values are visited only on budget.
  */
 export type ValueCaptureContext = {
   names?: readonly string[]
@@ -571,7 +578,8 @@ export const createValueCapture = (
           value,
           [],
         )
-        if (!isPrototypeObject(created)) return emitString(classMarker(prototype))
+        if (!isPrototypeObject(created))
+          return emitString(classMarker(prototype))
         iterator = created
       } catch {
         return emitString(classMarker(prototype))

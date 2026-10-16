@@ -38,10 +38,7 @@ function jsonResponse(body: unknown, status = 200) {
   })
 }
 
-function mockClickHouseFetch(
-  exportJson = clickhouseExport,
-  status = 200,
-) {
+function mockClickHouseFetch(exportJson = clickhouseExport, status = 200) {
   return vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
     if (status !== 200) return jsonResponse({ error: 'denied' }, status)
     const sql = String(init?.body ?? '')
@@ -79,7 +76,9 @@ test('ClickHouse exporter rows convert to ingestible OTLP with cause ids', () =>
   const nanos = records.map((record) =>
     BigInt(record.startTimeUnixNano ?? record.timeUnixNano ?? '0'),
   )
-  expect(nanos).toEqual([...nanos].sort((left, right) => (left < right ? -1 : 1)))
+  expect(nanos).toEqual(
+    [...nanos].sort((left, right) => (left < right ? -1 : 1)),
+  )
   expect(records[0]?.name).toBe('explode')
 })
 
@@ -97,13 +96,15 @@ test('connectRemote pulls ClickHouse JSON into Activity records', async () => {
     expect(result).toEqual({ recordCount: 7 })
     expect(admin.source()).toBe('remote')
     expect(admin.records()).toHaveLength(7)
-    expect(admin.records().some((record) => record.atomName === 'tree.checked')).toBe(
-      true,
-    )
+    expect(
+      admin.records().some((record) => record.atomName === 'tree.checked'),
+    ).toBe(true)
     expect(admin.records().some((record) => record.name === 'explode')).toBe(
       true,
     )
-    const checked = admin.records().find((record) => record.atomName === 'tree.checked')
+    const checked = admin
+      .records()
+      .find((record) => record.atomName === 'tree.checked')
     expect(checked?.causeIds).toEqual(['1'])
     admin.selectRecord(checked!)
     expect(admin.selectedTraceId()).toBe(checked!.traceId)
@@ -243,7 +244,10 @@ test('StatusCode 2 without reatom.outcome is an error; services stay distinct', 
   toggleRow.ServiceName = 'svc-b'
   toggleRow.ResourceAttributes = { 'service.name': 'svc-b' }
 
-  const [statusOnly] = clickhouseExportToOtlp({ data: [explodeRow] }, { data: [] }) as Array<{
+  const [statusOnly] = clickhouseExportToOtlp(
+    { data: [explodeRow] },
+    { data: [] },
+  ) as Array<{
     status?: { code?: number }
     attributes: Record<string, unknown>
   }>
@@ -265,28 +269,31 @@ test('StatusCode 2 without reatom.outcome is an error; services stay distinct', 
   const errorOnly = records.find((record) => record.name === 'explode')
   expect(errorOnly?.outcome).toBe('error')
   expect(recordHasError(errorOnly!)).toBe(true)
-  expect(records.find((record) => record.name === 'devtools.ping')?.sourceId).toBe(
-    'clickhouse:svc-a',
-  )
-  expect(records.find((record) => record.name === 'tree#.toggle')?.sourceId).toBe(
-    'clickhouse:svc-b',
-  )
+  expect(
+    records.find((record) => record.name === 'devtools.ping')?.sourceId,
+  ).toBe('clickhouse:svc-a')
+  expect(
+    records.find((record) => record.name === 'tree#.toggle')?.sourceId,
+  ).toBe('clickhouse:svc-b')
 })
 
 test('logs EventName fallback retries only on a missing column', async () => {
-  const missingColumn = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
-    const sql = String(init?.body ?? '')
-    if (sql.includes('FROM otel_traces')) return jsonResponse(clickhouseExport.spans)
-    if (sql.includes("LogAttributes['event.name']")) {
-      return jsonResponse(clickhouseExport.logs)
-    }
-    if (sql.includes('FROM otel_logs')) {
-      return new Response('Code: 47. Unknown identifier EventName', {
-        status: 404,
-      })
-    }
-    return jsonResponse({ error: 'unknown query' }, 400)
-  })
+  const missingColumn = vi.fn(
+    async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const sql = String(init?.body ?? '')
+      if (sql.includes('FROM otel_traces'))
+        return jsonResponse(clickhouseExport.spans)
+      if (sql.includes("LogAttributes['event.name']")) {
+        return jsonResponse(clickhouseExport.logs)
+      }
+      if (sql.includes('FROM otel_logs')) {
+        return new Response('Code: 47. Unknown identifier EventName', {
+          status: 404,
+        })
+      }
+      return jsonResponse({ error: 'unknown query' }, 400)
+    },
+  )
 
   const records = await fetchClickHouseExport(CREDENTIALS, {
     fetch: missingColumn,
@@ -300,12 +307,16 @@ test('logs EventName fallback retries only on a missing column', async () => {
   ).toBe(true)
   expect(CLICKHOUSE_LOG_SQL_NO_EVENT).toContain("LogAttributes['event.name']")
 
-  const deniedLogs = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
-    const sql = String(init?.body ?? '')
-    if (sql.includes('FROM otel_traces')) return jsonResponse(clickhouseExport.spans)
-    if (sql.includes('FROM otel_logs')) return jsonResponse({ error: 'denied' }, 401)
-    return jsonResponse({ error: 'unknown query' }, 400)
-  })
+  const deniedLogs = vi.fn(
+    async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const sql = String(init?.body ?? '')
+      if (sql.includes('FROM otel_traces'))
+        return jsonResponse(clickhouseExport.spans)
+      if (sql.includes('FROM otel_logs'))
+        return jsonResponse({ error: 'denied' }, 401)
+      return jsonResponse({ error: 'unknown query' }, 400)
+    },
+  )
   await expect(
     fetchClickHouseExport(CREDENTIALS, {
       fetch: deniedLogs,
@@ -318,13 +329,16 @@ test('logs EventName fallback retries only on a missing column', async () => {
     ),
   ).toBe(false)
 
-  const abortedLogs = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
-    const sql = String(init?.body ?? '')
-    if (sql.includes('FROM otel_traces')) return jsonResponse(clickhouseExport.spans)
-    const error = new Error('Aborted')
-    error.name = 'AbortError'
-    throw error
-  })
+  const abortedLogs = vi.fn(
+    async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const sql = String(init?.body ?? '')
+      if (sql.includes('FROM otel_traces'))
+        return jsonResponse(clickhouseExport.spans)
+      const error = new Error('Aborted')
+      error.name = 'AbortError'
+      throw error
+    },
+  )
   await expect(
     fetchClickHouseExport(CREDENTIALS, {
       fetch: abortedLogs,

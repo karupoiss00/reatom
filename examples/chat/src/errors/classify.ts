@@ -132,7 +132,9 @@ const retryAction = (retryAfterSec: number | null): ErrorAction =>
   action(
     'retry',
     'Retry',
-    retryAfterSec !== null && retryAfterSec > 0 ? { disabled: true } : undefined,
+    retryAfterSec !== null && retryAfterSec > 0
+      ? { disabled: true }
+      : undefined,
   )
 
 const detailsOf = (
@@ -201,7 +203,8 @@ const reasonsText = (metadata: Record<string, unknown>): string | null => {
   if (typeof value === 'string' && value.trim()) return value.trim()
   if (!Array.isArray(value)) return null
   const parts = value.filter(
-    (item): item is string => typeof item === 'string' && item.trim().length > 0,
+    (item): item is string =>
+      typeof item === 'string' && item.trim().length > 0,
   )
   return parts.length > 0 ? parts.join(', ') : null
 }
@@ -233,7 +236,8 @@ const isUnknownModel = (
   if (context.modelInCatalog === true) return clearUnknownModelMessage(message)
   if (clearUnknownModelMessage(message)) return true
   if (errorType(parsed) === 'not_found') return true
-  if (context.modelInCatalog === false && (status === 400 || status === 404)) return true
+  if (context.modelInCatalog === false && (status === 400 || status === 404))
+    return true
   return status === 404
 }
 
@@ -243,9 +247,15 @@ const mentionsZdr = (message: string): boolean =>
 const mentionsWebSearch = (message: string): boolean =>
   /web[_\s-]?search/i.test(message)
 
-const isWebSearchZdr = (parsed: ParsedError, context: ClassifiableContext): boolean => {
+const isWebSearchZdr = (
+  parsed: ParsedError,
+  context: ClassifiableContext,
+): boolean => {
   const message = parsed.message ?? ''
-  if (mentionsZdr(message) && (mentionsWebSearch(message) || context.webSearchOn)) {
+  if (
+    mentionsZdr(message) &&
+    (mentionsWebSearch(message) || context.webSearchOn)
+  ) {
     return true
   }
   return mentionsWebSearch(message) && context.zdrOn
@@ -265,13 +275,15 @@ const namedParameter = (parsed: ParsedError): string | null => {
   for (const name of PARAMETER_NAMES) {
     const match = new RegExp(`\\b${name}\\b`, 'i').exec(message)
     if (!match) continue
-    if (found === null || match.index < found.index) found = { name, index: match.index }
+    if (found === null || match.index < found.index)
+      found = { name, index: match.index }
   }
   return found?.name ?? null
 }
 
 const identifiesDailyFreeCap = (parsed: ParsedError): boolean => {
-  const type = metaString(parsed.metadata, 'limit_type', 'limitType', 'quota') ?? ''
+  const type =
+    metaString(parsed.metadata, 'limit_type', 'limitType', 'quota') ?? ''
   return /\bdaily\b|per day|per-day|free-models-per-day/i.test(
     `${parsed.message ?? ''} ${type}`,
   )
@@ -282,9 +294,19 @@ const tookTooLong = (
   parsed: ParsedError,
   headers: Record<string, string>,
 ): ErrorInfo =>
-  sameLine('timeout', tookTooLongSentence, retryAction(null), code, parsed, headers)
+  sameLine(
+    'timeout',
+    tookTooLongSentence,
+    retryAction(null),
+    code,
+    parsed,
+    headers,
+  )
 
-const rejectedKey = (parsed: ParsedError, headers: Record<string, string>): ErrorInfo =>
+const rejectedKey = (
+  parsed: ParsedError,
+  headers: Record<string, string>,
+): ErrorInfo =>
   sameLine(
     'auth-rejected',
     keyRejectedSentence,
@@ -324,9 +346,17 @@ const payment = (
   if (source === 'openrouter_in_flight_budget') {
     const wait = retryAfterSeconds(headerValue(headers, 'retry-after'))
     const text = inFlightSentence(wait)
-    return sameLine('in-flight-budget', text, retryAction(wait), 402, parsed, headers, {
-      retryAfterSec: wait,
-    })
+    return sameLine(
+      'in-flight-budget',
+      text,
+      retryAction(wait),
+      402,
+      parsed,
+      headers,
+      {
+        retryAfterSec: wait,
+      },
+    )
   }
   return sameLine(
     'payment-required',
@@ -339,7 +369,11 @@ const payment = (
   )
 }
 
-const forbidden = (parsed: ParsedError, headers: Record<string, string>, context: ClassifiableContext): ErrorInfo => {
+const forbidden = (
+  parsed: ParsedError,
+  headers: Record<string, string>,
+  context: ClassifiableContext,
+): ErrorInfo => {
   const reasons = reasonsText(parsed.metadata)
   const flagged =
     metaString(parsed.metadata, 'flagged_input', 'flaggedInput') ?? undefined
@@ -373,7 +407,9 @@ const rateLimited = (
   const secondary: ErrorAction[] = []
   if (context.modelId.endsWith(':free') && context.paidVariant) {
     secondary.push(
-      action('use-paid', 'Use paid version', { modelId: context.paidVariant.id }),
+      action('use-paid', 'Use paid version', {
+        modelId: context.paidVariant.id,
+      }),
     )
   }
   return card({
@@ -407,7 +443,8 @@ const unavailable = (
       : null
   const title = unavailableTitle(context.modelName)
   const excluded = context.privacyRestrictive || context.routingRestrictive
-  const alternative = fallbackAction(context) ?? action('pick-model', 'Pick another model')
+  const alternative =
+    fallbackAction(context) ?? action('pick-model', 'Pick another model')
   const secondary: ErrorAction[] = []
   let primary: ErrorAction
   if (context.routingRestrictive) {
@@ -453,7 +490,9 @@ const tooLong = (
 }
 
 const withPrivacy = (context: ClassifiableContext): ClassifiableContext =>
-  context.privacyRestrictive ? context : { ...context, privacyRestrictive: true }
+  context.privacyRestrictive
+    ? context
+    : { ...context, privacyRestrictive: true }
 
 const unknownModelCard = (
   status: number,
@@ -508,7 +547,8 @@ const badRequest = (
 ): ErrorInfo => {
   const message = parsed.message ?? ''
   if (isContextTooLong(parsed)) return tooLong(status, parsed, headers, context)
-  if (isWebSearchZdr(parsed, context)) return webSearchZdrCard(status, parsed, headers)
+  if (isWebSearchZdr(parsed, context))
+    return webSearchZdrCard(status, parsed, headers)
   if (isDataPolicyMessage(message)) {
     return unavailable(status, parsed, headers, withPrivacy(context))
   }
@@ -516,7 +556,8 @@ const badRequest = (
     return unavailable(status, parsed, headers, context)
   }
   const parameter = namedParameter(parsed)
-  if (parameter) return parameterCard(status, parsed, headers, context, parameter)
+  if (parameter)
+    return parameterCard(status, parsed, headers, context, parameter)
   if (isUnknownModel(parsed, context, status)) {
     return unknownModelCard(status, parsed, headers, context)
   }
@@ -538,7 +579,10 @@ const badRequest = (
   )
 }
 
-const tooLarge = (parsed: ParsedError, headers: Record<string, string>): ErrorInfo =>
+const tooLarge = (
+  parsed: ParsedError,
+  headers: Record<string, string>,
+): ErrorInfo =>
   sameLine(
     'too-large',
     tooLargeSentence,
@@ -596,17 +640,21 @@ const classifyStatus = (
   }
 }
 
-const streamHeaders = (failure: ClassifiableStreamError): Record<string, string> => {
+const streamHeaders = (
+  failure: ClassifiableStreamError,
+): Record<string, string> => {
   const metadata = failure.metadata ?? {}
   const retryAfter = metadata.retry_after ?? metadata.retryAfter
-  if (typeof retryAfter !== 'number' && typeof retryAfter !== 'string') return {}
+  if (typeof retryAfter !== 'number' && typeof retryAfter !== 'string')
+    return {}
   return { 'retry-after': String(retryAfter) }
 }
 
 const hadStreamContent = (
   failure: ClassifiableStreamError,
   context: ClassifiableContext,
-): boolean => failure.contentReceived === true || context.contentReceived === true
+): boolean =>
+  failure.contentReceived === true || context.contentReceived === true
 
 const classifyStream = (
   failure: ClassifiableStreamError,
@@ -663,7 +711,9 @@ const emptyReasoning = (
     actions.push(action('retry-lower-effort', 'Retry with lower effort'))
   }
   if (context.maxTokensSet) {
-    actions.push(action('retry-higher-max-tokens', 'Retry with higher max tokens'))
+    actions.push(
+      action('retry-higher-max-tokens', 'Retry with higher max tokens'),
+    )
   }
   if (actions.length === 0) actions.push(retryAction(null))
   const [primary, ...secondary] = actions
@@ -755,6 +805,11 @@ export const classifyFailure = (
     case 'stream-error':
       return classifyStream(failure, context)
     case 'http':
-      return classifyStatus(failure.status, failure.body, failure.headers, context)
+      return classifyStatus(
+        failure.status,
+        failure.body,
+        failure.headers,
+        context,
+      )
   }
 }

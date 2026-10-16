@@ -30,10 +30,7 @@ const CORNER_KEY = '_Admin.settings.corner.v1'
 
 /** Corner of the viewport where the admin panel docks. */
 export type AdminPanelCorner =
-  | 'top-left'
-  | 'top-right'
-  | 'bottom-left'
-  | 'bottom-right'
+  'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
 
 export function isAdminPanelCorner(value: unknown): value is AdminPanelCorner {
   return (
@@ -70,8 +67,8 @@ export interface AdminSettings {
   /** Kind colors on bars, row bands, and chips. Default on. */
   colors: BooleanAtom
   /**
-   * Light, Dark, or the device scheme. Default Dark, so the shell stays on
-   * the original violet night until a person chooses otherwise.
+   * Light, Dark, or the device scheme. Default Dark, so the shell stays on the
+   * original violet night until a person chooses otherwise.
    */
   scheme: Atom<AdminScheme> & { reset(): AdminScheme }
   /** Picked accent. Light and dark palettes are calculated from this color. */

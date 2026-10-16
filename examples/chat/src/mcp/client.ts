@@ -30,7 +30,9 @@ type JsonRpcResponse = {
 const asRecord = (value: unknown) =>
   value && typeof value === 'object' ? (value as Record<string, unknown>) : null
 
-const listedInputSchema = (value: unknown): McpListedInputSchema | undefined => {
+const listedInputSchema = (
+  value: unknown,
+): McpListedInputSchema | undefined => {
   const record = asRecord(value)
   if (!record) return undefined
   const properties = asRecord(record.properties) ?? {}

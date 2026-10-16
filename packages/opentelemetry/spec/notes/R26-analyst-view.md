@@ -34,16 +34,16 @@ flowchart LR
 
 Shneiderman's mantra: overview first, zoom and filter, then details on demand [3]. The admin already does the last two for records. The analyst needs the overview.
 
-| Question | Surface | Prototype |
-| --- | --- | --- |
-| Visitors, sessions, page views, engagement, bounce, time | Analytics tab, KPI strip | `analyticsTotals` |
-| Top pages, entry and exit pages, sources | Analytics tab, tables | `analyticsBreakdown` |
-| What does a typical user do | Paths, most common path expanded | `analyticsPathTree`, `typicalAnalyticsPath` |
-| How do people reach `/cart`, where do they go after | Paths aligned at `/cart` | `analyticsPathTree({ align })` |
-| Where do they drop off | Paths: exit here and continue per step; segment Exclude | node `stops`, `continuation`; `analyticsSegment` |
-| How long from landing to cart | Paths bars | node `offsetMs`, `durationMs` |
-| Do errors change the path | Paths: sessions with errors per step | node `sessionsWithErrors` |
-| What did one real user do | Typical session, or a session from a step | `typicalAnalyticsSession` |
+| Question                                                 | Surface                                                 | Prototype                                        |
+| -------------------------------------------------------- | ------------------------------------------------------- | ------------------------------------------------ |
+| Visitors, sessions, page views, engagement, bounce, time | Analytics tab, KPI strip                                | `analyticsTotals`                                |
+| Top pages, entry and exit pages, sources                 | Analytics tab, tables                                   | `analyticsBreakdown`                             |
+| What does a typical user do                              | Paths, most common path expanded                        | `analyticsPathTree`, `typicalAnalyticsPath`      |
+| How do people reach `/cart`, where do they go after      | Paths aligned at `/cart`                                | `analyticsPathTree({ align })`                   |
+| Where do they drop off                                   | Paths: exit here and continue per step; segment Exclude | node `stops`, `continuation`; `analyticsSegment` |
+| How long from landing to cart                            | Paths bars                                              | node `offsetMs`, `durationMs`                    |
+| Do errors change the path                                | Paths: sessions with errors per step                    | node `sessionsWithErrors`                        |
+| What did one real user do                                | Typical session, or a session from a step               | `typicalAnalyticsSession`                        |
 
 ## 2. External references and what each gives the design
 
@@ -87,16 +87,16 @@ Gaps, not fixed:
 
 ## 4. Options
 
-| Option | Pros | Cons |
-| --- | --- | --- |
-| **A.** Records only, plus filters | Nothing to build | No totals; fails the owner's requirement |
-| **B.** Totals strip in the Timeline toolbar | Cheap | Breaks "one primary surface" and "counters not duplicated"; no breakdowns |
-| **C.** Paths unit in the Timeline | The average path where the owner wants it; reuses Gantt, filters, card; LifeFlow and Grafana Structure precedents | Needs generic Gantt changes; aggregate bars can be misread as spans |
-| **D.** Fixed Analytics tab | Totals and breakdowns in one place; Plausible-level scope | A new view; risk of BI creep (А2) |
-| **E.** Funnel builder | Strong for conversion | Step-definition UI; mostly covered by Paths plus Exclude |
-| **F.** Sankey or flow chart | Familiar from Mixpanel, Amplitude, Umami | New visualization outside the kit; loses time |
-| **G.** Grafana or SQL dashboards (R24) | No admin work | Not in the admin; the owner asked for it there |
-| **H.** Synthetic average session | Looks simple | Misleads (Agency G); no real session matches |
+| Option                                      | Pros                                                                                                              | Cons                                                                      |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| **A.** Records only, plus filters           | Nothing to build                                                                                                  | No totals; fails the owner's requirement                                  |
+| **B.** Totals strip in the Timeline toolbar | Cheap                                                                                                             | Breaks "one primary surface" and "counters not duplicated"; no breakdowns |
+| **C.** Paths unit in the Timeline           | The average path where the owner wants it; reuses Gantt, filters, card; LifeFlow and Grafana Structure precedents | Needs generic Gantt changes; aggregate bars can be misread as spans       |
+| **D.** Fixed Analytics tab                  | Totals and breakdowns in one place; Plausible-level scope                                                         | A new view; risk of BI creep (А2)                                         |
+| **E.** Funnel builder                       | Strong for conversion                                                                                             | Step-definition UI; mostly covered by Paths plus Exclude                  |
+| **F.** Sankey or flow chart                 | Familiar from Mixpanel, Amplitude, Umami                                                                          | New visualization outside the kit; loses time                             |
+| **G.** Grafana or SQL dashboards (R24)      | No admin work                                                                                                     | Not in the admin; the owner asked for it there                            |
+| **H.** Synthetic average session            | Looks simple                                                                                                      | Misleads (Agency G); no real session matches                              |
 
 **Pick C plus D**, with session segments; E in phase 3. Paths is a mode, not a "group by" (Д15), because the axis changes from wall clock to time since alignment, and a mode switch makes that explicit.
 

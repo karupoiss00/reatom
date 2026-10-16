@@ -480,7 +480,9 @@ test('WA-6 / R11: consent omitted emits no engagement OTLP or records', async ()
       )
     } catch {
       const rendered = String(body)
-      return rendered.includes(ENGAGEMENT_EVENT) ? [{ eventName: rendered }] : []
+      return rendered.includes(ENGAGEMENT_EVENT)
+        ? [{ eventName: rendered }]
+        : []
     }
   })
   expect(exportedEngagement).toEqual([])
@@ -544,7 +546,9 @@ test('WA-6 / R11: consent false emits no engagement OTLP or records', async () =
       )
     } catch {
       const rendered = String(body)
-      return rendered.includes(ENGAGEMENT_EVENT) ? [{ eventName: rendered }] : []
+      return rendered.includes(ENGAGEMENT_EVENT)
+        ? [{ eventName: rendered }]
+        : []
     }
   })
   expect(exportedEngagement).toEqual([])

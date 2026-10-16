@@ -342,7 +342,13 @@ export type ChatContract = Contract<
       typeof chat.deletedElsewhere,
       Atom<{ chatId: ChatId; expiresAt: number } | null>
     >,
-    Is<typeof chat.sendBlockContributors, { register(contributor: SendBlockContributor): () => void; list(): readonly SendBlockContributor[] }>,
+    Is<
+      typeof chat.sendBlockContributors,
+      {
+        register(contributor: SendBlockContributor): () => void
+        list(): readonly SendBlockContributor[]
+      }
+    >,
   ]
 >
 

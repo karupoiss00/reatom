@@ -15,11 +15,7 @@ export type ValidateResult =
   | {
       ok: false
       reason:
-        | 'unauthorized'
-        | 'management-key'
-        | 'forbidden'
-        | 'offline'
-        | 'busy'
+        'unauthorized' | 'management-key' | 'forbidden' | 'offline' | 'busy'
       status?: number
       retryAfterSec?: number
     }

@@ -16,7 +16,9 @@ const renderProductPage = action(
 export const handleRequest = (request: Request) =>
   context.start(() => {
     const render = action(() => {
-      const incoming = serverOtel.parseTraceparent(request.headers.get('traceparent'))
+      const incoming = serverOtel.parseTraceparent(
+        request.headers.get('traceparent'),
+      )
       if (incoming) serverOtel.traceVar.set(incoming)
       return renderProductPage(new URL(request.url).pathname)
     }, 'ssr.request')

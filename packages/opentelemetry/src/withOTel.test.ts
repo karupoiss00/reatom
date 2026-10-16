@@ -1,4 +1,11 @@
-import { action, actionMiddleware, atom, context, sleep, wrap } from '@reatom/core'
+import {
+  action,
+  actionMiddleware,
+  atom,
+  context,
+  sleep,
+  wrap,
+} from '@reatom/core'
 import { expect, test, vi } from 'vitest'
 
 import type { LogRecordInput } from './buildLogRecord.ts'

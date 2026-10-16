@@ -84,7 +84,9 @@ function positionedSpans(source: string): PositionedSpan[] {
   return result
 }
 
-export function calculatorOpsFor(field: string | undefined): readonly CalculatorCompareOp[] {
+export function calculatorOpsFor(
+  field: string | undefined,
+): readonly CalculatorCompareOp[] {
   if (field === undefined || field === 'cause') return []
   if (NUMERIC_FIELDS.has(field) || field.startsWith('attr.')) return ALL_OPS
   return TEXT_OPS
@@ -159,11 +161,14 @@ function joinWord(base: string, word: string): string {
 
 /**
  * Append one keypad key to the end of an expression. A clause key after a
- * complete clause writes an explicit AND. A comparison key after a
- * comparison replaces it. A value key after a complete clause replaces that
- * clause's value.
+ * complete clause writes an explicit AND. A comparison key after a comparison
+ * replaces it. A value key after a complete clause replaces that clause's
+ * value.
  */
-export function appendCalculatorKey(source: string, key: CalculatorKey): string {
+export function appendCalculatorKey(
+  source: string,
+  key: CalculatorKey,
+): string {
   const state = calculatorInputState(source)
   const base = source.trimEnd()
   const connector = state.expect === 'connector' ? 'AND ' : ''
@@ -185,7 +190,11 @@ export function appendCalculatorKey(source: string, key: CalculatorKey): string 
       return `${base}${key.value}`
     case 'value': {
       const quoted = quoteCalculatorValue(key.value)
-      if (state.expect === 'connector' && last !== undefined && isValueSpan(last.span)) {
+      if (
+        state.expect === 'connector' &&
+        last !== undefined &&
+        isValueSpan(last.span)
+      ) {
         return `${source.slice(0, last.start)}${quoted}`
       }
       return `${base}${quoted}`
@@ -202,7 +211,10 @@ export function backspaceCalculator(source: string): string {
   return restLast?.span.kind === 'keyword' ? `${rest} ` : rest
 }
 
-function topByFrequency(values: Iterable<string | undefined>, limit: number): string[] {
+function topByFrequency(
+  values: Iterable<string | undefined>,
+  limit: number,
+): string[] {
   const counts = new Map<string, number>()
   for (const value of values) {
     if (value === undefined || value === '') continue
@@ -234,11 +246,20 @@ export function calculatorValueSuggestions(
     case 'cause':
       return topByFrequency(records.map(recordLabel), limit)
     case 'outcome':
-      return topByFrequency(records.map((record) => record.outcome), limit)
+      return topByFrequency(
+        records.map((record) => record.outcome),
+        limit,
+      )
     case 'event':
-      return topByFrequency(records.map((record) => record.eventName), limit)
+      return topByFrequency(
+        records.map((record) => record.eventName),
+        limit,
+      )
     case 'trace':
-      return topByFrequency(records.map((record) => record.traceId), limit)
+      return topByFrequency(
+        records.map((record) => record.traceId),
+        limit,
+      )
     case 'errors':
       return ['true', 'false']
     case 'duration':
@@ -274,11 +295,15 @@ export function calculatorBreakdown(
   const countMatches = (group: FilterGroup) =>
     records.reduce(
       (count, record) =>
-        evaluateRecordExpression(record, group, parsed.tags, index) ? count + 1 : count,
+        evaluateRecordExpression(record, group, parsed.tags, index)
+          ? count + 1
+          : count,
       0,
     )
 
-  const describe = (node: FilterTagRef | FilterGroup): CalculatorBreakdownNode => {
+  const describe = (
+    node: FilterTagRef | FilterGroup,
+  ): CalculatorBreakdownNode => {
     if (isTagRef(node)) {
       return {
         kind: 'clause',

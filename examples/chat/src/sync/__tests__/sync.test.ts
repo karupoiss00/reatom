@@ -82,7 +82,12 @@ test('two bus instances exchange typed events, including message-deleted', async
     chatId: 'chat-1',
     messageId: 'message-1',
   })
-  tabB.publish({ type: 'stream', chatId: 'chat-1', tabId: 'tab-b', active: true })
+  tabB.publish({
+    type: 'stream',
+    chatId: 'chat-1',
+    tabId: 'tab-b',
+    active: true,
+  })
 
   await expect.poll(() => receivedByB.length).toBe(2)
   expect(receivedByB).toEqual([
@@ -106,10 +111,18 @@ test('the bus ignores own-tab echoes, unknown event types and foreign payloads',
   onCleanup(() => raw.close())
 
   tabA.publish({ type: 'all-deleted' })
-  raw.postMessage({ app: 'atelier', from: 'tab-z', event: { type: 'from-the-future', x: 1 } })
+  raw.postMessage({
+    app: 'atelier',
+    from: 'tab-z',
+    event: { type: 'from-the-future', x: 1 },
+  })
   raw.postMessage('not an envelope')
   raw.postMessage({ app: 'atelier', from: 'tab-z', event: null })
-  raw.postMessage({ app: 'atelier', from: 'tab-z', event: { type: 'chat-purged', chatId: 'chat-2' } })
+  raw.postMessage({
+    app: 'atelier',
+    from: 'tab-z',
+    event: { type: 'chat-purged', chatId: 'chat-2' },
+  })
 
   await expect.poll(() => receivedByB.length).toBe(2)
   expect(receivedByB).toEqual([
@@ -129,9 +142,9 @@ test('initSync wires the shared channel into syncReceived', async () => {
   onCleanup(() => otherTab.close())
   otherTab.publish({ type: 'preset-purged', presetId: 'preset-1' })
 
-  await expect.poll(() => received).toEqual([
-    { type: 'preset-purged', presetId: 'preset-1' },
-  ])
+  await expect
+    .poll(() => received)
+    .toEqual([{ type: 'preset-purged', presetId: 'preset-1' }])
 })
 
 test('without BroadcastChannel the tab reloads from storage on focus and visibilitychange', async () => {
@@ -158,7 +171,9 @@ test('Web Lock chat-stream:<id> blocks a second acquirer and releases within 1 s
   expect(lockA).not.toBeNull()
   expect(await tabA.acquireStreamLock('chat-1')).toBeNull()
   expect(await tabB.acquireStreamLock('chat-1')).toBeNull()
-  const heldNames = (await navigator.locks.query()).held?.map((lock) => lock.name)
+  const heldNames = (await navigator.locks.query()).held?.map(
+    (lock) => lock.name,
+  )
   expect(heldNames).toContain('chat-stream:chat-1')
 
   await expect.poll(() => heldElsewhereInB(), pollWithin).toBe(true)
@@ -251,7 +266,9 @@ test('a stream event from another tab marks the chat held and reports the releas
   expect(tabB.streamHeldElsewhere('chat-1')()).toBe(true)
 
   lockA!.release()
-  await expect.poll(() => tabB.streamHeldElsewhere('chat-1')(), pollWithin).toBe(false)
+  await expect
+    .poll(() => tabB.streamHeldElsewhere('chat-1')(), pollWithin)
+    .toBe(false)
   expect(released).toEqual([['chat-1', 'tab-a']])
 })
 
@@ -366,7 +383,9 @@ test('without Web Locks a persisted pagehide keeps the claim and a real close an
   window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }))
   expect(await waitForLockKind(spy, 'released', 50)).toBe(false)
 
-  window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: false }))
+  window.dispatchEvent(
+    new PageTransitionEvent('pagehide', { persisted: false }),
+  )
   expect(await waitForLockKind(spy, 'released', 50)).toBe(true)
   expect(
     await waitForLockKind(spy, 'held', channelLockTimings.heartbeatMs + 50),
@@ -395,7 +414,9 @@ test('without Web Locks dispose announces the release instead of waiting out exp
 test('the tombstone lock is visible to isTombstoneHeld until released or expired', async () => {
   const hold = holdTombstone('chat-gone', 10_000)
   expect(await isTombstoneHeld('chat-gone')).toBe(true)
-  const heldNames = (await navigator.locks.query()).held?.map((lock) => lock.name)
+  const heldNames = (await navigator.locks.query()).held?.map(
+    (lock) => lock.name,
+  )
   expect(heldNames).toContain('tombstone:chat-gone')
 
   const { tabB } = twoTabsOfLocks()
@@ -403,7 +424,9 @@ test('the tombstone lock is visible to isTombstoneHeld until released or expired
   expect(await tabB.isTombstoneHeld('chat-never-deleted')).toBe(false)
 
   hold.release()
-  await expect.poll(() => tabB.isTombstoneHeld('chat-gone'), pollWithin).toBe(false)
+  await expect
+    .poll(() => tabB.isTombstoneHeld('chat-gone'), pollWithin)
+    .toBe(false)
   expect(await isTombstoneHeld('chat-gone')).toBe(false)
 
   holdTombstone('chat-short', 50)
@@ -418,7 +441,9 @@ test('without Web Locks the tombstone hold is announced to other tabs', async ()
   expect(await tabA.isTombstoneHeld('chat-gone')).toBe(true)
   expect(await tabB.isTombstoneHeld('chat-gone')).toBe(true)
   hold.release()
-  await expect.poll(() => tabB.isTombstoneHeld('chat-gone'), pollWithin).toBe(false)
+  await expect
+    .poll(() => tabB.isTombstoneHeld('chat-gone'), pollWithin)
+    .toBe(false)
 })
 
 test('iframe harness: the second tab boots the full app and reports its sidebar text', async () => {
@@ -451,7 +476,8 @@ test('iframe harness: a BroadcastChannel event from the second tab reaches this 
     .poll(
       () =>
         received.find(
-          (event) => event.type === 'chat' && event.chat.title === 'Lisbon trip',
+          (event) =>
+            event.type === 'chat' && event.chat.title === 'Lisbon trip',
         ),
       pollWithin,
     )
@@ -509,11 +535,17 @@ test('iframe harness: release in the second tab unblocks here within 1 s', async
   expect(lock).not.toBeNull()
   expect(await tab.call({ type: 'acquire-lock', chatId: 'chat-2' })).toBe(false)
   await expect
-    .poll(() => tab.call({ type: 'held-elsewhere', chatId: 'chat-2' }), pollWithin)
+    .poll(
+      () => tab.call({ type: 'held-elsewhere', chatId: 'chat-2' }),
+      pollWithin,
+    )
     .toBe(true)
   lock!.release()
   await expect
-    .poll(() => tab.call({ type: 'held-elsewhere', chatId: 'chat-2' }), pollWithin)
+    .poll(
+      () => tab.call({ type: 'held-elsewhere', chatId: 'chat-2' }),
+      pollWithin,
+    )
     .toBe(false)
 
   await tab.call({ type: 'release-lock', chatId: 'chat-1' })

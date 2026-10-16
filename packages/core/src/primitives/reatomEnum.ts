@@ -5,11 +5,13 @@ import { type Fn } from '../utils'
 export type EnumFormat = 'camelCase' | 'snake_case'
 
 type EnumVariantSetters<T extends string, Format extends EnumFormat> = {
-  [Variant in T as Format extends 'camelCase'
-    ? `set${Capitalize<Variant>}`
-    : Format extends 'snake_case'
-      ? `set_${Variant}`
-      : never]: Action<[], Variant>
+  [
+    Variant in T as Format extends 'camelCase'
+      ? `set${Capitalize<Variant>}`
+      : Format extends 'snake_case'
+        ? `set_${Variant}`
+        : never
+  ]: Action<[], Variant>
 }
 
 export type EnumAtom<

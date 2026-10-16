@@ -22,10 +22,10 @@ None of the three named clients uses a sliding time window. Dedup is either “e
 
 Two client mechanisms, both **not** time-windowed.
 
-| Mechanism | Window | What it compares | Default |
-| --- | --- | --- | --- |
-| `dedupeIntegration` | none; previous event only | message **or** exception `type`+`value`, **full** stack (`filename`, `lineno`, `colno`, `function`), fingerprint | on |
-| `checkOrSetAlreadyCaught` | none; identity | the very object (`__sentry_captured__`) | on |
+| Mechanism                 | Window                    | What it compares                                                                                                 | Default |
+| ------------------------- | ------------------------- | ---------------------------------------------------------------------------------------------------------------- | ------- |
+| `dedupeIntegration`       | none; previous event only | message **or** exception `type`+`value`, **full** stack (`filename`, `lineno`, `colno`, `function`), fingerprint | on      |
+| `checkOrSetAlreadyCaught` | none; identity            | the very object (`__sentry_captured__`)                                                                          | on      |
 
 - Typed events (`transaction`, replay, …) skip dedupe: `if (currentEvent.type) return currentEvent`. Errors and messages have empty `type`.[1][2]
 - Consecutive identical errors in a tight loop send **one** event. `ErrorA`, `ErrorB`, `ErrorA` all pass. There is no 30 s / 1 min window; Sentry’s own reply to “debounce frequent errors” is “use `beforeSend`”.[3]
@@ -37,11 +37,11 @@ Two client mechanisms, both **not** time-windowed.
 
 `dedupe` defaults to **`true`** in `makeCoreConfig`.[7] Each API keeps **one** `lastPayload` and `deepEqual`s against it. No clock.
 
-| Signal | Signature | Bypass |
-| --- | --- | --- |
+| Signal     | Signature                                                        | Bypass                           |
+| ---------- | ---------------------------------------------------------------- | -------------------------------- |
 | exceptions | `type`, `value`, `stacktrace`, `context`, `fingerprint`, `fatal` | `skipDedupe`, or `dedupe: false` |
-| events | `name`, `attributes`, `domain` | same |
-| logs | same pattern (`skipDedupe` on `pushLog`) | same |
+| events     | `name`, `attributes`, `domain`                                   | same                             |
+| logs       | same pattern (`skipDedupe` on `pushLog`)                         | same                             |
 
 `fatal` participates so a crash and a non-fatal clone are distinct.[8][9] Faro is the only of the three that also consecutive-dedupes **custom events**, not just errors.
 
@@ -59,11 +59,11 @@ No type/message/stack comparison. Ten different bugs on one SPA view silently dr
 
 ### Extra (not in the brief, used to pick numbers)
 
-| Vendor | Default | Notes |
-| --- | --- | --- |
-| Rollbar.js | `ignoreDuplicateErrors: true` (consecutive); `itemsPerMinute: 60`; `maxItems: 0` | 60/min is a global sanity check against loops; 0 means no per-page cap.[14] |
-| Datadog Browser RUM | `sessionSampleRate: 100`; no client signature window | Session in or out; grouping is Error Tracking on the backend.[15] |
-| Plausible Events API | no client cap; ingest often quoted at 600/min/domain | Server abuse limit, not a per-page UX default.[16] |
+| Vendor               | Default                                                                          | Notes                                                                       |
+| -------------------- | -------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| Rollbar.js           | `ignoreDuplicateErrors: true` (consecutive); `itemsPerMinute: 60`; `maxItems: 0` | 60/min is a global sanity check against loops; 0 means no per-page cap.[14] |
+| Datadog Browser RUM  | `sessionSampleRate: 100`; no client signature window                             | Session in or out; grouping is Error Tracking on the backend.[15]           |
+| Plausible Events API | no client cap; ingest often quoted at 600/min/domain                             | Server abuse limit, not a per-page UX default.[16]                          |
 
 ## What the current spec already says
 
@@ -85,13 +85,13 @@ Two small tensions to close in WA-5, not in this note’s spec edits:
 
 ### Dedup
 
-| Option | Pros | Cons |
-| --- | --- | --- |
-| **A. Consecutive only** (Sentry/Faro) | Tiny; kills tight loops of one payload | Alternating two errors bypass it; no count of how many were dropped |
+| Option                                                           | Pros                                                                     | Cons                                                                       |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------------------- |
+| **A. Consecutive only** (Sentry/Faro)                            | Tiny; kills tight loops of one payload                                   | Alternating two errors bypass it; no count of how many were dropped        |
 | **B. Identity only** (Sentry `__sentry_captured__`, our WeakSet) | Correct overlap with the tracer; no false merge of new `Error` instances | A render loop that `throw new Error('x')` each time is not the same object |
-| **C. Sliding window per signature** (fallback) | Caps loops **and** alternating signatures; still sends a pulse | Needs a small map + timestamps |
-| **D. Bugsnag 10/page total** | Tiny; proven bandwidth fuse | Mixes page views with errors; first 10 anything starve the rest |
-| **E. A + B + C** | Consecutive drop is free inside C; WeakSet stays for tracer overlap | Slightly more code than A |
+| **C. Sliding window per signature** (fallback)                   | Caps loops **and** alternating signatures; still sends a pulse           | Needs a small map + timestamps                                             |
+| **D. Bugsnag 10/page total**                                     | Tiny; proven bandwidth fuse                                              | Mixes page views with errors; first 10 anything starve the rest            |
+| **E. A + B + C**                                                 | Consecutive drop is free inside C; WeakSet stays for tracer overlap      | Slightly more code than A                                                  |
 
 **Pick E, with C’s numbers:** 10/min/signature/page. Consecutive-only is a special case of the window when the map still has budget. WeakSet remains the tracer boundary.
 
@@ -99,12 +99,12 @@ Do **not** copy Sentry’s full-stack compare. First frame is cheaper, stable en
 
 ### Rate limits (all events)
 
-| Option | Pros | Cons |
-| --- | --- | --- |
-| **F. Errors only** | Matches Sentry/Faro | Contradicts А27; a buggy `app.click.rage` / long-task module can flood |
-| **G. Global 60/min** (Rollbar) | One counter | Page view + engagement + visibility + errors share a budget |
-| **H. Per name per page 60/min** (fallback) | Independent ceilings; a normal session never hits them | A map keyed by `eventName` |
-| **I. Faro-style 429 only** | Already on the tracer transport | Too late: the record is already in the queue and the unload budget |
+| Option                                     | Pros                                                   | Cons                                                                   |
+| ------------------------------------------ | ------------------------------------------------------ | ---------------------------------------------------------------------- |
+| **F. Errors only**                         | Matches Sentry/Faro                                    | Contradicts А27; a buggy `app.click.rage` / long-task module can flood |
+| **G. Global 60/min** (Rollbar)             | One counter                                            | Page view + engagement + visibility + errors share a budget            |
+| **H. Per name per page 60/min** (fallback) | Independent ceilings; a normal session never hits them | A map keyed by `eventName`                                             |
+| **I. Faro-style 429 only**                 | Already on the tracer transport                        | Too late: the record is already in the queue and the unload budget     |
 
 **Pick H** for non-error analytics names. Errors use C (10/min/signature), not the 60/min name bucket, so a noisy exception does not starve `app.page_view`.
 
@@ -112,10 +112,10 @@ Do **not** copy Sentry’s full-stack compare. First frame is cheaper, stable en
 
 ### Sampling ratio
 
-| Option | Pros | Cons |
-| --- | --- | --- |
-| **J. Ratio 1** (fallback, Sentry `sampleRate` 1.0, Datadog 100%) | Counts stay counts | Volume lives or dies on the rate limit |
-| **K. Ratio < 1 on errors** | Cheaper | Biases “how often does this throw?”; the window already caps |
+| Option                                                           | Pros               | Cons                                                         |
+| ---------------------------------------------------------------- | ------------------ | ------------------------------------------------------------ |
+| **J. Ratio 1** (fallback, Sentry `sampleRate` 1.0, Datadog 100%) | Counts stay counts | Volume lives or dies on the rate limit                       |
+| **K. Ratio < 1 on errors**                                       | Cheaper            | Biases “how often does this throw?”; the window already caps |
 
 **Pick J.** `analytics.sampling.errors` exists for teams that want K. Default 1.
 

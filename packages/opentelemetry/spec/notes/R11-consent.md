@@ -8,11 +8,11 @@ Related: FLOWS F-10 — a cookieless HTTP send is not an EU waiver.
 
 ## Two layers (EU) versus one statute (RU)
 
-| Layer | What it governs | Trigger for this SDK |
-| --- | --- | --- |
-| ePrivacy Directive Art. 5(3) (2002/58/EC as amended; FR Art. 82 Loi Informatique et Libertés; DE § 25 TTDSG/TDDDG) | Storing information on, or gaining access to information already stored in, **terminal equipment**. Applies to **information**, not only personal data (Planet49, C-673/17, para. 70). | JS that instructs the browser to persist or to send stored/generated device data. Technology-neutral: cookies, localStorage, pixels, fingerprinting, unique ids ([EDPB Guidelines 2/2023](https://www.edpb.europa.eu/system/files/2024-10/edpb_guidelines_202302_technical_scope_art_53_eprivacydirective_v2_en_0.pdf) v2.0, 7 Oct 2024). |
-| GDPR | Processing of **personal data**. Needs Art. 6 (and Art. 9 if special category). IP addresses can be personal data (Breyer, C-582/14). Recital 30: online identifiers such as IP, cookie ids. | Any OTLP export the collector can attribute to a person, including by IP, User-Agent, path, or a visitor id. |
-| 152-ФЗ | One personal-data statute. No ePrivacy twin. Art. 3: any information relating to an identified or identifiable natural person. Art. 6 legal bases. Art. 9 consent. Art. 18(5) localisation of RF citizens' data. | A persistent visitor id in `localStorage` is personal data. So is a collector log that keeps IP + URL + time if it can single the visitor out. |
+| Layer                                                                                                              | What it governs                                                                                                                                                                                                  | Trigger for this SDK                                                                                                                                                                                                                                                                                                                      |
+| ------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ePrivacy Directive Art. 5(3) (2002/58/EC as amended; FR Art. 82 Loi Informatique et Libertés; DE § 25 TTDSG/TDDDG) | Storing information on, or gaining access to information already stored in, **terminal equipment**. Applies to **information**, not only personal data (Planet49, C-673/17, para. 70).                           | JS that instructs the browser to persist or to send stored/generated device data. Technology-neutral: cookies, localStorage, pixels, fingerprinting, unique ids ([EDPB Guidelines 2/2023](https://www.edpb.europa.eu/system/files/2024-10/edpb_guidelines_202302_technical_scope_art_53_eprivacydirective_v2_en_0.pdf) v2.0, 7 Oct 2024). |
+| GDPR                                                                                                               | Processing of **personal data**. Needs Art. 6 (and Art. 9 if special category). IP addresses can be personal data (Breyer, C-582/14). Recital 30: online identifiers such as IP, cookie ids.                     | Any OTLP export the collector can attribute to a person, including by IP, User-Agent, path, or a visitor id.                                                                                                                                                                                                                              |
+| 152-ФЗ                                                                                                             | One personal-data statute. No ePrivacy twin. Art. 3: any information relating to an identified or identifiable natural person. Art. 6 legal bases. Art. 9 consent. Art. 18(5) localisation of RF citizens' data. | A persistent visitor id in `localStorage` is personal data. So is a collector log that keeps IP + URL + time if it can single the visitor out.                                                                                                                                                                                            |
 
 ePrivacy Art. 5(3) exemptions (not analysed as a checklist by EDPB 2/2023 §4, §40, §56): transmission only, or **strictly necessary** for a service the user explicitly requested. WP29 Opinion 04/2012: first-party analytics cookies are **not** in that exemption; a future legislative carve-out was suggested and was never adopted at EU level.
 
@@ -56,23 +56,23 @@ flowchart TD
 
 ### Allowed before consent
 
-| Action | Why |
-| --- | --- |
-| Count visible/active time and page-view intent **in RAM**, and flush only **after** consent on the first consented page view (doc 11 / 03) | Local processing that does not leave the device (EDPB 2/2023 §44). |
-| Remember consent yes/no **without a unique id** | LfDI BW FAQ 1.3: strictly necessary to store the choice, not an identifier. |
-| Do nothing on the network for analytics event groups | Art. 5(3) not engaged by a send that does not occur. |
-| Tracer diagnostics if the app gates them on a **separate** `diagnostics` category and its own basis | Out of analytics R11. Analytics stays stricter (О19). |
+| Action                                                                                                                                     | Why                                                                         |
+| ------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------- |
+| Count visible/active time and page-view intent **in RAM**, and flush only **after** consent on the first consented page view (doc 11 / 03) | Local processing that does not leave the device (EDPB 2/2023 §44).          |
+| Remember consent yes/no **without a unique id**                                                                                            | LfDI BW FAQ 1.3: strictly necessary to store the choice, not an identifier. |
+| Do nothing on the network for analytics event groups                                                                                       | Art. 5(3) not engaged by a send that does not occur.                        |
+| Tracer diagnostics if the app gates them on a **separate** `diagnostics` category and its own basis                                        | Out of analytics R11. Analytics stays stricter (О19).                       |
 
 ### Not allowed before consent (library default)
 
-| Action | Why |
-| --- | --- |
+| Action                                                                                       | Why                                                                                                                                                                                            |
+| -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | OTLP / beacon / `fetch` of page view, engagement, web-vitals, visibility, network, exception | Instructed JS send = access (EDPB 2/2023 §33, §44, §3.2). Viewport/screen = TTDSG access (LfDI BW §3.1). Collector IP = GDPR personal data (Breyer). 152-ФЗ: IP+URL+time can be personal data. |
-| `localStorage` / cookies / IndexedDB visitor or session or attribution | Art. 5(3) storage. 152-ФЗ Art. 3 personal data (persistent visitor id). DSK: analytics storage is not strictly necessary. |
-| RAM session id that is **sent** | EDPB 2/2023 §38 (RAM is storage) + §33 (send is access). |
-| UTM / click-id export, full referrer, `app.visitor.id`, `user.id` | Identifiers and often third-party click ids. Referrer origin may stay in RAM for the post-consent first view; it is not sent first. |
-| `exception.message` / `exception.stacktrace` | 03 / О19: messages carry emails and ids. After consent and only with `captureErrorDetails`. |
-| Fingerprinting, cross-site ids, third-party pixels | WP29 9/2014; EDPB 2/2023; DSK OH Telemedien. |
+| `localStorage` / cookies / IndexedDB visitor or session or attribution                       | Art. 5(3) storage. 152-ФЗ Art. 3 personal data (persistent visitor id). DSK: analytics storage is not strictly necessary.                                                                      |
+| RAM session id that is **sent**                                                              | EDPB 2/2023 §38 (RAM is storage) + §33 (send is access).                                                                                                                                       |
+| UTM / click-id export, full referrer, `app.visitor.id`, `user.id`                            | Identifiers and often third-party click ids. Referrer origin may stay in RAM for the post-consent first view; it is not sent first.                                                            |
+| `exception.message` / `exception.stacktrace`                                                 | 03 / О19: messages carry emails and ids. After consent and only with `captureErrorDetails`.                                                                                                    |
+| Fingerprinting, cross-site ids, third-party pixels                                           | WP29 9/2014; EDPB 2/2023; DSK OH Telemedien.                                                                                                                                                   |
 
 If an integrator's counsel later enables a send-before-consent configuration, that is **their** Art. 6 / Art. 5(3) analysis. The default stays off. Spec 03's line stands: if a jurisdiction needs consent for an event, that event waits; the rest may still go. For this library's default jurisdiction mix, **all analytics sends wait**.
 
@@ -80,17 +80,17 @@ If an integrator's counsel later enables a send-before-consent configuration, th
 
 Never collected, before or after consent, unless a **separate explicit** option is on and documented. Consent does not lift these.
 
-| Class | Rule | Scrub |
-| --- | --- | --- |
-| Form field values | Never. | Do not read `input`/`textarea` values into records. `app.form.submit` (tier 1) may send the form **name** after consent, never values. |
-| Email-like | Never in URL, title, referrer, error text, attributes. | Replace with `[email]` — see patterns below. |
-| Phone-like | Same. | Replace with `[phone]`. |
-| Precise geolocation | Never (`Geolocation` coords, lat/lng query params). City-level from a **server** geo-IP, after consent, is an integrator choice, not a client default. | Drop keys matching `/lat(itude)?|lng|lon(gitude)?|geo(\.|$)|coordinates/i`. |
-| Full query and fragment | Off unless `captureQuery: true` (03). UTM and click ids are extracted only **after** consent. | Parse; keep path; drop `?` and `#`. |
-| Secrets and payment | Tracer key redaction applies; analytics never keeps them. | `/pass(word)?|secret|token|auth|cookie|session|crypto|card|cvv|iban|ssn/i` → `[redacted]` ([02](../02-opentelemetry-refactor.md#values-and-serialization-т20-т22-о17-о19)). |
-| Special-category inferences | Health, religion, sexual orientation, etc. (GDPR Art. 9; 152-ФЗ Art. 10). | Do not add attributes that encode them. Precise location is already banned as a proxy. |
-| Cross-site / third-party identifiers | No shared cookie, no hashed email used as a join key across properties. | EDPB 2/2023 §3.5. |
-| Retro-link | Events that never left before consent are not patched with `app.visitor.id` later (03). | Implementation: no pre-consent queue to the collector. |
+| Class                                | Rule                                                                                                                                                   | Scrub                                                                                                                                  |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Form field values                    | Never.                                                                                                                                                 | Do not read `input`/`textarea` values into records. `app.form.submit` (tier 1) may send the form **name** after consent, never values. |
+| Email-like                           | Never in URL, title, referrer, error text, attributes.                                                                                                 | Replace with `[email]` — see patterns below.                                                                                           |
+| Phone-like                           | Same.                                                                                                                                                  | Replace with `[phone]`.                                                                                                                |
+| Precise geolocation                  | Never (`Geolocation` coords, lat/lng query params). City-level from a **server** geo-IP, after consent, is an integrator choice, not a client default. | Drop keys matching `/lat(itude)?                                                                                                       | lng    | lon(gitude)? | geo(\. | $)     | coordinates/i`. |
+| Full query and fragment              | Off unless `captureQuery: true` (03). UTM and click ids are extracted only **after** consent.                                                          | Parse; keep path; drop `?` and `#`.                                                                                                    |
+| Secrets and payment                  | Tracer key redaction applies; analytics never keeps them.                                                                                              | `/pass(word)?                                                                                                                          | secret | token        | auth   | cookie | session         | crypto | card | cvv | iban | ssn/i`→`[redacted]` ([02](../02-opentelemetry-refactor.md#values-and-serialization-т20-т22-о17-о19)). |
+| Special-category inferences          | Health, religion, sexual orientation, etc. (GDPR Art. 9; 152-ФЗ Art. 10).                                                                              | Do not add attributes that encode them. Precise location is already banned as a proxy.                                                 |
+| Cross-site / third-party identifiers | No shared cookie, no hashed email used as a join key across properties.                                                                                | EDPB 2/2023 §3.5.                                                                                                                      |
+| Retro-link                           | Events that never left before consent are not patched with `app.visitor.id` later (03).                                                                | Implementation: no pre-consent queue to the collector.                                                                                 |
 
 `captureQuery: true` and `captureErrorDetails: true` are post-consent only and still run the scrubs.
 
@@ -98,12 +98,12 @@ Never collected, before or after consent, unless a **separate explicit** option 
 
 Spec 03: when the **app** explicitly sends an identifier, hash with SHA-256 and a per-site salt through `crypto.subtle`. Documented. **Never automatic.**
 
-| Claim | Regulator position |
-| --- | --- |
-| Hash = anonymous | **No.** WP29 Opinion 05/2014 (WP216): hashes are reversible by replay when the input space is known; salted hashes still often feasible; keyed hashes remain reversible for the controller who holds the key. GDPR Recital 26 / Art. 4(5): pseudonymised data remain personal data. [AEPD–EDPS](https://collab.dpa.gr/wp-content/uploads/2023/07/aepd-edps_INTRODUCTION-TO-THE-HASH-FUNCTION-AS-A-PERSONAL-DATA-PSEUDONYMISATION-TECHNIQUE_en.pdf): hash is a **pseudonymisation** technique. |
-| Hash removes ePrivacy consent | **No.** EDPB 2/2023 §3.5: hashing personal data on the device and sending the digest is still gaining access. |
-| Hash removes 152-ФЗ duties | **No.** Art. 3 p. 9 обезличивание: belonging to a person must be impossible without additional information. A stable `SHA-256(visitorId + salt)` still singles the visitor out. LfDI BW §3.2: replacing ids with hashes is not anonymisation; session-crossing individual paths are not anonymisation. |
-| Hash instead of dropping | Use it as a **safeguard** after consent (or on the collector as a second layer), not as a licence to collect. |
+| Claim                         | Regulator position                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Hash = anonymous              | **No.** WP29 Opinion 05/2014 (WP216): hashes are reversible by replay when the input space is known; salted hashes still often feasible; keyed hashes remain reversible for the controller who holds the key. GDPR Recital 26 / Art. 4(5): pseudonymised data remain personal data. [AEPD–EDPS](https://collab.dpa.gr/wp-content/uploads/2023/07/aepd-edps_INTRODUCTION-TO-THE-HASH-FUNCTION-AS-A-PERSONAL-DATA-PSEUDONYMISATION-TECHNIQUE_en.pdf): hash is a **pseudonymisation** technique. |
+| Hash removes ePrivacy consent | **No.** EDPB 2/2023 §3.5: hashing personal data on the device and sending the digest is still gaining access.                                                                                                                                                                                                                                                                                                                                                                                 |
+| Hash removes 152-ФЗ duties    | **No.** Art. 3 p. 9 обезличивание: belonging to a person must be impossible without additional information. A stable `SHA-256(visitorId + salt)` still singles the visitor out. LfDI BW §3.2: replacing ids with hashes is not anonymisation; session-crossing individual paths are not anonymisation.                                                                                                                                                                                        |
+| Hash instead of dropping      | Use it as a **safeguard** after consent (or on the collector as a second layer), not as a licence to collect.                                                                                                                                                                                                                                                                                                                                                                                 |
 
 Do not hash emails or user ids by default. If the app opts in, salt is per site (not a public library-wide salt), stored off the public bundle when possible; a public salt only slows trivial reversal.
 
@@ -142,10 +142,10 @@ Recommended recipe (docs, not bundled):
 
 ## Pre-consent mode for WA-4 (output)
 
-| `consent` | Storage | Network | Identifiers | Engagement |
-| --- | --- | --- | --- | --- |
-| false / no analytics category | Zero writes (WA-4 acceptance) | Zero analytics OTLP | None (`app.analytics.consent=none`) | RAM only |
-| true / analytics category | Visitor + session + attribution | Send from then on | `app.visitor.id`, `session.id` | Flush RAM into the first consented page view; no retro-link of unsents |
+| `consent`                     | Storage                         | Network             | Identifiers                         | Engagement                                                             |
+| ----------------------------- | ------------------------------- | ------------------- | ----------------------------------- | ---------------------------------------------------------------------- |
+| false / no analytics category | Zero writes (WA-4 acceptance)   | Zero analytics OTLP | None (`app.analytics.consent=none`) | RAM only                                                               |
+| true / analytics category     | Visitor + session + attribution | Send from then on   | `app.visitor.id`, `session.id`      | Flush RAM into the first consented page view; no retro-link of unsents |
 
 Categories toggle event groups **synchronously** (А4). `diagnostics` is not a back door for analytics identifiers.
 

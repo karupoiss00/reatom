@@ -440,7 +440,6 @@ test('F-07: offline pauses OTLP posts and coming online resumes', async () => {
     await context.start(() => otel.flush())
     expect(fetchMock).toHaveBeenCalled()
     expect(String(fetchMock.mock.calls[0]?.[0])).toMatch(/\/v1\/traces$/)
-
   } finally {
     context.start(() => otel.dispose())
     stubs.restore()
@@ -497,7 +496,6 @@ test('F-11: keepRecords copies next to a real endpoint; clearRecords drops the s
     expect(readRecords(otel)).toEqual([])
     expect(readRecords(otel)).not.toBe(snapshot)
   })
-
 })
 
 test('F-11: a real endpoint without keepRecords does not fill records', async () => {
@@ -544,7 +542,6 @@ test('F-11: transports fan-out next to the default fetch', async () => {
   expect(extraBatches.map((batch) => batch.signal)).toContain('traces')
   expect(extraBatches[0]?.itemCount).toBeGreaterThan(0)
   expect(secondaryCalls).toContain('traces')
-
 })
 
 type WireRecord = {
@@ -563,8 +560,7 @@ type WireRecord = {
 
 const wireRecords = (otel: V2Instance): WireRecord[] =>
   readRecords(otel).filter(
-    (record): record is WireRecord =>
-      !!record && typeof record === 'object',
+    (record): record is WireRecord => !!record && typeof record === 'object',
   )
 
 const stringAttr = (record: WireRecord, key: string) =>
@@ -610,7 +606,11 @@ test('a computed pulled by a traced reader joins that reader trace', async () =>
 
   const records = wireRecords(otel)
   const readerSpan = spanNamed(records, 'probe.reader')
-  const doubled = updateNamed(records, 'reatom.computed.update', 'probe.doubled')
+  const doubled = updateNamed(
+    records,
+    'reatom.computed.update',
+    'probe.doubled',
+  )
   expect(readerSpan?.traceId).toEqual(expect.stringMatching(/^[0-9a-f]{32}$/))
   expect(doubled).toMatchObject({
     traceId: readerSpan!.traceId,
@@ -669,14 +669,23 @@ test('nested actions record call and a manual trace records explicit', async () 
   })
 
   const records = wireRecords(otel)
-  expect(stringAttr(spanNamed(records, 'probe.reason.outer')!, 'reatom.parent.reason')).toBe(
-    'root',
-  )
-  expect(stringAttr(spanNamed(records, 'probe.reason.inner')!, 'reatom.parent.reason')).toBe(
-    'call',
-  )
   expect(
-    stringAttr(spanNamed(records, 'probe.reason.explicit')!, 'reatom.parent.reason'),
+    stringAttr(
+      spanNamed(records, 'probe.reason.outer')!,
+      'reatom.parent.reason',
+    ),
+  ).toBe('root')
+  expect(
+    stringAttr(
+      spanNamed(records, 'probe.reason.inner')!,
+      'reatom.parent.reason',
+    ),
+  ).toBe('call')
+  expect(
+    stringAttr(
+      spanNamed(records, 'probe.reason.explicit')!,
+      'reatom.parent.reason',
+    ),
   ).toBe('explicit')
   expect(spanNamed(records, 'probe.reason.explicit')!.traceId).toBe(
     spanNamed(records, 'probe.manual')!.traceId,

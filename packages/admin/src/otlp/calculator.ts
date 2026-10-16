@@ -52,14 +52,7 @@ export interface CalculatorRecordIndex {
 }
 
 export type CalculatorHighlightKind =
-  | 'space'
-  | 'keyword'
-  | 'field'
-  | 'op'
-  | 'value'
-  | 'string'
-  | 'paren'
-  | 'error'
+  'space' | 'keyword' | 'field' | 'op' | 'value' | 'string' | 'paren' | 'error'
 
 export interface CalculatorHighlightSpan {
   kind: CalculatorHighlightKind
@@ -305,12 +298,21 @@ export function quoteCalculatorValue(raw: string): string {
   return `"${raw.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
 }
 
-function clausePredicate(field: string, op: CalculatorCompareOp, raw: string, id: string): FilterPredicate {
+function clausePredicate(
+  field: string,
+  op: CalculatorCompareOp,
+  raw: string,
+  id: string,
+): FilterPredicate {
   if (field.startsWith('attr.')) {
     return {
       id,
       type: 'attr',
-      value: { path: field.slice('attr.'.length), op, raw } satisfies CalculatorAttrValue,
+      value: {
+        path: field.slice('attr.'.length),
+        op,
+        raw,
+      } satisfies CalculatorAttrValue,
     }
   }
   return {
@@ -320,7 +322,9 @@ function clausePredicate(field: string, op: CalculatorCompareOp, raw: string, id
   }
 }
 
-function negateNode(node: FilterTagRef | FilterGroup): FilterTagRef | FilterGroup {
+function negateNode(
+  node: FilterTagRef | FilterGroup,
+): FilterTagRef | FilterGroup {
   if (isTagRef(node)) {
     return { tagId: node.tagId, negated: !node.negated }
   }
@@ -336,7 +340,10 @@ function asGroup(node: FilterTagRef | FilterGroup): FilterGroup {
   return { operator: 'AND', children: [node] }
 }
 
-function flattenSame(operator: FilterGroup['operator'], nodes: Array<FilterTagRef | FilterGroup>): FilterGroup {
+function flattenSame(
+  operator: FilterGroup['operator'],
+  nodes: Array<FilterTagRef | FilterGroup>,
+): FilterGroup {
   const children: Array<FilterTagRef | FilterGroup> = []
   for (const node of nodes) {
     if (!isTagRef(node) && node.operator === operator) {
@@ -410,7 +417,12 @@ function parseClause(state: ParserState): FilterTagRef {
   }
   const raw = readValue(state)
   const tagIndex = state.tags.length
-  const predicate = clausePredicate(field, opToken.value, raw, `calc.${tagIndex}.p`)
+  const predicate = clausePredicate(
+    field,
+    opToken.value,
+    raw,
+    `calc.${tagIndex}.p`,
+  )
   const tag: FilterTag = {
     id: `calc.${tagIndex}`,
     name: `${field}${opToken.value}${raw}`,
@@ -444,7 +456,9 @@ function parseUnary(state: ParserState): FilterTagRef | FilterGroup {
 }
 
 function startsClause(token: Token | undefined): boolean {
-  return token?.kind === 'word' || token?.kind === 'lparen' || token?.kind === 'not'
+  return (
+    token?.kind === 'word' || token?.kind === 'lparen' || token?.kind === 'not'
+  )
 }
 
 function parseAnd(state: ParserState): FilterTagRef | FilterGroup {
@@ -471,18 +485,18 @@ function parseOr(state: ParserState): FilterTagRef | FilterGroup {
  * Parse the admin calculator language into today's `FilterGroup` tree plus
  * generated tags. Round-trip with `stringifyCalculator`.
  *
- * Clauses separated only by whitespace are joined with AND, so
- * `name:makeMove kind:action` equals `name:makeMove AND kind:action`.
+ * Clauses separated only by whitespace are joined with AND, so `name:makeMove
+ * kind:action` equals `name:makeMove AND kind:action`.
  *
  * Operators: `=` is case-insensitive whole-value equality. `:` on text fields
  * (`name`, `state`, `params`, `payload`, `event`, `outcome`, `session`,
- * `source`, `route`) is case-insensitive substring match; `*` in the value is
- * a whole-value glob. On `kind`, `errors`, `duration`, `spans`, `trace`, and
+ * `source`, `route`) is case-insensitive substring match; `*` in the value is a
+ * whole-value glob. On `kind`, `errors`, `duration`, `spans`, `trace`, and
  * numeric `attr.*`, `:` and `=` are the same equality. `spans` is the per-trace
- * span count. `cause>` walks ancestors via `reatom.cause.ids` (same join as
- * the cause graph). `cause<` matches direct children. Calculator tags use
- * `compare` / `attr` / `cause` predicates and are not evaluated by the
- * Reporter `evaluatePredicate`.
+ * span count. `cause>` walks ancestors via `reatom.cause.ids` (same join as the
+ * cause graph). `cause<` matches direct children. Calculator tags use `compare`
+ * / `attr` / `cause` predicates and are not evaluated by the Reporter
+ * `evaluatePredicate`.
  */
 export function parseCalculator(source: string): CalculatorParse {
   const trimmed = source.trim()
@@ -504,7 +518,8 @@ export function parseCalculator(source: string): CalculatorParse {
     }
     return { ok: true, source: trimmed, expression: root, tags: state.tags }
   } catch (error) {
-    const message = error instanceof ParseFailure ? error.message : 'Invalid calculator'
+    const message =
+      error instanceof ParseFailure ? error.message : 'Invalid calculator'
     return { ok: false, source, error: message }
   }
 }
@@ -521,11 +536,13 @@ function stringifyNode(
     return node.negated ? `NOT ${body}` : body
   }
   const joiner = node.operator === 'AND' ? ' AND ' : ' OR '
-  const parts = node.children.map((child) => stringifyNode(child, tags, node.operator))
+  const parts = node.children.map((child) =>
+    stringifyNode(child, tags, node.operator),
+  )
   const joined = parts.join(joiner)
   const wrap =
-    parent === 'AND' && node.operator === 'OR' ||
-    parent === 'OR' && node.operator === 'AND'
+    (parent === 'AND' && node.operator === 'OR') ||
+    (parent === 'OR' && node.operator === 'AND')
   return wrap ? `(${joined})` : joined
 }
 
@@ -573,7 +590,8 @@ function serializeUnknown(value: unknown): string {
   if (value === undefined) return ''
   if (value === null) return 'null'
   if (typeof value === 'string') return value
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  if (typeof value === 'number' || typeof value === 'boolean')
+    return String(value)
   try {
     return JSON.stringify(value)
   } catch {
@@ -589,7 +607,11 @@ function nameCandidates(record: AdminRecord): string[] {
   return names
 }
 
-function matchTextValue(haystack: string, needle: string, op: CalculatorCompareOp): boolean {
+function matchTextValue(
+  haystack: string,
+  needle: string,
+  op: CalculatorCompareOp,
+): boolean {
   if (needle.includes('*')) return globRegex(needle).test(haystack)
   if (op === '=') return haystack.toLowerCase() === needle.toLowerCase()
   return haystack.toLowerCase().includes(needle.toLowerCase())
@@ -605,11 +627,19 @@ function matchLocalValuesText(
   return matchTextValue(text, raw, op)
 }
 
-function matchNameField(record: AdminRecord, raw: string, op: CalculatorCompareOp): boolean {
+function matchNameField(
+  record: AdminRecord,
+  raw: string,
+  op: CalculatorCompareOp,
+): boolean {
   return nameCandidates(record).some((name) => matchTextValue(name, raw, op))
 }
 
-function matchNumeric(actual: number, op: CalculatorCompareOp, raw: string): boolean {
+function matchNumeric(
+  actual: number,
+  op: CalculatorCompareOp,
+  raw: string,
+): boolean {
   const expected = parseNumber(raw)
   if (expected === undefined) return false
   switch (op) {
@@ -649,7 +679,11 @@ function matchKindField(record: AdminRecord, raw: string): boolean {
   return record.kind.toLowerCase() === expected
 }
 
-function matchRouteField(record: AdminRecord, raw: string, op: CalculatorCompareOp): boolean {
+function matchRouteField(
+  record: AdminRecord,
+  raw: string,
+  op: CalculatorCompareOp,
+): boolean {
   if (record.reatomKind !== 'route') return false
   const trimmed = raw.trim()
   if (trimmed === '*' || /^(true|yes|1)$/i.test(trimmed)) return true
@@ -671,13 +705,19 @@ function matchCompare(
       return matchNameField(record, raw, op)
     case 'params':
       return (
-        matchTextValue(serializeUnknown(record.attributes['reatom.params']), raw, op) ||
-        matchLocalValuesText(record, raw, op)
+        matchTextValue(
+          serializeUnknown(record.attributes['reatom.params']),
+          raw,
+          op,
+        ) || matchLocalValuesText(record, raw, op)
       )
     case 'payload':
       return (
-        matchTextValue(serializeUnknown(record.attributes['reatom.payload']), raw, op) ||
-        matchLocalValuesText(record, raw, op)
+        matchTextValue(
+          serializeUnknown(record.attributes['reatom.payload']),
+          raw,
+          op,
+        ) || matchLocalValuesText(record, raw, op)
       )
     case 'state':
       return (
@@ -697,7 +737,11 @@ function matchCompare(
     }
     case 'spans': {
       if (index === undefined) return false
-      return matchNumeric(index.spanCountByTrace.get(record.traceId) ?? 0, op, raw)
+      return matchNumeric(
+        index.spanCountByTrace.get(record.traceId) ?? 0,
+        op,
+        raw,
+      )
     }
     case 'errors':
       return isFalsey(raw) ? !recordHasError(record) : recordHasError(record)
@@ -705,7 +749,10 @@ function matchCompare(
       return matchTextValue(record.traceId, raw, op === ':' ? '=' : op)
     case 'session':
       return matchTextValue(
-        serializeUnknown(record.resource['service.instance.id'] ?? record.attributes['session.id']),
+        serializeUnknown(
+          record.resource['service.instance.id'] ??
+            record.attributes['session.id'],
+        ),
         raw,
         op,
       )
@@ -721,7 +768,12 @@ function matchCompare(
   }
 }
 
-function matchAttr(record: AdminRecord, path: string, op: CalculatorCompareOp, raw: string): boolean {
+function matchAttr(
+  record: AdminRecord,
+  path: string,
+  op: CalculatorCompareOp,
+  raw: string,
+): boolean {
   const actual = attrValue(record, path)
   if (actual === undefined) return false
   if (op === '>' || op === '<' || op === '>=' || op === '<=') {
@@ -881,10 +933,5 @@ export function recordMatchesCalculator(
 ): boolean {
   if (parsed === undefined) return true
   if (!parsed.ok) return false
-  return evaluateRecordExpression(
-    record,
-    parsed.expression,
-    parsed.tags,
-    index,
-  )
+  return evaluateRecordExpression(record, parsed.expression, parsed.tags, index)
 }

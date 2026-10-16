@@ -62,7 +62,10 @@ export type CostChipAmount = {
 }
 
 const unsignedPlaces = (absolute: number, places: number) =>
-  roundHalfUpPlaces(expandPlain(absolute.toPrecision(DECIMAL_PRECISION)), places)
+  roundHalfUpPlaces(
+    expandPlain(absolute.toPrecision(DECIMAL_PRECISION)),
+    places,
+  )
 
 const dollarFigure = (absolute: number) => unsignedPlaces(absolute, CENT_PLACES)
 

@@ -17,11 +17,11 @@ Inspect repository instructions, DESIGN.md, authoritative rules, implementations
 and actual consumers before asking for decisions. Use the requested area; an explicit
 whole-codebase request covers the whole project. Report the discovered scope.
 
-| Mode | Authorised work |
-| --- | --- |
-| 1 — Contracts and escape hatches without behaviour changes (recommended) | Contracts and supporting documents, plus bounded local exceptions. API and consumer edits may connect an exception while preserving existing appearance and observable behaviour; no standalone repairs. |
-| 2 — Contracts, escape hatches and design repairs | Mode 1 plus design-only CSS, markup and public-parameter repairs, including related consumer presentation within the selected area. Preserve component internals and business logic. Apply the shared admission policy. |
-| 3 — Contracts only | Component, layout and existing pattern contracts, indexes, DESIGN.md and supporting links, journals and progress. Runtime code stays unchanged. |
+| Mode                                                                     | Authorised work                                                                                                                                                                                                         |
+| ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1 — Contracts and escape hatches without behaviour changes (recommended) | Contracts and supporting documents, plus bounded local exceptions. API and consumer edits may connect an exception while preserving existing appearance and observable behaviour; no standalone repairs.                |
+| 2 — Contracts, escape hatches and design repairs                         | Mode 1 plus design-only CSS, markup and public-parameter repairs, including related consumer presentation within the selected area. Preserve component internals and business logic. Apply the shared admission policy. |
+| 3 — Contracts only                                                       | Component, layout and existing pattern contracts, indexes, DESIGN.md and supporting links, journals and progress. Runtime code stays unchanged.                                                                         |
 
 Include any missing [verification choice](admission.md#migration-verification) in this
 startup round; reuse an explicit or saved choice for this scope.

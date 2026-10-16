@@ -74,7 +74,9 @@ test('un-awaited rejecting traced action reports exactly one unhandledRejection'
   })
 
   expect(unhandled).toEqual([failure])
-  const spans = otel.records().filter((record) => isSpanNamed(record, 'probe.fail'))
+  const spans = otel
+    .records()
+    .filter((record) => isSpanNamed(record, 'probe.fail'))
   expect(spans).toHaveLength(1)
   expect(stringAttr(spans[0]!, 'reatom.outcome')).toBe('error')
 })
@@ -91,7 +93,9 @@ test('awaited rejecting traced action reports zero unhandled rejections and the 
   })
 
   expect(unhandled).toEqual([])
-  const spans = otel.records().filter((record) => isSpanNamed(record, 'probe.fail'))
+  const spans = otel
+    .records()
+    .filter((record) => isSpanNamed(record, 'probe.fail'))
   expect(spans).toHaveLength(1)
   expect(stringAttr(spans[0]!, 'reatom.outcome')).toBe('error')
 })
@@ -106,7 +110,9 @@ test('traced async action resolves to the same value', async () => {
   })
 
   expect(unhandled).toEqual([])
-  const spans = otel.records().filter((record) => isSpanNamed(record, 'probe.ok'))
+  const spans = otel
+    .records()
+    .filter((record) => isSpanNamed(record, 'probe.ok'))
   expect(spans).toHaveLength(1)
   expect(stringAttr(spans[0]!, 'reatom.outcome')).toBe('ok')
 })
@@ -122,7 +128,9 @@ test('un-awaited resolved traced action does not report an unhandledRejection', 
   })
 
   expect(unhandled).toEqual([])
-  const spans = otel.records().filter((record) => isSpanNamed(record, 'probe.ok'))
+  const spans = otel
+    .records()
+    .filter((record) => isSpanNamed(record, 'probe.ok'))
   expect(spans).toHaveLength(1)
   expect(stringAttr(spans[0]!, 'reatom.outcome')).toBe('ok')
 })
@@ -152,7 +160,9 @@ test('sync traced action still returns the original non-promise result', () => {
     expect(read()).toBe(value)
   })
 
-  const spans = otel.records().filter((record) => isSpanNamed(record, 'probe.sync'))
+  const spans = otel
+    .records()
+    .filter((record) => isSpanNamed(record, 'probe.sync'))
   expect(spans).toHaveLength(1)
   expect(stringAttr(spans[0]!, 'reatom.outcome')).toBe('ok')
 })

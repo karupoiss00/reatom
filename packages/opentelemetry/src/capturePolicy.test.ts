@@ -188,10 +188,12 @@ test('R06 a throwing redaction records [Failed] for that value and keeps the spa
     })
 
     await otel.flush()
-    expect(bodies.flatMap(parseSpans).map((span) => span.name).sort()).toEqual([
-      'capture-policy.r06-control',
-      'capture-policy.r06-throwing',
-    ])
+    expect(
+      bodies
+        .flatMap(parseSpans)
+        .map((span) => span.name)
+        .sort(),
+    ).toEqual(['capture-policy.r06-control', 'capture-policy.r06-throwing'])
     expect(bodies.join('')).toContain('R06_positive_control')
     expect(bodies.join('')).toContain('[Failed]')
     expect(bodies.join('')).not.toContain('R06_throwing_private')
@@ -287,7 +289,7 @@ test('R04 filter and dispose skip value traversal and preserve the returned obje
   )
   const create = (filter?: () => boolean) =>
     reatomOpentelemetry({
-    name: 'capturePolicy',
+      name: 'capturePolicy',
       ...policyInput,
       filter,
       captureValues: {

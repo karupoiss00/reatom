@@ -64,7 +64,7 @@ entity, required composition, measured values and states. Report a match count w
 there is a reference and one row per deviation:
 
 | Element | Expected | Actual | Cause | Result / gap |
-| --- | --- | --- | --- | --- |
+| ------- | -------- | ------ | ----- | ------------ |
 
 Causes distinguish product defects/decisions, selection assumptions, contract drift,
 system limitations. Omit unavailable comparisons; they are not matching elements or

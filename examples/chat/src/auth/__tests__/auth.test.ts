@@ -7,13 +7,20 @@ import { openRouter } from '../../api/openrouter'
 import { streamLifecycle } from '../../chat/engine'
 import { library } from '../../chat/library'
 import { sha256Hex } from '../../platform/crypto'
-import { resetExternalNavigator, setExternalNavigator } from '../../platform/external'
+import {
+  resetExternalNavigator,
+  setExternalNavigator,
+} from '../../platform/external'
 import { createChatRecord } from '../../storage/records'
 import { repo, resetRepoBackend } from '../../storage/repo'
 import { unlimitedAckHashes } from '../../storage/prefs'
 import { exchangedKey, expiredAuthCode } from '../../testing/fixtures/auth'
 import { plainTextScript } from '../../testing/fixtures/sse'
-import { freeTierKey, limitedKey, unlimitedKey } from '../../testing/fixtures/keys'
+import {
+  freeTierKey,
+  limitedKey,
+  unlimitedKey,
+} from '../../testing/fixtures/keys'
 import {
   mockAuthExchange,
   mockChatStream,
@@ -36,7 +43,11 @@ import {
   keyStorageKey,
   rememberKey,
 } from '../keyStore'
-import { pendingOAuthStorageKey, readPendingOAuth, type PendingOAuth } from '../pkce'
+import {
+  pendingOAuthStorageKey,
+  readPendingOAuth,
+  type PendingOAuth,
+} from '../pkce'
 import { completeOAuthFromUrl, oauthOutcome, startOAuth } from '../oauth'
 import { forgetKey, initAuth, sessionMode } from '../session'
 import { connectWithKey, isRequestAbort, validateKey } from '../validate'
@@ -189,7 +200,11 @@ test('The PKCE verifier is gone from sessionStorage after the exchange, whether 
   mockAuthExchange(expiredAuthCode)
   await startOAuth({ limit: 10, remember: true, returnTo: null })
   const failed = await completeOAuthFromUrl(callbackUrl(pendingOAuth()!))
-  expect(failed).toMatchObject({ status: 'error', reason: 'expired', code: 403 })
+  expect(failed).toMatchObject({
+    status: 'error',
+    reason: 'expired',
+    code: 403,
+  })
   expect(sessionStorage.getItem(pendingOAuthStorageKey)).toBeNull()
 })
 
@@ -226,13 +241,15 @@ test('Every successful OAuth creates a new OpenRouter key and does not revoke th
   expect(apiKey()).toBe(exchangedKey.key)
   expect(authRequests()).toHaveLength(1)
   expect(authRequests()[0]?.method).toBe('POST')
-  expect(
-    openRouterRequests().some((entry) => entry.method === 'DELETE'),
-  ).toBe(false)
-  expect(authRequests()[0]?.headers.authorization ?? '').not.toContain(storedKey)
+  expect(openRouterRequests().some((entry) => entry.method === 'DELETE')).toBe(
+    false,
+  )
+  expect(authRequests()[0]?.headers.authorization ?? '').not.toContain(
+    storedKey,
+  )
 })
 
-test('A key minted with no limit counts as acknowledged for F-03\'s unlimited-key warning, so no second warning appears.', async () => {
+test("A key minted with no limit counts as acknowledged for F-03's unlimited-key warning, so no second warning appears.", async () => {
   captureExternalNavigation()
   mockAuthExchange(exchangedKey)
   mockKey(unlimitedKey)
@@ -354,7 +371,9 @@ test('Callback while already signed in and `state` matches: the stored key is re
   expect(connected).toEqual({ status: 'connected', returnTo: '/c/return' })
   expect(apiKey()).toBe(exchangedKey.key)
   expect(localStorage.getItem(keyStorageKey)).toBe(exchangedKey.key)
-  expect(keyRequests().at(-1)?.headers.authorization).toContain(exchangedKey.key)
+  expect(keyRequests().at(-1)?.headers.authorization).toContain(
+    exchangedKey.key,
+  )
   expect(keyRequests().at(-1)?.headers.authorization).not.toContain(storedKey)
 })
 
@@ -363,7 +382,10 @@ test('New key fails `GET /key` with 401: the F-02 401 outcome, and nothing new i
   localStorage.setItem(keyStorageKey, storedKey)
   apiKey.set(storedKey)
   mockAuthExchange(exchangedKey)
-  mockKey({ status: 401, body: { error: { code: 401, message: 'User not found.' } } })
+  mockKey({
+    status: 401,
+    body: { error: { code: 401, message: 'User not found.' } },
+  })
   await startOAuth({ limit: 10, remember: true, returnTo: null })
 
   const outcome = await completeOAuthFromUrl(callbackUrl(pendingOAuth()!))
@@ -391,11 +413,18 @@ test('`GET /key` is sent with `Authorization: Bearer <trimmed key>`. No chat req
 test('401: nothing is stored.', async () => {
   localStorage.setItem(keyStorageKey, storedKey)
   apiKey.set(storedKey)
-  mockKey({ status: 401, body: { error: { code: 401, message: 'User not found.' } } })
+  mockKey({
+    status: 401,
+    body: { error: { code: 401, message: 'User not found.' } },
+  })
 
   const result = await connectWithKey(pastedKey, { remember: true })
 
-  expect(result).toMatchObject({ ok: false, reason: 'unauthorized', status: 401 })
+  expect(result).toMatchObject({
+    ok: false,
+    reason: 'unauthorized',
+    status: 401,
+  })
   expect(apiKey()).toBe(storedKey)
   expect(localStorage.getItem(keyStorageKey)).toBe(storedKey)
   expect(sessionStorage.getItem(keyStorageKey)).not.toBe(pastedKey)
@@ -557,9 +586,9 @@ test('The app never calls `/credits`.', async () => {
   refreshKeyMeta({ force: true })
   await keyMeta()
 
-  expect(openRouterRequests().some((entry) => entry.url.includes('/credits'))).toBe(
-    false,
-  )
+  expect(
+    openRouterRequests().some((entry) => entry.url.includes('/credits')),
+  ).toBe(false)
 })
 
 test('After each completed reply the chip re-fetches `GET /key`, at most once every 10 s.', async () => {
@@ -731,7 +760,9 @@ test('R-1: no key and no saved chats shows welcome. Saved non-deleted chats show
   await initAuth()
   expect(sessionMode()).toBe('welcome')
 
-  await repo.createChat(createChatRecord({ id: 'chat-1', at: 1, title: 'Kept' }))
+  await repo.createChat(
+    createChatRecord({ id: 'chat-1', at: 1, title: 'Kept' }),
+  )
   await readyLibrary()
   expect(sessionMode()).toBe('archive')
 
@@ -746,7 +777,7 @@ test('R-1: no key and no saved chats shows welcome. Saved non-deleted chats show
   expect(sessionMode()).toBe('welcome')
 })
 
-test('R-1: a key in this tab\'s sessionStorage connects, and library loading stays booting.', async () => {
+test("R-1: a key in this tab's sessionStorage connects, and library loading stays booting.", async () => {
   sessionStorage.setItem(keyStorageKey, storedKey)
   await initAuth()
   expect(apiKey()).toBe(storedKey)
@@ -774,9 +805,9 @@ test('OAuth exchange sends the saved verifier and does not call `/credits`.', as
   expect(sessionStorage.getItem(keyStorageKey)).toBe(exchangedKey.key)
   expect(localStorage.getItem(keyStorageKey)).toBeNull()
   expect(rememberKey()).toBe(false)
-  expect(openRouterRequests().some((entry) => entry.url.includes('/credits'))).toBe(
-    false,
-  )
+  expect(
+    openRouterRequests().some((entry) => entry.url.includes('/credits')),
+  ).toBe(false)
 })
 
 const verifierPattern = /^[A-Za-z0-9\-._~]{43,128}$/
@@ -894,9 +925,7 @@ test('A completion 401 inside the 10s throttle force-clears the key or sets revo
     messageId: 'message-1',
   })
 
-  await expect
-    .poll(() => apiKey() === null || revokedDuringStream())
-    .toBe(true)
+  await expect.poll(() => apiKey() === null || revokedDuringStream()).toBe(true)
   expect(localStorage.getItem(keyStorageKey)).toBeNull()
 })
 

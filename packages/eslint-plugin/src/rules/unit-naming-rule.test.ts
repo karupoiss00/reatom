@@ -1,12 +1,14 @@
 import { RuleTester } from 'eslint'
 import { unitNamingRule } from './unit-naming-rule'
 
-const tester = new RuleTester(/* {
+const tester = new RuleTester(
+  /* {
   parserOptions: {
     ecmaVersion: 2022,
     sourceType: 'module',
   },
-} */)
+} */
+)
 
 tester.run('unit-naming-rule', unitNamingRule, {
   valid: [

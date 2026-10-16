@@ -8,10 +8,10 @@ Naming follows OpenTelemetry semantic conventions wherever a convention exists *
 
 ## Frozen vs planned
 
-| Status | What |
-| --- | --- |
-| **Frozen tracer fields** | Shipped resource keys, mapping 2+3 / `detail: 'events'` / `route: 'child'`, span/log shapes on the wire, `reatom.kind` union (names reserved), link reasons, capture-on params/payload, T30 skip, sampling flags, leftover attach to `app.session`. Tracer grep: `reatom.name`, `exception.type` |
-| **Planned, not frozen** | Analytics catalog (`app.page_view`, `session.start`, `url.path` on those records, `app.display.*`). `reatom.async.settle`. Resource `reatom.schema.version` / `reatom.instance.name`. Route-span `url.path` / `reatom.route.pattern`. Span name `page_view <path>`. `detail: 'summary'` attrs, `code.file.*`, `reatom.origin`. `telemetry.sdk.language = nodejs` |
+| Status                   | What                                                                                                                                                                                                                                                                                                                                                             |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Frozen tracer fields** | Shipped resource keys, mapping 2+3 / `detail: 'events'` / `route: 'child'`, span/log shapes on the wire, `reatom.kind` union (names reserved), link reasons, capture-on params/payload, T30 skip, sampling flags, leftover attach to `app.session`. Tracer grep: `reatom.name`, `exception.type`                                                                 |
+| **Planned, not frozen**  | Analytics catalog (`app.page_view`, `session.start`, `url.path` on those records, `app.display.*`). `reatom.async.settle`. Resource `reatom.schema.version` / `reatom.instance.name`. Route-span `url.path` / `reatom.route.pattern`. Span name `page_view <path>`. `detail: 'summary'` attrs, `code.file.*`, `reatom.origin`. `telemetry.sdk.language = nodejs` |
 
 Do not treat planned rows as ingest fixtures. Do not invent `reatom.state.prev`. Do not emit `reatom.async.pending`.
 
@@ -36,12 +36,12 @@ flowchart TD
   diamond -->|yes, variant 3| shortSpan
 ```
 
-| Id | When | Spans | Updates |
-| --- | --- | --- | --- |
-| **2** (default) | `detail: 'events'` | Action call (async ends on promise settle). `span: true` on an atom/computed is the per-target override | Atom / computed updates are log records on the **current action span context** |
-| **3** (default add-on) | computed with causes from **different traces** | Short span; parent = primary (triggering) cause; one link per other trace | Single-cause stays a log ([`diamond-links.json`](examples/diamond-links.json)) |
-| 1 | `detail: 'spans'` (local debug) | Every action, atom write, computed recompute | Diamonds cannot be expressed |
-| 4 | `detail: 'summary'` (**planned**) | Action spans only | Planned attrs `reatom.updates.count` / `reatom.updates.names`; **not on the wire** |
+| Id                     | When                                           | Spans                                                                                                   | Updates                                                                            |
+| ---------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| **2** (default)        | `detail: 'events'`                             | Action call (async ends on promise settle). `span: true` on an atom/computed is the per-target override | Atom / computed updates are log records on the **current action span context**     |
+| **3** (default add-on) | computed with causes from **different traces** | Short span; parent = primary (triggering) cause; one link per other trace                               | Single-cause stays a log ([`diamond-links.json`](examples/diamond-links.json))     |
+| 1                      | `detail: 'spans'` (local debug)                | Every action, atom write, computed recompute                                                            | Diamonds cannot be expressed                                                       |
+| 4                      | `detail: 'summary'` (**planned**)              | Action spans only                                                                                       | Planned attrs `reatom.updates.count` / `reatom.updates.names`; **not on the wire** |
 
 Cause ids are in every variant. `route: 'link'` is orthogonal: it only decides whether a **top-level action** (no calling frame) stays on the page `traceId` or mints a new one with `reatom.link.reason = route.page`.
 
@@ -51,31 +51,31 @@ A computed never mints a `traceId` (R4). Leftover computed updates and `LOG` att
 
 Ingest keys = **shipped** only. Reserved names are not required until emitted.
 
-| Attribute | Ingest | Notes |
-| --- | --- | --- |
-| `service.name` | required | From options |
-| `service.version` | no | |
-| `deployment.environment.name` | no | From `environment` |
-| `service.instance.id` | required | Random per page load or process. Scopes `reatom.frame.id` |
-| `telemetry.sdk.name` | required | `@reatom/opentelemetry` (never `opentelemetry`) |
-| `telemetry.sdk.language` | required | Frozen shipped value: **`webjs`**. `nodejs` is **planned** (factory hardcodes `webjs`) |
-| `telemetry.sdk.version` | required | Package version |
-| `reatom.schema.version` | **reserved / not yet emitted** | Contract value `1` when it ships. **Not** a required ingest key |
-| `reatom.instance.name` | **reserved / not yet emitted** | Instance `name` option. **Not** a required ingest key |
-| `browser.language` | optional-if-UA-CH | Emitted only inside the UA-CH branch. Safari/Firefox (`navigator.userAgentData` absent) get **no** `browser.*`, including language |
-| `browser.brands`, `browser.platform`, `browser.mobile` | optional-if-UA-CH | Low-entropy UA-CH only; omit if missing. No `user_agent.original`, no high-entropy hints, no `navigator.platform` fallback |
+| Attribute                                              | Ingest                         | Notes                                                                                                                              |
+| ------------------------------------------------------ | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `service.name`                                         | required                       | From options                                                                                                                       |
+| `service.version`                                      | no                             |                                                                                                                                    |
+| `deployment.environment.name`                          | no                             | From `environment`                                                                                                                 |
+| `service.instance.id`                                  | required                       | Random per page load or process. Scopes `reatom.frame.id`                                                                          |
+| `telemetry.sdk.name`                                   | required                       | `@reatom/opentelemetry` (never `opentelemetry`)                                                                                    |
+| `telemetry.sdk.language`                               | required                       | Frozen shipped value: **`webjs`**. `nodejs` is **planned** (factory hardcodes `webjs`)                                             |
+| `telemetry.sdk.version`                                | required                       | Package version                                                                                                                    |
+| `reatom.schema.version`                                | **reserved / not yet emitted** | Contract value `1` when it ships. **Not** a required ingest key                                                                    |
+| `reatom.instance.name`                                 | **reserved / not yet emitted** | Instance `name` option. **Not** a required ingest key                                                                              |
+| `browser.language`                                     | optional-if-UA-CH              | Emitted only inside the UA-CH branch. Safari/Firefox (`navigator.userAgentData` absent) get **no** `browser.*`, including language |
+| `browser.brands`, `browser.platform`, `browser.mobile` | optional-if-UA-CH              | Low-entropy UA-CH only; omit if missing. No `user_agent.original`, no high-entropy hints, no `navigator.platform` fallback         |
 
 Values that change during the page (login, tenant, viewport, URL) are record attributes, never resource.
 
 ## Spans
 
-| Field | Value |
-| --- | --- |
-| name | Frozen: normalized Reatom name (`checkout.purchase`, `tree#.toggle`), `route <leaf>`, `mount <component>`, `app.session`. **Planned:** `page_view <path>` (analytics; no such tracer span in `src/`) |
-| kind | OTel `INTERNAL` (1) by default. `withOTel({ kind })` overrides (`client` / `server` / `producer` / `consumer`) |
-| status | `ERROR` with message on failure. Unset otherwise, including abort and Suspense |
-| flags | W3C bit 0: sampled = `flags & 0x01`. Outgoing `traceparent` flags `01` / `00` (R5). `03` incoming still counts as sampled |
-| links | Cross-trace causes (variant 3) and `route: 'link'` page pointers |
+| Field  | Value                                                                                                                                                                                                |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| name   | Frozen: normalized Reatom name (`checkout.purchase`, `tree#.toggle`), `route <leaf>`, `mount <component>`, `app.session`. **Planned:** `page_view <path>` (analytics; no such tracer span in `src/`) |
+| kind   | OTel `INTERNAL` (1) by default. `withOTel({ kind })` overrides (`client` / `server` / `producer` / `consumer`)                                                                                       |
+| status | `ERROR` with message on failure. Unset otherwise, including abort and Suspense                                                                                                                       |
+| flags  | W3C bit 0: sampled = `flags & 0x01`. Outgoing `traceparent` flags `01` / `00` (R5). `03` incoming still counts as sampled                                                                            |
+| links  | Cross-trace causes (variant 3) and `route: 'link'` page pointers                                                                                                                                     |
 
 Do not confuse the tracer span `app.session` (one leftover root per instance per page load) with the planned analytics event `session.start`.
 
@@ -87,25 +87,25 @@ Infer `action` / `atom` / `computed` from `reactive` / `writable`. C3 stamps `ef
 
 Shipped on the wire today: `action`, `atom`, `computed` (variant-3 diamond spans), `route`, `session`. The rest of the union is reserved so later stamps do not bump the version.
 
-| Attribute | On | Meaning |
-| --- | --- | --- |
-| `reatom.kind` | all | Closed union above |
-| `reatom.name` | all | Raw name, including the instance id. **Grep-able (frozen tracer).** Dropped only when it equals the span `name` and exceeds 1920 UTF-8 bytes |
-| `reatom.instance` | factory instances | The `#id` part (`tree#12.toggle` → name `tree#.toggle`, instance `"12"`) |
-| `reatom.frame.id` | all | Per-instance counter, a string, scoped by `service.instance.id` |
-| `reatom.cause.ids` | all | Array of frame ids: `pubs[0]` first, then changed dependencies |
-| `reatom.params` | actions, **capture on by default** | JSON string from the serializer |
-| `reatom.payload` | actions, **capture on by default** | JSON string; for async, the resolved value |
-| `reatom.outcome` | all | `ok`, `error`, `abort`, `suspense`, `pending` (unload of an open span) |
-| `reatom.importance` | optional | `low` for abort and Suspense |
-| `reatom.attributes_error` | spans and update logs | Exception type when the `attributes` function throws. **Not frozen.** |
-| `reatom.attempt` | retries | 1-based |
-| `reatom.updates.count`, `reatom.updates.names` | **planned** | `detail: 'summary'` / variant 4. **Not yet emitted** |
-| `reatom.route.pattern`, `url.path` | **planned** on route spans | F-03 dumps have only `reatom.name` / `kind` / `outcome`. Do not grep F-03 for `url.path`. Analytics `app.page_view` may still plan `url.path` |
-| `reatom.origin` | **planned** | `admin` via `attributesVar`. **Not yet emitted** |
-| `reatom.parent.reason` | **not frozen** | Why this parent was chosen: `call` (calling frame), `dependency` (changed traced dependency), `read` (reader on the stack), `route` (route page trace), `explicit` (per-root manual or remote trace), `session` (app-session fallback), `root` (no parent, a new trace), `budget` (continuation after the span budget) |
-| `code.file.path`, `code.line.number` | **planned** | Dev `captureCodeLocation`. **Not yet emitted** |
-| user attributes | `withOTel({ attributes })`, `options.attributes` | e.g. `user.id`, `app.order.value`. **Not stripped.** Domain taxonomy stays here |
+| Attribute                                      | On                                               | Meaning                                                                                                                                                                                                                                                                                                                |
+| ---------------------------------------------- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `reatom.kind`                                  | all                                              | Closed union above                                                                                                                                                                                                                                                                                                     |
+| `reatom.name`                                  | all                                              | Raw name, including the instance id. **Grep-able (frozen tracer).** Dropped only when it equals the span `name` and exceeds 1920 UTF-8 bytes                                                                                                                                                                           |
+| `reatom.instance`                              | factory instances                                | The `#id` part (`tree#12.toggle` → name `tree#.toggle`, instance `"12"`)                                                                                                                                                                                                                                               |
+| `reatom.frame.id`                              | all                                              | Per-instance counter, a string, scoped by `service.instance.id`                                                                                                                                                                                                                                                        |
+| `reatom.cause.ids`                             | all                                              | Array of frame ids: `pubs[0]` first, then changed dependencies                                                                                                                                                                                                                                                         |
+| `reatom.params`                                | actions, **capture on by default**               | JSON string from the serializer                                                                                                                                                                                                                                                                                        |
+| `reatom.payload`                               | actions, **capture on by default**               | JSON string; for async, the resolved value                                                                                                                                                                                                                                                                             |
+| `reatom.outcome`                               | all                                              | `ok`, `error`, `abort`, `suspense`, `pending` (unload of an open span)                                                                                                                                                                                                                                                 |
+| `reatom.importance`                            | optional                                         | `low` for abort and Suspense                                                                                                                                                                                                                                                                                           |
+| `reatom.attributes_error`                      | spans and update logs                            | Exception type when the `attributes` function throws. **Not frozen.**                                                                                                                                                                                                                                                  |
+| `reatom.attempt`                               | retries                                          | 1-based                                                                                                                                                                                                                                                                                                                |
+| `reatom.updates.count`, `reatom.updates.names` | **planned**                                      | `detail: 'summary'` / variant 4. **Not yet emitted**                                                                                                                                                                                                                                                                   |
+| `reatom.route.pattern`, `url.path`             | **planned** on route spans                       | F-03 dumps have only `reatom.name` / `kind` / `outcome`. Do not grep F-03 for `url.path`. Analytics `app.page_view` may still plan `url.path`                                                                                                                                                                          |
+| `reatom.origin`                                | **planned**                                      | `admin` via `attributesVar`. **Not yet emitted**                                                                                                                                                                                                                                                                       |
+| `reatom.parent.reason`                         | **not frozen**                                   | Why this parent was chosen: `call` (calling frame), `dependency` (changed traced dependency), `read` (reader on the stack), `route` (route page trace), `explicit` (per-root manual or remote trace), `session` (app-session fallback), `root` (no parent, a new trace), `budget` (continuation after the span budget) |
+| `code.file.path`, `code.line.number`           | **planned**                                      | Dev `captureCodeLocation`. **Not yet emitted**                                                                                                                                                                                                                                                                         |
+| user attributes                                | `withOTel({ attributes })`, `options.attributes` | e.g. `user.id`, `app.order.value`. **Not stripped.** Domain taxonomy stays here                                                                                                                                                                                                                                        |
 
 T30: names with a `_` prefix or a `._` segment are skipped, **except** `route` / `render` / `mount`.
 
@@ -113,22 +113,22 @@ Abort and Suspense are not errors: status unset, `reatom.outcome` `abort` | `sus
 
 ### Links
 
-| Link attribute | Meaning |
-| --- | --- |
+| Link attribute       | Meaning                                                                                                                                                                                                                                                                    |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `reatom.link.reason` | Frozen: `computed.dependency` (cause from another trace), `route.page` (top-level action under `route: 'link'` pointing at the page route span). **Not frozen:** `trace.budget` (this span roots a continuation of an over-budget trace). Optional later: `route.previous` |
-| `reatom.frame.id` | Frame id of the linked cause (variant 3) |
+| `reatom.frame.id`    | Frame id of the linked cause (variant 3)                                                                                                                                                                                                                                   |
 
 ## Log records
 
 Log records always carry the span context of the current span when there is one, else the `app.session` span. They **always dual-write** the OTLP `eventName` field **and** the `event.name` attribute (R2 pick C: keep both for backends that flatten attributes).
 
-| `eventName` | Status | Body | Key attributes |
-| --- | --- | --- | --- |
-| `reatom.atom.update` | **frozen** | new state (serialized `AnyValue`) | `event.name`, `reatom.name`, `reatom.kind`, `reatom.instance`, `reatom.frame.id`, `reatom.cause.ids` |
-| `reatom.computed.update` | **frozen** | new state | as above |
-| `reatom.log` | **frozen** | the arguments array | `reatom.log.label`, `reatom.log.state` (the name for `LOG.state`) |
-| `exception` | **frozen** | — | `exception.type` (**grep-able**), `exception.message`, `exception.stacktrace`, `reatom.cause.ids` (tracer) |
-| `reatom.async.settle` | **planned, not frozen** | payload or error summary | `reatom.name` of the **async target**, `reatom.outcome` `ok` / `error` / `abort`. Helpers are not spans. **Not yet emitted.** |
+| `eventName`              | Status                  | Body                              | Key attributes                                                                                                                |
+| ------------------------ | ----------------------- | --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `reatom.atom.update`     | **frozen**              | new state (serialized `AnyValue`) | `event.name`, `reatom.name`, `reatom.kind`, `reatom.instance`, `reatom.frame.id`, `reatom.cause.ids`                          |
+| `reatom.computed.update` | **frozen**              | new state                         | as above                                                                                                                      |
+| `reatom.log`             | **frozen**              | the arguments array               | `reatom.log.label`, `reatom.log.state` (the name for `LOG.state`)                                                             |
+| `exception`              | **frozen**              | —                                 | `exception.type` (**grep-able**), `exception.message`, `exception.stacktrace`, `reatom.cause.ids` (tracer)                    |
+| `reatom.async.settle`    | **planned, not frozen** | payload or error summary          | `reatom.name` of the **async target**, `reatom.outcome` `ok` / `error` / `abort`. Helpers are not spans. **Not yet emitted.** |
 
 Previous state is not sent. Admin derives it from the previous update of the same atom in the same instance. There is no `reatom.state.prev`.
 
@@ -152,15 +152,15 @@ No `reatom.kind = 'route.pathless'`. Pathless / modal is the `boundary: false` o
 
 ## Sampling (R5)
 
-| Default | Value |
-| --- | --- |
-| Sampler | ParentBased (OTel SDK default) |
-| Root | AlwaysOn (`ratio: 1`). Ratio `< 1` is `ParentBased(root = TraceIdRatioBased(ratio))` only — never a bare ratio sampler |
-| `by` | `'trace'`. `'session'` is opt-in, still ParentBased |
-| `errors` | `'always'` (ring-buffer unsampled traces; export on exception) |
-| Sampled flag | `flags & 0x01` (`01` and `03` are both sampled; equality on `"01"` is wrong) |
-| Outgoing `traceparent` | `…-01` if sampled, `…-00` if not. Do not omit the header on unsampled traces |
-| Baggage | off |
+| Default                | Value                                                                                                                  |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Sampler                | ParentBased (OTel SDK default)                                                                                         |
+| Root                   | AlwaysOn (`ratio: 1`). Ratio `< 1` is `ParentBased(root = TraceIdRatioBased(ratio))` only — never a bare ratio sampler |
+| `by`                   | `'trace'`. `'session'` is opt-in, still ParentBased                                                                    |
+| `errors`               | `'always'` (ring-buffer unsampled traces; export on exception)                                                         |
+| Sampled flag           | `flags & 0x01` (`01` and `03` are both sampled; equality on `"01"` is wrong)                                           |
+| Outgoing `traceparent` | `…-01` if sampled, `…-00` if not. Do not omit the header on unsampled traces                                           |
+| Baggage                | off                                                                                                                    |
 
 Unsampled traces still reach the local sink / admin (`IsRecording`).
 
@@ -176,18 +176,18 @@ R2 pick C names, for when `connectWebAnalytics` emits. **Not a v1 ingest contrac
 
 Common attributes when they ship: `session.id`, `app.visitor.id` (after consent), `url.path` (analytics records, **not** current route spans), `app.analytics.consent`.
 
-| `eventName` | When | Attributes |
-| --- | --- | --- |
-| `app.page_view` | start, URL change, manual `pageView()` | `url.full` (no query or fragment by default), `url.path`, `app.page.title`, `app.page.referrer`, `app.viewport.width/height`, **`app.display.width/height`** (not `app.screen.*`), `app.utm.*`, `app.click_id.*` |
-| `session.start` | first activity, timeout, campaign change | **not** `app.session.start`. `session.previous_id`, `app.attribution.first.*`, `app.attribution.last.*` |
-| `app.page.engagement` | page change, hide | `app.engagement.visible_ms`, `app.engagement.active_ms` |
-| `app.visibility.change` | visibility flip | `app.visibility.state` |
-| `app.network.change` | online or offline | `network.online` (custom; not TCP `network.connection.state`) |
-| `app.focus.change` | focus or blur (tier 0 if budget allows) | `app.focus.state` |
-| `browser.web_vital` | web-vitals module | official browser-events names |
-| `feature_flag.evaluation` | experiments module | official feature-flag names |
-| `exception` | analytics handlers | `exception.type` always; `exception.message` / `.stacktrace` only after consent and `captureErrorDetails` |
-| `exception.suppressed` | analytics dedup | `exception.type`, `app.exception.count` |
+| `eventName`               | When                                     | Attributes                                                                                                                                                                                                       |
+| ------------------------- | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `app.page_view`           | start, URL change, manual `pageView()`   | `url.full` (no query or fragment by default), `url.path`, `app.page.title`, `app.page.referrer`, `app.viewport.width/height`, **`app.display.width/height`** (not `app.screen.*`), `app.utm.*`, `app.click_id.*` |
+| `session.start`           | first activity, timeout, campaign change | **not** `app.session.start`. `session.previous_id`, `app.attribution.first.*`, `app.attribution.last.*`                                                                                                          |
+| `app.page.engagement`     | page change, hide                        | `app.engagement.visible_ms`, `app.engagement.active_ms`                                                                                                                                                          |
+| `app.visibility.change`   | visibility flip                          | `app.visibility.state`                                                                                                                                                                                           |
+| `app.network.change`      | online or offline                        | `network.online` (custom; not TCP `network.connection.state`)                                                                                                                                                    |
+| `app.focus.change`        | focus or blur (tier 0 if budget allows)  | `app.focus.state`                                                                                                                                                                                                |
+| `browser.web_vital`       | web-vitals module                        | official browser-events names                                                                                                                                                                                    |
+| `feature_flag.evaluation` | experiments module                       | official feature-flag names                                                                                                                                                                                      |
+| `exception`               | analytics handlers                       | `exception.type` always; `exception.message` / `.stacktrace` only after consent and `captureErrorDetails`                                                                                                        |
+| `exception.suppressed`    | analytics dedup                          | `exception.type`, `app.exception.count`                                                                                                                                                                          |
 
 Keep `app.visitor.id` (do not replace with `enduser.pseudo.id`). Residual `app.*` with no analog (engagement, UTM, consent, ecommerce-until-WA-9, tier-1 modules) stays `app.*`. Manual business facts are named tracer actions with `withOTel({ attributes })`, not an analytics `trackEvent` API (R21).
 
@@ -227,7 +227,10 @@ Atom update on the action span, not a span and not a span event ([`atom-update.j
     { "key": "reatom.name", "value": { "stringValue": "tree.checked" } },
     { "key": "reatom.kind", "value": { "stringValue": "atom" } },
     { "key": "reatom.frame.id", "value": { "stringValue": "2" } },
-    { "key": "reatom.cause.ids", "value": { "arrayValue": { "values": [{ "stringValue": "1" }] } } }
+    {
+      "key": "reatom.cause.ids",
+      "value": { "arrayValue": { "values": [{ "stringValue": "1" }] } }
+    }
   ]
 }
 ```

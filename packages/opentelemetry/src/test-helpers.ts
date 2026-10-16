@@ -202,29 +202,27 @@ export const parsePayload = (body: string | unknown): ParsedPayload => {
         // Production emits one scopeSpans per group; flatten any future
         // split so empty-span assertions cannot pass vacuously.
         spans: (rs.scopeSpans ?? []).flatMap((ss: any) =>
-          (ss.spans ?? []).map(
-            (s: any): ParsedSpan => ({
-              traceId: s.traceId,
-              spanId: s.spanId,
-              parentSpanId: s.parentSpanId,
-              name: s.name,
-              kind: SPAN_KIND_NAME[s.kind] ?? 'unspecified',
-              startTimeUnixNano: s.startTimeUnixNano,
-              endTimeUnixNano: s.endTimeUnixNano,
-              attributes: decodeAttrs(s.attributes ?? []),
-              events: (s.events ?? []).map((e: any) => ({
-                name: e.name,
-                timeUnixNano: e.timeUnixNano,
-                attributes: decodeAttrs(e.attributes ?? []),
-              })),
-              status: s.status
-                ? {
-                    code: STATUS_CODE_NAME[s.status.code] ?? 'unset',
-                    message: s.status.message,
-                  }
-                : undefined,
-            }),
-          ),
+          (ss.spans ?? []).map((s: any): ParsedSpan => ({
+            traceId: s.traceId,
+            spanId: s.spanId,
+            parentSpanId: s.parentSpanId,
+            name: s.name,
+            kind: SPAN_KIND_NAME[s.kind] ?? 'unspecified',
+            startTimeUnixNano: s.startTimeUnixNano,
+            endTimeUnixNano: s.endTimeUnixNano,
+            attributes: decodeAttrs(s.attributes ?? []),
+            events: (s.events ?? []).map((e: any) => ({
+              name: e.name,
+              timeUnixNano: e.timeUnixNano,
+              attributes: decodeAttrs(e.attributes ?? []),
+            })),
+            status: s.status
+              ? {
+                  code: STATUS_CODE_NAME[s.status.code] ?? 'unset',
+                  message: s.status.message,
+                }
+              : undefined,
+          })),
         ),
       }
     }),

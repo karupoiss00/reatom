@@ -1,7 +1,11 @@
 import { catalogById, modelName } from '../catalog'
 import type { CatalogModel } from '../catalog/types'
 import { repo } from '../storage/repo'
-import type { AttachmentRef, MessageRecord, PdfEngineLabel } from '../storage/types'
+import type {
+  AttachmentRef,
+  MessageRecord,
+  PdfEngineLabel,
+} from '../storage/types'
 import { activeChat, sendBlockContributors } from './chatModel'
 import type { ChatModel, SendBlock, SendBlockContributor } from './types'
 
@@ -109,8 +113,8 @@ export const unsupportedAttachmentBlock: SendBlockContributor = (
   const modelId = chat.model()
   if (!modelId) return null
   const model = catalogById().get(modelId) ?? null
-  const blocked = chat
-    .draft.attachments()
+  const blocked = chat.draft
+    .attachments()
     .some((ref) => !attachmentSupported(ref, model))
   if (!blocked) return null
   return {
@@ -142,7 +146,8 @@ export const fileTooLargeCopy = (name: string, size: number) =>
 
 export const formatAttachmentSize = (size: number) => {
   if (size < 1024) return `${size} B`
-  if (size < bytesPerMegabyte) return `${Math.max(1, Math.round(size / 1024))} KB`
+  if (size < bytesPerMegabyte)
+    return `${Math.max(1, Math.round(size / 1024))} KB`
   return wholeMegabytes(size)
 }
 
@@ -214,7 +219,11 @@ export const countPdfPages = (source: string) => {
 }
 
 export const pdfParserMenu = [
-  { id: 'text' as const, label: 'Text extraction (free)', wire: 'cloudflare-ai' },
+  {
+    id: 'text' as const,
+    label: 'Text extraction (free)',
+    wire: 'cloudflare-ai',
+  },
   { id: 'ocr' as const, label: 'OCR ($2 / 1,000 pages)', wire: 'mistral-ocr' },
   { id: 'native' as const, label: 'Native (billed as tokens)', wire: 'native' },
 ]
@@ -251,7 +260,8 @@ const fileDataUrls = (body: unknown) => {
   if (!Array.isArray(messages)) return []
   const urls: string[] = []
   for (const message of messages) {
-    if (!message || typeof message !== 'object' || !('content' in message)) continue
+    if (!message || typeof message !== 'object' || !('content' in message))
+      continue
     const content = (message as { content?: unknown }).content
     if (!Array.isArray(content)) continue
     for (const part of content) {
@@ -294,7 +304,10 @@ const engineForRequest = async (body: unknown) => {
   if (urls.length === 0) return null
   let engine: string | null = null
   for (const url of urls) {
-    engine = pdfEngineByData.get(url) ?? (await engineFromLoadedMessages(url)) ?? engine
+    engine =
+      pdfEngineByData.get(url) ??
+      (await engineFromLoadedMessages(url)) ??
+      engine
   }
   return engine ?? pdfWireEngine('text')
 }
@@ -310,8 +323,10 @@ const enrichChatBody = async (input: RequestInfo | URL, init?: RequestInit) => {
   const method = (
     init?.method ?? (input instanceof Request ? input.method : 'GET')
   ).toUpperCase()
-  if (method !== 'POST' || !url.includes('/chat/completions')) return { input, init }
-  const request = input instanceof Request && init == null ? input : new Request(input, init)
+  if (method !== 'POST' || !url.includes('/chat/completions'))
+    return { input, init }
+  const request =
+    input instanceof Request && init == null ? input : new Request(input, init)
   const raw = await request.clone().text()
   if (!raw) return { input: request, init: undefined }
   let parsed: unknown
@@ -350,7 +365,8 @@ export const ensureFileParserBridge = () => {
     try {
       enriched = await enrichChatBody(input, init)
     } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') throw error
+      if (error instanceof DOMException && error.name === 'AbortError')
+        throw error
       return inner(input, init)
     }
     return inner(enriched.input, enriched.init)

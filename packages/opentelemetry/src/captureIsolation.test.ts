@@ -123,7 +123,7 @@ test('redacting params may dispose telemetry without changing the body/result or
   let positive: ReturnType<typeof setup> | undefined
   try {
     otel = reatomOpentelemetry({
-    name: 'captureIsolation',
+      name: 'captureIsolation',
       endpoint: 'https://collector.invalid',
       serviceName: 'capture-no-core',
       retry: { maxRetries: 0 },

@@ -8,26 +8,26 @@ Spike against core `variable` at `packages/core/src/methods/variable.ts`. Tests:
 
 Set `traceVar.set('c1-trace')` inside a named action, then read `traceVar.get()` in the target frame. `readVar` maps `undefined` to `'undefined'` and a thrown `Error` to `error.message`.
 
-| Case | C1 requirement | Observed | Path `get()` walked (pubs index:atom → … → holder) |
-| ---- | -------------- | -------- | -------------------------------------------------- |
-| Nested action | must see `x` | **PASS** `'c1-trace'` | child action `pubs[0]` is the parent |
-| `await wrap` continuation | must see `x` | **PASS** `'c1-trace'` | `wrap` restores the same action frame |
-| `onEvent` handler | must see `x` | **PASS** `'c1-trace'` | `onEvent` does `wrap(action(cb))` on the registrar frame |
-| `effect` body started from that action | must see `x` | **PASS** `'c1-trace'` | `1:effect._memo → 1:effect._subscribe → 0:start` (`withDynamicSubscription` makes `subscribe` an action called from `start`) |
-| `effect` that also reads the atom written in the action | extra | **PASS** `'c1-trace'` | same as above, plus the written atom’s `pubs[0]` |
-| `withAsync` `onFulfill` | must see `x` | **PASS** `'c1-trace'` | `bind(actionFrame)` then `abortVar.spawn(onFulfill)`; `traceVar` still walks past `abortVar.spawn` |
-| `withAsync` `onReject` | must see `x` | **PASS** `'c1-trace'` | same as `onFulfill` |
-| Route loader after `page.go()` from the action | must see `x` if cheap | **PASS** `'c1-trace'` | `1:route → 1:route._match → 1:urlAtom → 0:route.go → 0:start` |
-| Computed recomputed because an atom changed inside the action | document | **PASS** `'c1-trace'` | `1:source → 0:cause` (see rule below) |
-| Bare `setTimeout` | must NOT keep context | **PASS (negative)** `'missing async stack'` | no frame on `STACK`; `top()` throws |
-| Callback without `wrap` between two actions | must NOT keep context | **PASS (negative)** `'undefined'` | follow action’s `pubs[0]` is not the writer |
+| Case                                                          | C1 requirement        | Observed                                    | Path `get()` walked (pubs index:atom → … → holder)                                                                           |
+| ------------------------------------------------------------- | --------------------- | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Nested action                                                 | must see `x`          | **PASS** `'c1-trace'`                       | child action `pubs[0]` is the parent                                                                                         |
+| `await wrap` continuation                                     | must see `x`          | **PASS** `'c1-trace'`                       | `wrap` restores the same action frame                                                                                        |
+| `onEvent` handler                                             | must see `x`          | **PASS** `'c1-trace'`                       | `onEvent` does `wrap(action(cb))` on the registrar frame                                                                     |
+| `effect` body started from that action                        | must see `x`          | **PASS** `'c1-trace'`                       | `1:effect._memo → 1:effect._subscribe → 0:start` (`withDynamicSubscription` makes `subscribe` an action called from `start`) |
+| `effect` that also reads the atom written in the action       | extra                 | **PASS** `'c1-trace'`                       | same as above, plus the written atom’s `pubs[0]`                                                                             |
+| `withAsync` `onFulfill`                                       | must see `x`          | **PASS** `'c1-trace'`                       | `bind(actionFrame)` then `abortVar.spawn(onFulfill)`; `traceVar` still walks past `abortVar.spawn`                           |
+| `withAsync` `onReject`                                        | must see `x`          | **PASS** `'c1-trace'`                       | same as `onFulfill`                                                                                                          |
+| Route loader after `page.go()` from the action                | must see `x` if cheap | **PASS** `'c1-trace'`                       | `1:route → 1:route._match → 1:urlAtom → 0:route.go → 0:start`                                                                |
+| Computed recomputed because an atom changed inside the action | document              | **PASS** `'c1-trace'`                       | `1:source → 0:cause` (see rule below)                                                                                        |
+| Bare `setTimeout`                                             | must NOT keep context | **PASS (negative)** `'missing async stack'` | no frame on `STACK`; `top()` throws                                                                                          |
+| Callback without `wrap` between two actions                   | must NOT keep context | **PASS (negative)** `'undefined'`           | follow action’s `pubs[0]` is not the writer                                                                                  |
 
 ### Untested (not required to land this spike)
 
-| Case | Why skipped |
-| ---- | ----------- |
-| `urlAtom` write from `popstate` or a caught link click (C1.3 remainder) | needs a DOM / history fixture; `go()` from the action already writes `urlAtom` and the loader saw the var |
-| Render computed in `reatomAbstractRender` / event handlers bound during render (C1.4) | needs an adapter mount fixture |
+| Case                                                                                  | Why skipped                                                                                               |
+| ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `urlAtom` write from `popstate` or a caught link click (C1.3 remainder)               | needs a DOM / history fixture; `go()` from the action already writes `urlAtom` and the loader saw the var |
+| Render computed in `reatomAbstractRender` / event handlers bound during render (C1.4) | needs an adapter mount fixture                                                                            |
 
 ## Computed + `pubs[0]` + `_findReactiveStartIndex`
 

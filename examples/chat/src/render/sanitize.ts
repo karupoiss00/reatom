@@ -145,7 +145,11 @@ const decodeCssEscapes = (value: string) =>
     (_full, hex?: string, newline?: string, char?: string) => {
       if (hex) {
         const code = Number.parseInt(hex, 16)
-        if (code === 0 || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff)) {
+        if (
+          code === 0 ||
+          code > 0x10ffff ||
+          (code >= 0xd800 && code <= 0xdfff)
+        ) {
           return '\uFFFD'
         }
         return String.fromCodePoint(code)

@@ -93,9 +93,13 @@ export const contextLength400 = httpError(
   { error_type: 'context_length_exceeded' },
 )
 
-export const maxTokens400 = httpError(400, 'max_tokens exceeds the model limit', {
-  error_type: 'max_tokens_exceeded',
-})
+export const maxTokens400 = httpError(
+  400,
+  'max_tokens exceeds the model limit',
+  {
+    error_type: 'max_tokens_exceeded',
+  },
+)
 
 export const tokenLimit400 = httpError(400, 'Token limit exceeded', {
   error_type: 'token_limit_exceeded',
@@ -106,9 +110,13 @@ export const unknownModel400 = httpError(
   'The model `no-such/model` does not exist',
 )
 
-export const rejected400 = httpError(400, 'temperature must be between 0 and 2', {
-  error_type: 'invalid_request',
-})
+export const rejected400 = httpError(
+  400,
+  'temperature must be between 0 and 2',
+  {
+    error_type: 'invalid_request',
+  },
+)
 
 export const unknownModel404 = httpError(
   404,

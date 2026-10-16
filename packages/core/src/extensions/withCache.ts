@@ -54,8 +54,7 @@ export interface CacheAtom<Target extends AtomLike = AtomLike> extends MapAtom<
 }
 
 export type CacheMapRecord<Target extends AtomLike = AtomLike> =
-  | undefined
-  | CacheRecord<Target>
+  undefined | CacheRecord<Target>
 
 export type WithCacheOptions<Target extends AtomLike = AtomLike> = {
   /**

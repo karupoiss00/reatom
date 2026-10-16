@@ -38,7 +38,7 @@ Import `Inspector` from `src/view/inspector`.
 
 - `value` is an atom of the unknown value. Pass an atom so a later write updates this tree. Wrap a one-off snapshot in an atom before passing it.
 - `defaultExpanded` optional. Omit it, or pass false, to start the root closed. Pass true to start the root open. Nested collections stay closed either way.
-- `name` optional. When set, the tree is prefixed with that name and ` = `.
+- `name` optional. When set, the tree is prefixed with that name and `=`.
 - `hooks` optional. Omit it for the default walk of objects, arrays, maps, and sets.
 
 `hooks.expandable` returns false to show that object as a single tag instead of a collection. `hooks.entries` replaces the walk for one value; return `undefined` to keep the default, and return an empty list for an empty object. `hooks.fieldLabel` names a walked field. `hooks.fieldActions` supplies buttons for a walked field that did not set `actions`. `hooks.initiallyExpanded` opens the root or a nested collection when it returns true for that value.

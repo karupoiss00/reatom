@@ -70,9 +70,11 @@ test('chrome Errors / Routes / name glob match MCP search', () => {
     expect(admin.filter()).toEqual({ hasError: true })
     const errors = admin.feedRecords()
     expect(errors.some((record) => record.name === 'explode')).toBe(true)
-    expect(errors.every((record) => record.error != null || record.outcome === 'error')).toBe(
-      true,
-    )
+    expect(
+      errors.every(
+        (record) => record.error != null || record.outcome === 'error',
+      ),
+    ).toBe(true)
     const mcpErrors = mcp.search({ filter: admin.filter() })
     expect(mcpErrors.ok).toBe(true)
     if (!mcpErrors.ok) return
@@ -82,7 +84,9 @@ test('chrome Errors / Routes / name glob match MCP search', () => {
 
     admin.resetFilter()
     admin.filterReatomKind.set('route')
-    expect(admin.feedRecords().map((record) => record.name)).toEqual(['route goods'])
+    expect(admin.feedRecords().map((record) => record.name)).toEqual([
+      'route goods',
+    ])
     const mcpRoutes = mcp.search({ filter: admin.filter() })
     expect(mcpRoutes.ok).toBe(true)
     if (!mcpRoutes.ok) return
@@ -92,25 +96,29 @@ test('chrome Errors / Routes / name glob match MCP search', () => {
     admin.resetFilter()
     admin.filterName.set('route*')
     expect(admin.filter()).toEqual({ name: 'route*' })
-    expect(admin.feedRecords().map((record) => record.name)).toEqual(['route goods'])
+    expect(admin.feedRecords().map((record) => record.name)).toEqual([
+      'route goods',
+    ])
     expect(admin.summary().visibleFrames).toBe(1)
     expect(admin.summary().totalFrames).toBe(5)
 
     admin.filterName.set('tree.checked')
-    expect(admin.feedRecords().some((record) => record.atomName === 'tree.checked')).toBe(
-      true,
-    )
+    expect(
+      admin.feedRecords().some((record) => record.atomName === 'tree.checked'),
+    ).toBe(true)
     admin.filterName.set('TREE')
     expect(
-      admin.feedRecords().every(
-        (record) =>
-          record.name.toLowerCase().includes('tree') ||
-          record.atomName?.toLowerCase().includes('tree') === true,
-      ),
+      admin
+        .feedRecords()
+        .every(
+          (record) =>
+            record.name.toLowerCase().includes('tree') ||
+            record.atomName?.toLowerCase().includes('tree') === true,
+        ),
     ).toBe(true)
-    expect(admin.feedRecords().some((record) => record.name === 'explode')).toBe(
-      false,
-    )
+    expect(
+      admin.feedRecords().some((record) => record.name === 'explode'),
+    ).toBe(false)
 
     admin.resetFilter()
     expect(admin.filter()).toEqual({})
@@ -304,9 +312,9 @@ test('calculator hide highlight exclude modes change Activity and MCP search', (
     expect(admin.feedRecords()).toHaveLength(5)
     expect(admin.summary().visibleFrames).toBe(5)
     expect(admin.summary().highlightedFrames).toBe(1)
-    const highlighted = admin.feedRecords().filter((entry) =>
-      admin.highlightedIds().has(entry.id),
-    )
+    const highlighted = admin
+      .feedRecords()
+      .filter((entry) => admin.highlightedIds().has(entry.id))
     expect(highlighted.map((entry) => entry.name)).toEqual(['explode'])
     const highlightSearch = mcp.search({ filter: admin.filter() })
     expect(highlightSearch.ok).toBe(true)
@@ -317,9 +325,9 @@ test('calculator hide highlight exclude modes change Activity and MCP search', (
     expect(flagged[0]!.name).toBe('explode')
     expect(flagged[0]!.highlighted).toBe(true)
     expect(
-      highlightSearch.data.filter((row) => row.name !== 'explode').every(
-        (row) => row.highlighted === undefined,
-      ),
+      highlightSearch.data
+        .filter((row) => row.name !== 'explode')
+        .every((row) => row.highlighted === undefined),
     ).toBe(true)
 
     admin.filterMode.set('show')
@@ -337,12 +345,14 @@ test('traceId scopes Hide and does not empty the scoped trace', () => {
   const { admin, mcp } = ingestAll()
 
   ADMIN_FRAME.run(() => {
-    const explode = admin.feedRecords().find((entry) => entry.name === 'explode')
+    const explode = admin
+      .feedRecords()
+      .find((entry) => entry.name === 'explode')
     expect(explode).toBeDefined()
     const explodeTrace = explode!.traceId
-    expect(admin.feedRecords().some((entry) => entry.traceId !== explodeTrace)).toBe(
-      true,
-    )
+    expect(
+      admin.feedRecords().some((entry) => entry.traceId !== explodeTrace),
+    ).toBe(true)
 
     const scopedHide = mcp.search({
       filter: { traceId: explodeTrace, mode: 'hide' },
@@ -364,9 +374,9 @@ test('traceId scopes Hide and does not empty the scoped trace', () => {
     })
     expect(hideExplodeInTrace.ok).toBe(true)
     if (!hideExplodeInTrace.ok) return
-    expect(hideExplodeInTrace.data.every((row) => row.traceId === explodeTrace)).toBe(
-      true,
-    )
+    expect(
+      hideExplodeInTrace.data.every((row) => row.traceId === explodeTrace),
+    ).toBe(true)
     expect(hideExplodeInTrace.data.map((row) => row.name)).not.toContain(
       'explode',
     )

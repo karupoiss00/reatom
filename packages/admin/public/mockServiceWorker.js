@@ -3,6 +3,7 @@
 
 /**
  * Mock Service Worker.
+ *
  * @see https://github.com/mswjs/msw
  * - Please do NOT modify this file.
  */
@@ -12,9 +13,7 @@ const INTEGRITY_CHECKSUM = '5cd5cf8b54c3a90f82960cedcd637772'
 const IS_MOCKED_RESPONSE = Symbol('isMockedResponse')
 
 const activeClientIds = new Set()
-/**
- * @type {Map<string, Set<Promise<Response>>>}
- */
+/** @type {Map<string, Set<Promise<Response>>>} */
 const pendingRequests = new Map()
 
 addEventListener('install', function () {
@@ -234,10 +233,11 @@ async function handleRequest(event, requestId) {
 }
 
 /**
- * Resolve the main client for the given event.
- * Client that issues a request doesn't necessarily equal the client
- * that registered the worker. It's with the latter the worker should
- * communicate with during the response resolving phase.
+ * Resolve the main client for the given event. Client that issues a request
+ * doesn't necessarily equal the client that registered the worker. It's with
+ * the latter the worker should communicate with during the response resolving
+ * phase.
+ *
  * @param {FetchEvent} event
  * @returns {Promise<Client | undefined>}
  */
@@ -279,9 +279,7 @@ async function getResponse(event, client, requestId) {
   // (i.e. its body has been read and sent to the client).
   const requestClone = event.request.clone()
 
-  /**
-   * @param {{ request?: { headers?: Array<[string, string]> } }} [data]
-   */
+  /** @param {{ request?: { headers?: [string, string][] } }} [data] */
   function passthrough(data) {
     const headers = new Headers()
     const requestHeaders = data?.request?.headers
@@ -361,7 +359,7 @@ async function getResponse(event, client, requestId) {
 
 /**
  * @param {unknown} error
- * @returns {{ name: string, message: string }}
+ * @returns {{ name: string; message: string }}
  */
 function serializeError(error) {
   if (error instanceof Error) {
@@ -380,7 +378,7 @@ function serializeError(error) {
 /**
  * @param {Client} client
  * @param {any} message
- * @param {Array<Transferable>} transferrables
+ * @param {Transferable[]} transferrables
  * @returns {Promise<any>}
  */
 function sendToClient(client, message, transferrables = []) {
@@ -438,9 +436,7 @@ async function respondWithMock(response, event) {
   return mockedResponse
 }
 
-/**
- * @param {Request} request
- */
+/** @param {Request} request */
 async function serializeRequest(request) {
   return {
     url: request.url,

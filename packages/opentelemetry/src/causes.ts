@@ -119,7 +119,10 @@ export type TracedCause = TracePair & {
   changedOrder: number
 }
 
-/** Last `markChanged` write in the batch is primary; one cause per other `traceId`. */
+/**
+ * Last `markChanged` write in the batch is primary; one cause per other
+ * `traceId`.
+ */
 export const pickCrossTraceCauses = (
   traced: readonly TracedCause[],
 ): { primary: TracedCause; others: TracedCause[] } | undefined => {

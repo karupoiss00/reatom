@@ -16,8 +16,8 @@ export interface SelectUnloadBatchInput<T> {
 
 /**
  * Selects owned records newest first. `encode` returns one complete
- * ResourceSpans or ResourceLogs JSON object per record; failures propagate
- * to the lease owner.
+ * ResourceSpans or ResourceLogs JSON object per record; failures propagate to
+ * the lease owner.
  */
 export const selectUnloadBatch = <T>({
   items,

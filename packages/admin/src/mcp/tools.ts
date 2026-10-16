@@ -90,7 +90,9 @@ function summarizeRecord(
     spanId: record.spanId,
     start: record.start,
     ...(record.end !== undefined ? { end: record.end } : {}),
-    ...(record.reatomKind !== undefined ? { reatomKind: record.reatomKind } : {}),
+    ...(record.reatomKind !== undefined
+      ? { reatomKind: record.reatomKind }
+      : {}),
     ...(record.atomName !== undefined ? { atomName: record.atomName } : {}),
     ...(record.eventName !== undefined ? { eventName: record.eventName } : {}),
     ...(record.outcome !== undefined ? { outcome: record.outcome } : {}),
@@ -205,15 +207,11 @@ function resolveCauseName(
   const pool = sameSource.length > 0 ? sameSource : matches
   const sameTrace = pool.filter((entry) => entry.traceId === record.traceId)
   const preferred = sameTrace.length > 0 ? sameTrace : pool
-  const named =
-    preferred.find((entry) => entry.kind === 'span') ?? preferred[0]
+  const named = preferred.find((entry) => entry.kind === 'span') ?? preferred[0]
   return named ? recordLabel(named) : causeId
 }
 
-function resolveCauses(
-  admin: OtlpAdmin,
-  record: AdminRecord,
-): AdminMcpCause[] {
+function resolveCauses(admin: OtlpAdmin, record: AdminRecord): AdminMcpCause[] {
   return record.causeIds.map((id) => ({
     id,
     name: resolveCauseName(admin, record, id),
@@ -247,7 +245,9 @@ function toStateRow(node: OtlpStateNode): AdminMcpStateNode {
   }
 }
 
-function flattenStateNodes(nodes: readonly OtlpStateNode[]): AdminMcpStateNode[] {
+function flattenStateNodes(
+  nodes: readonly OtlpStateNode[],
+): AdminMcpStateNode[] {
   const rows: AdminMcpStateNode[] = []
   const walk = (list: readonly OtlpStateNode[]) => {
     for (const node of list) {
@@ -308,10 +308,12 @@ export function summaryTool(
     const name = recordLabel(record)
     nameCounts.set(name, (nameCounts.get(name) ?? 0) + 1)
   }
-  const sources = [...sourceCounts.entries()].map(([sourceId, recordCount]) => ({
-    sourceId,
-    recordCount,
-  }))
+  const sources = [...sourceCounts.entries()].map(
+    ([sourceId, recordCount]) => ({
+      sourceId,
+      recordCount,
+    }),
+  )
   const names = [...nameCounts.entries()]
     .map(([name, count]) => ({ name, count }))
     .sort((left, right) =>
@@ -492,9 +494,7 @@ export function searchTool(
   const matches = resolvedFilter.visible
   const offset = decodeCursor(input.cursor)
   const remaining = matches
-    .map((record) =>
-      summarizeRecord(record, resolvedFilter.highlightedIds),
-    )
+    .map((record) => summarizeRecord(record, resolvedFilter.highlightedIds))
     .slice(offset)
   const header = {
     ...headerFromRecords(admin.records()),
@@ -539,11 +539,15 @@ function toRecordData(
       ...(record.body !== undefined ? { body: record.body } : {}),
       resource: { ...record.resource },
       links: record.links.map((link) => ({ ...link })),
-      ...(record.reatomKind !== undefined ? { reatomKind: record.reatomKind } : {}),
+      ...(record.reatomKind !== undefined
+        ? { reatomKind: record.reatomKind }
+        : {}),
       ...(record.frameId !== undefined ? { frameId: record.frameId } : {}),
       causeIds: [...record.causeIds],
       ...(record.atomName !== undefined ? { atomName: record.atomName } : {}),
-      ...(record.eventName !== undefined ? { eventName: record.eventName } : {}),
+      ...(record.eventName !== undefined
+        ? { eventName: record.eventName }
+        : {}),
       ...(record.outcome !== undefined ? { outcome: record.outcome } : {}),
       ...(record.error !== undefined ? { error: { ...record.error } } : {}),
     },
@@ -679,7 +683,8 @@ export async function connectRemoteTool(
       data: { recordCount },
     }
   } catch {
-    const message = admin.connectRemote.error()?.message ?? 'ClickHouse connect failed'
+    const message =
+      admin.connectRemote.error()?.message ?? 'ClickHouse connect failed'
     return miss(emptyHeader(), 'remote', { id: message })
   }
 }

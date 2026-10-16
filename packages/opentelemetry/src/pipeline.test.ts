@@ -46,7 +46,7 @@ test('invalid queue options are rejected before installing instrumentation', () 
   try {
     expect(() => {
       otel = reatomOpentelemetry({
-    name: 'pipeline',
+        name: 'pipeline',
         endpoint: 'http://collector.invalid',
         serviceName: 'test',
         maxQueueSize: 0,
@@ -211,7 +211,7 @@ test.each([400, 503])(
         return new Response(null)
       })
     const otel = reatomOpentelemetry({
-    name: 'pipeline',
+      name: 'pipeline',
       ...base,
       fetch,
       retry: { maxRetries: 1, baseDelayMs: 0 },
@@ -466,7 +466,7 @@ test.each(['accepted', 'refused', 'throw'] as const)(
     })
     const fetch = vi.fn(async () => new Response(null))
     const otel = reatomOpentelemetry({
-    name: 'pipeline',
+      name: 'pipeline',
       ...base,
       maxBatchSize: 10,
       useBeacon: true,

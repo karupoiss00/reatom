@@ -128,10 +128,10 @@ import { featureActor as I } from '#pages/feature/testing'
 import { button, heading, link, role, text } from '#shared/test'
 
 const meta = preview.meta({
-	title: 'Integration/Feature',
-	component: App,
-	parameters: { layout: 'fullscreen', initialPath: 'feature' },
-	loaders: [(context) => I.init(context)],
+  title: 'Integration/Feature',
+  component: App,
+  parameters: { layout: 'fullscreen', initialPath: 'feature' },
+  loaders: [(context) => I.init(context)],
 })
 export default meta
 ```
@@ -203,9 +203,9 @@ not produce false matches:
 
 ```ts
 await I.within(role('main'), async () => {
-	await I.click(link('Quarterly report'))
-	await I.waitExit(role('status'))
-	await I.see(heading('Quarterly report'))
+  await I.click(link('Quarterly report'))
+  await I.waitExit(role('status'))
+  await I.see(heading('Quarterly report'))
 })
 ```
 
@@ -230,8 +230,8 @@ for their loading status to leave the UI:
 
 ```ts
 export const Default = meta.story({
-	name: 'Default',
-	play: () => I.waitExit(role('status')),
+  name: 'Default',
+  play: () => I.waitExit(role('status')),
 })
 ```
 
@@ -259,23 +259,23 @@ the affected handler key:
 
 ```ts
 export const FeatureLoadServerError = meta.story({
-	name: 'Feature Load Server Error',
-	parameters: { msw: { handlers: { featureList: featureList.error } } },
-	play: () => I.waitExit(role('status')),
+  name: 'Feature Load Server Error',
+  parameters: { msw: { handlers: { featureList: featureList.error } } },
+  play: () => I.waitExit(role('status')),
 })
 
 FeatureLoadServerError.test('shows a recoverable error', async () => {
-	await I.see(role('alert'))
-	await I.click(button('Try again'))
+  await I.see(role('alert'))
+  await I.click(button('Try again'))
 })
 
 export const FeatureRequestLoadingState = meta.story({
-	name: 'Feature Request Loading State',
-	parameters: { msw: { handlers: { featureList: featureList.loading } } },
+  name: 'Feature Request Loading State',
+  parameters: { msw: { handlers: { featureList: featureList.loading } } },
 })
 
 FeatureRequestLoadingState.test('keeps the feature loading', async () => {
-	await I.see(role('status', 'Loading feature'))
+  await I.see(role('status', 'Loading feature'))
 })
 ```
 
@@ -299,8 +299,8 @@ near-misses and caps the diagnostic DOM output:
 import kahraman from 'kahraman/preview'
 
 export default {
-	...kahraman,
-	// ...the project's other preview config
+  ...kahraman,
+  // ...the project's other preview config
 }
 ```
 
@@ -356,11 +356,11 @@ Name the test after the user-visible outcome and keep steps in causal order:
 
 ```ts
 Default.test('creates a connection after completing the form', async () => {
-	await I.click(button('New connection'))
-	await I.fill(role('textbox', 'Name'), 'Production')
-	await I.click(button('Create'))
-	await I.waitExit(role('status'))
-	await I.see(heading('Production'))
+  await I.click(button('New connection'))
+  await I.fill(role('textbox', 'Name'), 'Production')
+  await I.click(button('Create'))
+  await I.waitExit(role('status'))
+  await I.see(heading('Production'))
 })
 ```
 
@@ -387,15 +387,17 @@ so stories without a viewport global do not inherit a preceding test's size:
 export const FALLBACK_VIEWPORT = { width: 1280, height: 720 } as const
 
 const breakpointWidths = {
-	sm: 640,
-	md: 768,
-	lg: 1024,
-	xl: 1280,
+  sm: 640,
+  md: 768,
+  lg: 1024,
+  xl: 1280,
 } as const
 
 export function getViewportSize(name: string) {
-	const width = breakpointWidths[name as keyof typeof breakpointWidths]
-	return width === undefined ? null : { width, height: FALLBACK_VIEWPORT.height }
+  const width = breakpointWidths[name as keyof typeof breakpointWidths]
+  return width === undefined
+    ? null
+    : { width, height: FALLBACK_VIEWPORT.height }
 }
 ```
 
@@ -411,16 +413,17 @@ translates the Storybook global into the browser provider's viewport API:
 import { FALLBACK_VIEWPORT, getViewportSize } from './viewports'
 
 const preview = definePreview({
-	beforeEach: async ({ globals }) => {
-		// Keep manual Storybook rendering independent of the test-runner API.
-		if (!(globalThis as Record<string, unknown>)['__vitest_worker__']) return
+  beforeEach: async ({ globals }) => {
+    // Keep manual Storybook rendering independent of the test-runner API.
+    if (!(globalThis as Record<string, unknown>)['__vitest_worker__']) return
 
-		const { page } = await import('vite-plus/test/browser')
-		const global = globals['viewport'] as { value?: string } | string | undefined
-		const name = typeof global === 'string' ? global : global?.value
-		const viewport = (name ? getViewportSize(name) : null) ?? FALLBACK_VIEWPORT
-		await page.viewport(viewport.width, viewport.height)
-	},
+    const { page } = await import('vite-plus/test/browser')
+    const global = globals['viewport'] as
+      { value?: string } | string | undefined
+    const name = typeof global === 'string' ? global : global?.value
+    const viewport = (name ? getViewportSize(name) : null) ?? FALLBACK_VIEWPORT
+    await page.viewport(viewport.width, viewport.height)
+  },
 })
 ```
 
@@ -434,15 +437,18 @@ Reuse the corresponding desktop story's parameters so other setup cannot drift:
 
 ```ts
 export const FeatureLoadServerErrorMobile = meta.story({
-	name: 'Feature Load Server Error (Mobile)',
-	globals: { viewport: { value: 'sm', isRotated: false } },
-	parameters: FeatureLoadServerError.input.parameters,
-	play: () => I.waitExit(role('status')),
+  name: 'Feature Load Server Error (Mobile)',
+  globals: { viewport: { value: 'sm', isRotated: false } },
+  parameters: FeatureLoadServerError.input.parameters,
+  play: () => I.waitExit(role('status')),
 })
 
-FeatureLoadServerErrorMobile.test('[mobile] shows a recoverable error', async () => {
-	await I.see(role('alert'))
-})
+FeatureLoadServerErrorMobile.test(
+  '[mobile] shows a recoverable error',
+  async () => {
+    await I.see(role('alert'))
+  },
+)
 ```
 
 Use the repository's configured viewport-global shape; some projects use

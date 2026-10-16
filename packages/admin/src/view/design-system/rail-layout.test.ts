@@ -22,10 +22,7 @@ function laneOf(layout: ReturnType<typeof layoutRailGraph>, id: number) {
 }
 
 test('the path from the root to the selected frame is a straight lane 0', () => {
-  const layout = layoutRailGraph(
-    [node(1, []), node(2, [1]), node(3, [2])],
-    3,
-  )
+  const layout = layoutRailGraph([node(1, []), node(2, [1]), node(3, [2])], 3)
 
   expect([laneOf(layout, 1), laneOf(layout, 2), laneOf(layout, 3)]).toEqual([
     0, 0, 0,
@@ -47,9 +44,7 @@ test('a sibling branches into the next lane and the trunk stays straight', () =>
   expect(
     layout.edges.find((edge) => edge.fromId === 1 && edge.toId === 3)?.shape,
   ).toBe('branch')
-  expect(layout.nodes.find((entry) => entry.id === 3)?.relation).toBe(
-    'related',
-  )
+  expect(layout.nodes.find((entry) => entry.id === 3)?.relation).toBe('related')
 })
 
 test('lanes are reused once a branch ends', () => {

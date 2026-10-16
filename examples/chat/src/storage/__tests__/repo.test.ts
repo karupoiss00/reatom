@@ -49,10 +49,7 @@ const assistant = (
   ...patch,
 })
 
-const preset = (
-  id: string,
-  deletedAt: number | null,
-): PresetRecord => ({
+const preset = (id: string, deletedAt: number | null): PresetRecord => ({
   id,
   name: id,
   systemPrompt: '',
@@ -143,7 +140,9 @@ test('Fixture: tab B loaded the prefix "HE", tab A painted "HELLO", then tab B r
 
 test('Chat metadata (title, pinned, model, settings) is last-write-wins per field.', async () => {
   await initStorage()
-  await repo.createChat(createChatRecord({ id: chatId, at: 1, title: 'New chat' }))
+  await repo.createChat(
+    createChatRecord({ id: chatId, at: 1, title: 'New chat' }),
+  )
   const originalSettings = createDefaultChatSettings()
   await repo.putChatFields(
     chatId,
@@ -277,11 +276,15 @@ test('IndexedDB fails to open at boot (Safari private mode and equivalents): Sen
     await repo.createChat(
       createChatRecord({ id: chatId, at: 1, title: 'Only this tab' }),
     )
-    await repo.putMessage(assistant({ id: messageId, content: 'HELLO', rev: 1 }))
+    await repo.putMessage(
+      assistant({ id: messageId, content: 'HELLO', rev: 1 }),
+    )
     await initStorage()
     expect(dbHealth()).toEqual({ status: 'memory', reason: 'open-failed' })
     expect(await repo.getChat(chatId)).toMatchObject({ title: 'Only this tab' })
-    expect(await repo.listMessages(chatId)).toMatchObject([{ content: 'HELLO' }])
+    expect(await repo.listMessages(chatId)).toMatchObject([
+      { content: 'HELLO' },
+    ])
   } finally {
     indexedDB.open = originalOpen as typeof indexedDB.open
   }
@@ -334,7 +337,11 @@ test('Removes chats and presets but keeps the key.', async () => {
 
   const tombstoned = await repo.listChats()
   expect(tombstoned).toMatchObject([
-    { id: chatId, deletedAt: expect.any(Number), deletedByTab: expect.any(String) },
+    {
+      id: chatId,
+      deletedAt: expect.any(Number),
+      deletedByTab: expect.any(String),
+    },
   ])
   expect(await repo.listMessages(chatId)).toMatchObject([{ content: 'HELLO' }])
   expect(await countIndexed('chats')).toBe(1)
@@ -474,8 +481,14 @@ test('putChatFields merges settings per sub-field so a system prompt and web sea
 
 test('Equal chat clocks tie-break by tabId, read live from the platform env.', async () => {
   await initStorage()
-  await repo.createChat(createChatRecord({ id: chatId, at: 1, title: 'New chat' }))
-  const stamped = await repo.putChatFields(chatId, { title: 'From this tab' }, 50)
+  await repo.createChat(
+    createChatRecord({ id: chatId, at: 1, title: 'New chat' }),
+  )
+  const stamped = await repo.putChatFields(
+    chatId,
+    { title: 'From this tab' },
+    50,
+  )
   expect((stamped.clock as Record<string, unknown>)['title@by']).toBe(
     platformEnv.tabId,
   )
@@ -509,7 +522,9 @@ test('Equal chat clocks tie-break by tabId, read live from the platform env.', a
 
 test('bulkImport clock-merges chats instead of overwriting a newer field.', async () => {
   await initStorage()
-  await repo.createChat(createChatRecord({ id: chatId, at: 1, title: 'New chat' }))
+  await repo.createChat(
+    createChatRecord({ id: chatId, at: 1, title: 'New chat' }),
+  )
   await repo.putChatFields(chatId, { title: 'Kept' }, 200)
   await repo.putMessage(assistant({ id: messageId, content: 'HELLO', rev: 4 }))
   const stored = await repo.getChat(chatId)
@@ -548,7 +563,9 @@ test('putMessage rejects when the chat does not exist.', async () => {
 
 test('resetRepoBackend drops the cached repo and closes IndexedDB connections.', async () => {
   await initStorage()
-  await repo.createChat(createChatRecord({ id: chatId, at: 1, title: 'Cached' }))
+  await repo.createChat(
+    createChatRecord({ id: chatId, at: 1, title: 'Cached' }),
+  )
   expect(getConnection()).not.toBeNull()
   resetRepoBackend()
   expect(getConnection()).toBeNull()
@@ -570,7 +587,9 @@ test('IndexedDB recovery imports the in-memory fallback instead of dropping it.'
     await repo.createChat(
       createChatRecord({ id: chatId, at: 1, title: 'Only this tab' }),
     )
-    await repo.putMessage(assistant({ id: messageId, content: 'HELLO', rev: 1 }))
+    await repo.putMessage(
+      assistant({ id: messageId, content: 'HELLO', rev: 1 }),
+    )
   } finally {
     indexedDB.open = originalOpen as typeof indexedDB.open
   }
@@ -617,9 +636,7 @@ test('bootApp calls boot and waits until sessionMode is not booting; slots are f
 })
 
 test('F-29 Turning the Fusion chip off does not delete the saved server; per-chat mcpEnabled merges like webSearch.', async () => {
-  mcpServers.set([
-    { id: 'fusion', url: 'http://127.0.0.1:27182/mcp' },
-  ])
+  mcpServers.set([{ id: 'fusion', url: 'http://127.0.0.1:27182/mcp' }])
   await initStorage()
   await repo.createChat(createChatRecord({ id: chatId, at: 1 }))
   const base = createDefaultChatSettings()
@@ -641,9 +658,9 @@ test('F-29 Turning the Fusion chip off does not delete the saved server; per-cha
   expect(mcpServers()).toEqual([
     expect.objectContaining({ url: 'http://127.0.0.1:27182/mcp' }),
   ])
-  expect(JSON.parse(localStorage.getItem('atelier.mcpServers') ?? 'null')?.data).toEqual(
-    [expect.objectContaining({ url: 'http://127.0.0.1:27182/mcp' })],
-  )
+  expect(
+    JSON.parse(localStorage.getItem('atelier.mcpServers') ?? 'null')?.data,
+  ).toEqual([expect.objectContaining({ url: 'http://127.0.0.1:27182/mcp' })])
   expect(await countIndexed('mcpServers')).toBeUndefined()
 })
 
@@ -651,9 +668,9 @@ test('F-39 A waiting Fusion write is stored on the message as waiting, never com
   mcpServers.set([{ id: 'fusion', url: 'http://127.0.0.1:27182/mcp' }])
   await initStorage()
   await repo.createChat(createChatRecord({ id: chatId, at: 1 }))
-  expect(JSON.parse(localStorage.getItem('atelier.mcpServers') ?? 'null')?.data).toEqual(
-    [expect.objectContaining({ url: 'http://127.0.0.1:27182/mcp' })],
-  )
+  expect(
+    JSON.parse(localStorage.getItem('atelier.mcpServers') ?? 'null')?.data,
+  ).toEqual([expect.objectContaining({ url: 'http://127.0.0.1:27182/mcp' })])
   const pending = assistant({
     id: messageId,
     content: '',
@@ -683,4 +700,3 @@ test('F-39 A waiting Fusion write is stored on the message as waiting, never com
   expect(stored).not.toMatchObject({ status: 'done' })
   expect(await countIndexed('mcpServers')).toBeUndefined()
 })
-

@@ -179,7 +179,9 @@ test('throwing serialize on an atom update still records the log', async () => {
   )
   expect(updates.length).toBeGreaterThan(0)
   expect(updates.at(-1)?.body).toEqual({ id: 'kept-id', note: '[Failed]' })
-  expect(updates.at(-1)?.attributes).toMatchObject({ 'reatom.name': 'probe.count' })
+  expect(updates.at(-1)?.attributes).toMatchObject({
+    'reatom.name': 'probe.count',
+  })
   expect(JSON.stringify(updates.at(-1))).not.toContain(hidden)
   expect(spans.some((span) => span.name === 'probe.write')).toBe(true)
 })

@@ -100,7 +100,8 @@ const deleteDatabase = (name: string) =>
 const databaseMissesStore = (name: string, storeName: string) =>
   new Promise<boolean>((resolve, reject) => {
     const request = indexedDB.open(name)
-    request.onerror = () => reject(request.error ?? new Error(`Couldn't open ${name}`))
+    request.onerror = () =>
+      reject(request.error ?? new Error(`Couldn't open ${name}`))
     request.onsuccess = () => {
       const database = request.result
       const missing = !database.objectStoreNames.contains(storeName)

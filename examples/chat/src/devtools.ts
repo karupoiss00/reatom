@@ -12,10 +12,7 @@ export function connectChatAdmin(otel: ReatomOpentelemetry): () => void {
   document.body.append(host)
   const connection = connectAdmin(otel, { host, localValues: true })
   const liveValues = ADMIN_FRAME.run(() =>
-    reatomBoolean(
-      connection.localValues() !== false,
-      '_Admin.chat.liveValues',
-    ),
+    reatomBoolean(connection.localValues() !== false, '_Admin.chat.liveValues'),
   )
   const stopLiveValuesSync = ADMIN_FRAME.run(() =>
     liveValues.subscribe((enabled) => connection.localValues.set(enabled)),

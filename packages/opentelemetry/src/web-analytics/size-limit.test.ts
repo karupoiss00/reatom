@@ -24,7 +24,10 @@ test('F-17 / WA-8: honest analytics delta is 4.5 KB, not a fake 3 KB', () => {
   )
   expect(analytics).toBeDefined()
   expect(analytics!.limit).toBe('4.5 KB')
-  expect(analytics!.ignore).toEqual(['@reatom/core', '../reatomOpentelemetry-*'])
+  expect(analytics!.ignore).toEqual([
+    '@reatom/core',
+    '../reatomOpentelemetry-*',
+  ])
 })
 
 test('F-17 / WA-8: combined tracer+analytics measurement has no ignored tracer chunk', () => {

@@ -50,20 +50,17 @@ const installLogHooks = () => {
 
   try {
     log.extend(
-      withActionMiddleware(
-        () =>
-          (next, ...params) => {
-            const result = next(...params)
-            if (
-              pendingStateName !== undefined &&
-              result !== null &&
-              typeof result === 'object'
-            ) {
-              stateNames.set(result, pendingStateName)
-            }
-            return result
-          },
-      ),
+      withActionMiddleware(() => (next, ...params) => {
+        const result = next(...params)
+        if (
+          pendingStateName !== undefined &&
+          result !== null &&
+          typeof result === 'object'
+        ) {
+          stateNames.set(result, pendingStateName)
+        }
+        return result
+      }),
       withCallHook((payload, params) => {
         dispatchLog({
           kind: 'log',

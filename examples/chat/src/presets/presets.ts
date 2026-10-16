@@ -12,7 +12,12 @@ import { now, tabId } from '../platform/env'
 import { onRuntimeReset } from '../platform/runtime'
 import { recordWriteFailure } from '../storage/health'
 import { repo } from '../storage/repo'
-import type { ChatParams, PresetId, PresetRecord, WriteFailure } from '../storage/types'
+import type {
+  ChatParams,
+  PresetId,
+  PresetRecord,
+  WriteFailure,
+} from '../storage/types'
 import { holdTombstone, syncReceived } from '../sync'
 import type { SyncEvent } from '../sync/types'
 import { publishSync } from '../chat/syncPublisher'
@@ -24,10 +29,10 @@ export const presets = computed(
   'presets.list',
 )
 
-export const pendingPresetUndo = atom<{ ids: PresetId[]; expiresAt: number } | null>(
-  null,
-  'presets.pendingUndo',
-)
+export const pendingPresetUndo = atom<{
+  ids: PresetId[]
+  expiresAt: number
+} | null>(null, 'presets.pendingUndo')
 
 export const presetNameMessage = (
   name: string,
@@ -141,22 +146,27 @@ export const renamePreset = action(
   'presets.rename',
 ).extend(withAsync())
 
-export const setDefaultPreset = action(async (id: PresetId | null): Promise<boolean> => {
-  const current = presetRecords()
-  const nextDefault = (preset: PresetRecord) =>
-    id !== null && preset.id === id && preset.deletedAt === null
-  const changed = current.filter((preset) => preset.isDefault !== nextDefault(preset))
-  if (changed.length === 0) return true
-  const written: PresetRecord[] = []
-  for (const preset of changed) {
-    const next = { ...preset, isDefault: nextDefault(preset) }
-    const saved = await wrap(writePreset(next))
-    if (!saved) return false
-    written.push(next)
-  }
-  for (const preset of written) replacePreset(preset)
-  return true
-}, 'presets.setDefault').extend(withAsync())
+export const setDefaultPreset = action(
+  async (id: PresetId | null): Promise<boolean> => {
+    const current = presetRecords()
+    const nextDefault = (preset: PresetRecord) =>
+      id !== null && preset.id === id && preset.deletedAt === null
+    const changed = current.filter(
+      (preset) => preset.isDefault !== nextDefault(preset),
+    )
+    if (changed.length === 0) return true
+    const written: PresetRecord[] = []
+    for (const preset of changed) {
+      const next = { ...preset, isDefault: nextDefault(preset) }
+      const saved = await wrap(writePreset(next))
+      if (!saved) return false
+      written.push(next)
+    }
+    for (const preset of written) replacePreset(preset)
+    return true
+  },
+  'presets.setDefault',
+).extend(withAsync())
 
 const pendingPurges = new Map<
   PresetId,

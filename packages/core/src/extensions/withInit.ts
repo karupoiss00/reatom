@@ -48,8 +48,7 @@ export let isInit = (): boolean => {
  *   }
  *
  * @template Target - The atom type that extends AtomLike
- * @param {AtomState<Target>
- *   | ((state: AtomState<Target>) => AtomState<Target>)} init
+ * @param {AtomState<Target> | ((state: AtomState<Target>) => AtomState<Target>)} init
  *   The initial value or a function that returns the initial value based on
  *   current state
  * @returns {Ext<Target>} An extension that can be applied to an atom

@@ -144,8 +144,9 @@ and conventions, not a required prop on every component. This JSX is illustrativ
 ```jsx
 <Badge
   designSystemException={{
-    reason: "HTTP method badges must fit 24px inspector rows; the smallest Badge is 28px.",
-    attributes: { className: "min-h-0 px-1 py-0 text-xs leading-4" },
+    reason:
+      'HTTP method badges must fit 24px inspector rows; the smallest Badge is 28px.',
+    attributes: { className: 'min-h-0 px-1 py-0 text-xs leading-4' },
   }}
 >
   GET

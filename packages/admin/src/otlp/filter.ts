@@ -56,7 +56,10 @@ function nameCandidates(record: AdminRecord): string[] {
   return names
 }
 
-/** Case-insensitive substring of the span name, atom name, or label. `*` is a whole-value glob. */
+/**
+ * Case-insensitive substring of the span name, atom name, or label. `*` is a
+ * whole-value glob.
+ */
 function matchesName(record: AdminRecord, name: string): boolean {
   const candidates = nameCandidates(record)
   if (name.includes('*')) {
@@ -112,13 +115,11 @@ export function filteredRecords(
 }
 
 /**
- * Match predicates that Hide / Highlight / Exclude invert or mark.
- * `traceId` is a candidate-set scope, not a match — a trace-only Hide
- * must not empty the scoped trace.
+ * Match predicates that Hide / Highlight / Exclude invert or mark. `traceId` is
+ * a candidate-set scope, not a match — a trace-only Hide must not empty the
+ * scoped trace.
  */
-export function hasActiveFilter(
-  filter: AdminMcpFilter | undefined,
-): boolean {
+export function hasActiveFilter(filter: AdminMcpFilter | undefined): boolean {
   if (!filter) return false
   return (
     filter.name !== undefined ||
@@ -130,20 +131,18 @@ export function hasActiveFilter(
   )
 }
 
-export function filterMode(
-  filter: AdminMcpFilter | undefined,
-): FilterMode {
+export function filterMode(filter: AdminMcpFilter | undefined): FilterMode {
   return filter?.mode ?? 'show'
 }
 
 /**
- * Apply calculator/chip mode to already-matched records. `show` keeps
- * matches. `highlight` keeps every candidate so Activity / MCP can mark
- * matches in place. `hide` and `exclude` both drop matches from the
- * candidate set — on this live OTLP path there is one filter, so they
- * are the same (Reporter saved rules used exclude as a pre-filter).
- * Empty match predicates ignore mode so Hide cannot wipe an unfiltered
- * feed. `traceId` scopes candidates and is not itself a match.
+ * Apply calculator/chip mode to already-matched records. `show` keeps matches.
+ * `highlight` keeps every candidate so Activity / MCP can mark matches in
+ * place. `hide` and `exclude` both drop matches from the candidate set — on
+ * this live OTLP path there is one filter, so they are the same (Reporter saved
+ * rules used exclude as a pre-filter). Empty match predicates ignore mode so
+ * Hide cannot wipe an unfiltered feed. `traceId` scopes candidates and is not
+ * itself a match.
  */
 export function applyFilterMode(
   candidates: readonly AdminRecord[],

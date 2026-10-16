@@ -159,7 +159,7 @@ test.each(['http', 'partial', 'beacon', 'network'] as const)(
       'https://user:private-password@collector.invalid?token=private-query#private-fragment'
     await withWarnSpy(async (warn) => {
       const otel = reatomOpentelemetry({
-    name: 'partialSuccess',
+        name: 'partialSuccess',
         endpoint,
         serviceName: 'diagnostic-privacy',
         retry: { maxRetries: 0 },

@@ -24,20 +24,20 @@ flowchart LR
 
 ## 1. PR metadata
 
-| | |
-| --- | --- |
-| URL | https://github.com/reatom/reatom/pull/1249 |
-| Title | Infinite list view model |
-| Number | 1249 |
-| State | OPEN. `mergedAt` and `closedAt` are null. `mergeable` was `CONFLICTING` when read. Not a draft. No labels. |
-| Author | `artalar` (Arutyunyan Artem) opened the PR. Every commit is `Cursor Agent` / `cursoragent` / `cursoragent@cursor.com`. |
-| Base | `v1000` @ `51844a431338ccd82d1602d8c95234c3fa9788ac` |
-| Head | `cursor/infinite-list-view-model-0b05` @ `0771a1ba72cc4a0f3aad5bae2200275417dc775b` |
-| Opened | 2026-02-13T23:37:01Z |
-| Last `updatedAt` | 2026-03-12T12:32:24Z |
-| Diff | +953 / −19 across 6 files |
-| Background agent | `bc-5ba3b8a9-9c63-4288-9d25-b9b0e50a1ad4` (linked from the PR body) |
-| Current tree this note was written against | branch `v1001` in `/Users/artalar/code/reatom` |
+|                                            |                                                                                                                        |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| URL                                        | https://github.com/reatom/reatom/pull/1249                                                                             |
+| Title                                      | Infinite list view model                                                                                               |
+| Number                                     | 1249                                                                                                                   |
+| State                                      | OPEN. `mergedAt` and `closedAt` are null. `mergeable` was `CONFLICTING` when read. Not a draft. No labels.             |
+| Author                                     | `artalar` (Arutyunyan Artem) opened the PR. Every commit is `Cursor Agent` / `cursoragent` / `cursoragent@cursor.com`. |
+| Base                                       | `v1000` @ `51844a431338ccd82d1602d8c95234c3fa9788ac`                                                                   |
+| Head                                       | `cursor/infinite-list-view-model-0b05` @ `0771a1ba72cc4a0f3aad5bae2200275417dc775b`                                    |
+| Opened                                     | 2026-02-13T23:37:01Z                                                                                                   |
+| Last `updatedAt`                           | 2026-03-12T12:32:24Z                                                                                                   |
+| Diff                                       | +953 / −19 across 6 files                                                                                              |
+| Background agent                           | `bc-5ba3b8a9-9c63-4288-9d25-b9b0e50a1ad4` (linked from the PR body)                                                    |
+| Current tree this note was written against | branch `v1001` in `/Users/artalar/code/reatom`                                                                         |
 
 ### Commits
 
@@ -61,14 +61,14 @@ One issue comment, from `cursor[bot]`, 2026-02-13T23:37:03Z: https://github.com/
 
 ### Files
 
-| File | Status | +/− |
-| --- | --- | --- |
-| `packages/core/src/primitives/reatomLinkedList.ts` | modified | +85 / −0 |
-| `packages/core/src/primitives/reatomLinkedList.test.ts` | modified | +295 / −1 |
-| `packages/core/src/primitives/reatomInfinityList.ts` | added | +151 |
-| `packages/core/src/primitives/reatomInfinityList.test.ts` | added | +395 |
-| `packages/core/src/primitives/index.ts` | modified | +1 (`export * from './reatomInfinityList'`) |
-| `packages/core/src/methods/connectLogger.test.ts` | modified | +26 / −18 |
+| File                                                      | Status   | +/−                                         |
+| --------------------------------------------------------- | -------- | ------------------------------------------- |
+| `packages/core/src/primitives/reatomLinkedList.ts`        | modified | +85 / −0                                    |
+| `packages/core/src/primitives/reatomLinkedList.test.ts`   | modified | +295 / −1                                   |
+| `packages/core/src/primitives/reatomInfinityList.ts`      | added    | +151                                        |
+| `packages/core/src/primitives/reatomInfinityList.test.ts` | added    | +395                                        |
+| `packages/core/src/primitives/index.ts`                   | modified | +1 (`export * from './reatomInfinityList'`) |
+| `packages/core/src/methods/connectLogger.test.ts`         | modified | +26 / −18                                   |
 
 ## 2. Stated goal and the API as shipped
 
@@ -93,12 +93,12 @@ The lens is a zero-arg function. It is called inside a `computed`, so atoms read
 
 Return value: a `LinkedListViewAtom`, which is a `Computed` of:
 
-| Field | Meaning in this PR |
-| --- | --- |
-| `items` | Nodes in the window, in list order. Also exposed as `view.items`, a separate computed. |
-| `totalSize` | `linkedList().size` at compute time. |
-| `offset` | Requested offset clamped to `[0, size]`. |
-| `limit` | Requested limit clamped with `Math.max(0, rawLimit)`. Not clamped to the remaining length, and not forced to an integer. |
+| Field       | Meaning in this PR                                                                                                       |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `items`     | Nodes in the window, in list order. Also exposed as `view.items`, a separate computed.                                   |
+| `totalSize` | `linkedList().size` at compute time.                                                                                     |
+| `offset`    | Requested offset clamped to `[0, size]`.                                                                                 |
+| `limit`     | Requested limit clamped with `Math.max(0, rawLimit)`. Not clamped to the remaining length, and not forced to an integer. |
 
 `view.items` is documented by the commit message as notifying only when the window's nodes change, so a `totalSize`-only update stays quiet for `items` subscribers.
 
@@ -112,24 +112,24 @@ reatomInfinityList(linkedList, { limit?, name?, fetcher? })
 
 Without `fetcher`, the return is `InfinityListAtom`:
 
-| Member | Role |
-| --- | --- |
-| `offset` | `Atom<number>`, starts at `0` |
-| `limit` | `Atom<number>`, starts at `options.limit ?? 20` |
-| `view` | The `LinkedListViewAtom` from `list.reatomView(() => ({ offset: offset(), limit: limit() }), name + '.view')` |
-| `items` | `view.items` |
-| `topCount` | `computed(() => view().offset)` |
-| `bottomCount` | `totalSize - offset - items.length` |
-| `totalSize` | `computed(() => view().totalSize)` |
-| `hasMore` | `Atom<boolean>`, starts `true` even when no fetcher is passed |
-| `isEnd` | `!hasMore() && offset + items.length >= totalSize` |
+| Member        | Role                                                                                                          |
+| ------------- | ------------------------------------------------------------------------------------------------------------- |
+| `offset`      | `Atom<number>`, starts at `0`                                                                                 |
+| `limit`       | `Atom<number>`, starts at `options.limit ?? 20`                                                               |
+| `view`        | The `LinkedListViewAtom` from `list.reatomView(() => ({ offset: offset(), limit: limit() }), name + '.view')` |
+| `items`       | `view.items`                                                                                                  |
+| `topCount`    | `computed(() => view().offset)`                                                                               |
+| `bottomCount` | `totalSize - offset - items.length`                                                                           |
+| `totalSize`   | `computed(() => view().totalSize)`                                                                            |
+| `hasMore`     | `Atom<boolean>`, starts `true` even when no fetcher is passed                                                 |
+| `isEnd`       | `!hasMore() && offset + items.length >= totalSize`                                                            |
 
 With `fetcher`, the return is `InfinityListFetcherAtom`, which adds:
 
-| Member | Role |
-| --- | --- |
-| `loadMore` | `action` extended with `withAsync()`. Reads `list().size` and `limit()`, awaits `fetcher(size, limit)`, then `list.createMany(fetchedParams)`. Sets `hasMore` to `false` when `fetchedParams.length < limit`. Returns immediately when `hasMore` is already `false`. |
-| `isLoading` | `computed(() => !loadMore.ready())` |
+| Member      | Role                                                                                                                                                                                                                                                                 |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `loadMore`  | `action` extended with `withAsync()`. Reads `list().size` and `limit()`, awaits `fetcher(size, limit)`, then `list.createMany(fetchedParams)`. Sets `hasMore` to `false` when `fetchedParams.length < limit`. Returns immediately when `hasMore` is already `false`. |
+| `isLoading` | `computed(() => !loadMore.ready())`                                                                                                                                                                                                                                  |
 
 `fetcher` is `(offset: number, limit: number) => Promise<Array<Params>>`, and `Params` is the tuple `list.create` expects. The number passed as `offset` is the loaded size, not the viewport `offset` atom.
 
@@ -140,10 +140,8 @@ Default atom name is `named('infinityList')`. Child names are `${name}.offset`, 
 Added on `LinkedListAtom` next to `reatomMap`:
 
 ```ts
-reatomView: (
-  lens: () => { offset: number; limit: number },
-  name?: string,
-) => LinkedListViewAtom<LLNode<Node>>
+reatomView: (lens: () => { offset: number; limit: number }, name?: string) =>
+  LinkedListViewAtom<LLNode<Node>>
 ```
 
 New exported types from `reatomLinkedList.ts`:
@@ -156,8 +154,9 @@ export interface LinkedListViewState<Node extends LLNode> {
   limit: number
 }
 
-export interface LinkedListViewAtom<Node extends LLNode>
-  extends Computed<LinkedListViewState<Node>> {
+export interface LinkedListViewAtom<Node extends LLNode> extends Computed<
+  LinkedListViewState<Node>
+> {
   items: Computed<Array<Node>>
 }
 ```
@@ -179,8 +178,9 @@ export interface InfinityListAtom<Node extends LLNode> {
   isEnd: Computed<boolean>
 }
 
-export interface InfinityListFetcherAtom<Node extends LLNode>
-  extends InfinityListAtom<Node> {
+export interface InfinityListFetcherAtom<
+  Node extends LLNode,
+> extends InfinityListAtom<Node> {
   loadMore: Action<[], Promise<void>> & AsyncExt<[], void>
   isLoading: Computed<boolean>
 }
@@ -220,7 +220,9 @@ const reatomView = (
   viewName: string = named(`${_name}.reatomView`),
 ): LinkedListViewAtom<LLNode<Node>> => {
   const viewComputed = computed(
-    (prev?: LinkedListViewState<LLNode<Node>>): LinkedListViewState<LLNode<Node>> => {
+    (
+      prev?: LinkedListViewState<LLNode<Node>>,
+    ): LinkedListViewState<LLNode<Node>> => {
       const ll = linkedList()
       const { offset: rawOffset, limit: rawLimit } = lens()
 
@@ -489,23 +491,23 @@ Open question 6 in `packages/opentelemetry/spec/README.md` still asks whether `r
 
 ### PR head `0771a1ba`
 
-| What | Where |
-| --- | --- |
+| What                                                             | Where                                                                                                                                                                                                                                                                                             |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `reatomView` method, `LinkedListViewState`, `LinkedListViewAtom` | `packages/core/src/primitives/reatomLinkedList.ts` on the head branch. Types sit with `LinkedListDerivedAtom`. The method is the closure after `reatomMap`, and the returned object lists `reatomView` next to `reatomMap`. Bugbot lines 755–775 are the lens read, the clamp, and the two loops. |
-| 18 view tests | `packages/core/src/primitives/reatomLinkedList.test.ts` on the head branch, appended after the `reatomMap` / `removeMany` test |
-| Infinity model | `packages/core/src/primitives/reatomInfinityList.ts` (added) |
-| 17 infinity tests | `packages/core/src/primitives/reatomInfinityList.test.ts` (added) |
-| Public export | `packages/core/src/primitives/index.ts` — one added line, `export * from './reatomInfinityList'` |
-| Logger id rewrite | `packages/core/src/methods/connectLogger.test.ts` |
+| 18 view tests                                                    | `packages/core/src/primitives/reatomLinkedList.test.ts` on the head branch, appended after the `reatomMap` / `removeMany` test                                                                                                                                                                    |
+| Infinity model                                                   | `packages/core/src/primitives/reatomInfinityList.ts` (added)                                                                                                                                                                                                                                      |
+| 17 infinity tests                                                | `packages/core/src/primitives/reatomInfinityList.test.ts` (added)                                                                                                                                                                                                                                 |
+| Public export                                                    | `packages/core/src/primitives/index.ts` — one added line, `export * from './reatomInfinityList'`                                                                                                                                                                                                  |
+| Logger id rewrite                                                | `packages/core/src/methods/connectLogger.test.ts`                                                                                                                                                                                                                                                 |
 
 ### Current `v1001` tree
 
-| What | Where |
-| --- | --- |
-| `reatomLinkedList`, `batch`, `reatomMap`, `toArray` | `packages/core/src/primitives/reatomLinkedList.ts`. `LinkedListAtom` is the interface that starts with `batch`. `batch` JSDoc describes the torn read. Per-list `LL_NEXT` symbols are the `Symbol(...)` locals inside the factory. `toArray` walks `list.LL_NEXT` and reuses the previous array by node identity. `reatomMap` throws while `STATE` is set. `find` prefers `STATE`. |
-| No `reatomView`, `LinkedListViewState`, `LinkedListViewAtom`, `reatomInfinityList` | Confirmed by search under `packages/` on 2026-10-15. `packages/core/src/primitives/` has no view or infinity file. `index.ts` does not export one. |
-| No `reatomGantt` implementation | Same search. The name exists in the spec only. |
-| Gantt product description | `packages/opentelemetry/spec/04-admin-rewrite.md`, section `reatomGantt` (rows, axis, columns, selection, grouping, modes) and the data-flow diagram (`STORE --> GANTT`, `FILTERS --> GANTT`). Performance paragraph: no virtualization now, ~100k gate, ingest batched per animation frame. |
-| Where the Gantt UI lands | `packages/opentelemetry/spec/notes/AD-1-admin-analysis.md`. Timeline tab is filled later by headless `reatomGantt` (AD-3). Chrome stays tabbed. |
-| Virtualization deferred | `packages/opentelemetry/spec/01-core-prerequisites.md` section C6, and the deferred list in `packages/opentelemetry/spec/README.md`. Open question 6 in that README is where the Gantt module lives. |
-| Timeline screen on the admin rewrite | `packages/admin/src/view/otlp/TimelineScreen.tsx` is the current Timeline surface. This note did not audit its code. AD-1 says the Gantt fills that tab later. |
+| What                                                                               | Where                                                                                                                                                                                                                                                                                                                                                                              |
+| ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `reatomLinkedList`, `batch`, `reatomMap`, `toArray`                                | `packages/core/src/primitives/reatomLinkedList.ts`. `LinkedListAtom` is the interface that starts with `batch`. `batch` JSDoc describes the torn read. Per-list `LL_NEXT` symbols are the `Symbol(...)` locals inside the factory. `toArray` walks `list.LL_NEXT` and reuses the previous array by node identity. `reatomMap` throws while `STATE` is set. `find` prefers `STATE`. |
+| No `reatomView`, `LinkedListViewState`, `LinkedListViewAtom`, `reatomInfinityList` | Confirmed by search under `packages/` on 2026-10-15. `packages/core/src/primitives/` has no view or infinity file. `index.ts` does not export one.                                                                                                                                                                                                                                 |
+| No `reatomGantt` implementation                                                    | Same search. The name exists in the spec only.                                                                                                                                                                                                                                                                                                                                     |
+| Gantt product description                                                          | `packages/opentelemetry/spec/04-admin-rewrite.md`, section `reatomGantt` (rows, axis, columns, selection, grouping, modes) and the data-flow diagram (`STORE --> GANTT`, `FILTERS --> GANTT`). Performance paragraph: no virtualization now, ~100k gate, ingest batched per animation frame.                                                                                       |
+| Where the Gantt UI lands                                                           | `packages/opentelemetry/spec/notes/AD-1-admin-analysis.md`. Timeline tab is filled later by headless `reatomGantt` (AD-3). Chrome stays tabbed.                                                                                                                                                                                                                                    |
+| Virtualization deferred                                                            | `packages/opentelemetry/spec/01-core-prerequisites.md` section C6, and the deferred list in `packages/opentelemetry/spec/README.md`. Open question 6 in that README is where the Gantt module lives.                                                                                                                                                                               |
+| Timeline screen on the admin rewrite                                               | `packages/admin/src/view/otlp/TimelineScreen.tsx` is the current Timeline surface. This note did not audit its code. AD-1 says the Gantt fills that tab later.                                                                                                                                                                                                                     |

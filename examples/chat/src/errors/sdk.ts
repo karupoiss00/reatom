@@ -78,8 +78,13 @@ export const fromStreamErrorChunk = (
   const error = asRecord(chunk?.error)
   if (!error) return null
   const metadata = { ...(asRecord(error.metadata) ?? {}) }
-  const provider = chunk && typeof chunk.provider === 'string' ? chunk.provider : null
-  if (provider && metadata.provider_name == null && metadata.providerName == null) {
+  const provider =
+    chunk && typeof chunk.provider === 'string' ? chunk.provider : null
+  if (
+    provider &&
+    metadata.provider_name == null &&
+    metadata.providerName == null
+  ) {
     metadata.provider_name = provider
   }
   return {
@@ -91,7 +96,9 @@ export const fromStreamErrorChunk = (
   }
 }
 
-export const fromSdkError = (error: unknown): ClassifiableFailure | 'aborted' => {
+export const fromSdkError = (
+  error: unknown,
+): ClassifiableFailure | 'aborted' => {
   if (isAbort(error)) return 'aborted'
   if (error instanceof RequestTimeoutError) return { source: 'timeout' }
   if (
@@ -118,7 +125,9 @@ export const fromSdkError = (error: unknown): ClassifiableFailure | 'aborted' =>
     }
   }
   if (error instanceof SDKValidationError) {
-    const streamed = fromStreamErrorChunk(error.rawValue, { contentReceived: false })
+    const streamed = fromStreamErrorChunk(error.rawValue, {
+      contentReceived: false,
+    })
     if (streamed) return streamed
     return { source: 'stream-error', code: null, message: error.message }
   }

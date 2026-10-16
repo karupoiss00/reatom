@@ -141,8 +141,11 @@ export const toggleCompareModel = (modelId: string) => {
   if (next.length === 2) armCompareModels([next[0]!, next[1]!])
 }
 
-export const modelReleaseLabel = (created: number | null | undefined): string | null => {
-  if (typeof created !== 'number' || !Number.isFinite(created) || created <= 0) return null
+export const modelReleaseLabel = (
+  created: number | null | undefined,
+): string | null => {
+  if (typeof created !== 'number' || !Number.isFinite(created) || created <= 0)
+    return null
   return new Intl.DateTimeFormat('en-US', {
     month: 'short',
     year: 'numeric',
@@ -279,9 +282,7 @@ const showRefreshFailed = () => {
   }
   const fetchedAt = catalogFetchedAt()
   const when = fetchedAt === null ? 'earlier' : catalogRelativeTime(fetchedAt)
-  refreshFailedNote.set(
-    `Couldn't refresh models; showing list from ${when}`,
-  )
+  refreshFailedNote.set(`Couldn't refresh models; showing list from ${when}`)
 }
 
 export const bindPickerLifecycle = () => {

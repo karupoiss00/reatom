@@ -105,9 +105,7 @@ function hexToOklch(accent: string): { l: number; c: number; h: number } {
   const green = Number.parseInt(accent.slice(3, 5), 16) / 255
   const blue = Number.parseInt(accent.slice(5, 7), 16) / 255
   const linear = (channel: number) =>
-    channel <= 0.04045
-      ? channel / 12.92
-      : ((channel + 0.055) / 1.055) ** 2.4
+    channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4
   const lr = linear(red)
   const lg = linear(green)
   const lb = linear(blue)
@@ -116,21 +114,22 @@ function hexToOklch(accent: string): { l: number; c: number; h: number } {
   const y =
     0.21263900587151027 * lr + 0.715168678767756 * lg + 0.07219231536073371 * lb
   const z =
-    0.01933081871559182 * lr + 0.11919477979462598 * lg + 0.9505321522496607 * lb
-  const lmsL = Math.cbrt(
-    0.8189330101 * x + 0.3618667424 * y - 0.1288597137 * z,
-  )
-  const lmsM = Math.cbrt(
-    0.0329845436 * x + 0.9293118715 * y + 0.0361456387 * z,
-  )
-  const lmsS = Math.cbrt(
-    0.0482003018 * x + 0.2643662691 * y + 0.633851707 * z,
-  )
-  const lightness = 0.2104542553 * lmsL + 0.793617785 * lmsM - 0.0040720468 * lmsS
+    0.01933081871559182 * lr +
+    0.11919477979462598 * lg +
+    0.9505321522496607 * lb
+  const lmsL = Math.cbrt(0.8189330101 * x + 0.3618667424 * y - 0.1288597137 * z)
+  const lmsM = Math.cbrt(0.0329845436 * x + 0.9293118715 * y + 0.0361456387 * z)
+  const lmsS = Math.cbrt(0.0482003018 * x + 0.2643662691 * y + 0.633851707 * z)
+  const lightness =
+    0.2104542553 * lmsL + 0.793617785 * lmsM - 0.0040720468 * lmsS
   const a = 1.9779984951 * lmsL - 2.428592205 * lmsM + 0.4505937099 * lmsS
   const b = 0.0259040371 * lmsL + 0.7827717662 * lmsM - 0.808675766 * lmsS
   const chroma = Math.hypot(a, b)
-  return { l: lightness, c: chroma, h: wrapHue((Math.atan2(b, a) * 180) / Math.PI) }
+  return {
+    l: lightness,
+    c: chroma,
+    h: wrapHue((Math.atan2(b, a) * 180) / Math.PI),
+  }
 }
 
 function generatedPalette(
@@ -207,9 +206,9 @@ function generatedPalette(
 /**
  * Builds the shell colors from one picked accent.
  *
- * The hue of the pick tints surfaces, type, and rails. Lightness is chosen
- * for the scheme so text and the accent stay readable. The default violet on
- * a dark scheme stays the original Dusk sheet.
+ * The hue of the pick tints surfaces, type, and rails. Lightness is chosen for
+ * the scheme so text and the accent stay readable. The default violet on a dark
+ * scheme stays the original Dusk sheet.
  */
 export function paletteVars(
   accent: string,

@@ -19,7 +19,10 @@ const mathCss = `
 `
 
 const mountMathCss = () => {
-  if (typeof document === 'undefined' || document.getElementById('atelier-math')) {
+  if (
+    typeof document === 'undefined' ||
+    document.getElementById('atelier-math')
+  ) {
     return
   }
   const style = document.createElement('style')
@@ -30,7 +33,11 @@ const mountMathCss = () => {
 
 const oddEscape = (src: string, index: number) => {
   let slashes = 0
-  for (let cursor = index - 1; cursor >= 0 && src[cursor] === '\\'; cursor -= 1) {
+  for (
+    let cursor = index - 1;
+    cursor >= 0 && src[cursor] === '\\';
+    cursor -= 1
+  ) {
     slashes += 1
   }
   return slashes % 2 === 1
@@ -61,7 +68,8 @@ const matchSingleDollar = (src: string) => {
   for (let index = 1; index < src.length; index += 1) {
     const char = src[index]
     if (char === '\n') return undefined
-    if (char !== '$' || src[index + 1] === '$' || oddEscape(src, index)) continue
+    if (char !== '$' || src[index + 1] === '$' || oddEscape(src, index))
+      continue
     if (isSpace(src[index - 1])) continue
     const after = src[index + 1]
     if (after !== undefined && after >= '0' && after <= '9') continue
@@ -88,8 +96,7 @@ const matchBlock = (src: string) => {
   }
 }
 
-const blockStart = (src: string) =>
-  /\n {0,3}(?:\$\$|\\\[)/.exec(src)?.index
+const blockStart = (src: string) => /\n {0,3}(?:\$\$|\\\[)/.exec(src)?.index
 
 const inlineStart = (src: string) => /\$|\\\(|\\\[/.exec(src)?.index
 
@@ -103,11 +110,13 @@ const renderMath = (token: MathToken) => {
   const display = token.display === true
   const tex = typeof token.text === 'string' ? token.text : ''
   try {
-    const html = katex.renderToString(tex.trim(), {
-      displayMode: display,
-      output: 'mathml',
-      throwOnError: true,
-    }).trim()
+    const html = katex
+      .renderToString(tex.trim(), {
+        displayMode: display,
+        output: 'mathml',
+        throwOnError: true,
+      })
+      .trim()
     return display ? `<div>${html}</div>` : html
   } catch {
     const source = token.raw.replace(/[ \t]*\n+$/g, '')

@@ -9,11 +9,7 @@ import { isMcpWriteTool, mcpAlwaysAllow } from '../../mcp/busy'
 import { connectMcp, mcpReady } from '../../mcp'
 import { createMemoryRepo } from '../../storage/memoryRepo'
 import { setRepoBackend } from '../../storage/repo'
-import type {
-  AssistantMessage,
-  MessageRecord,
-  Repo,
-} from '../../storage/types'
+import type { AssistantMessage, MessageRecord, Repo } from '../../storage/types'
 import { toolCallIntent } from '../../mcp/intent'
 import {
   cubeAsk,
@@ -36,10 +32,7 @@ import {
   simulateMcpCallDelay,
   simulateMcpQuitMidTool,
 } from '../../testing/mcp-mock'
-import {
-  chatBodies,
-  mockChatStreams,
-} from '../../testing/openrouter-mock'
+import { chatBodies, mockChatStreams } from '../../testing/openrouter-mock'
 import { chatModelInternals, getChatModel } from '../chatModel'
 import {
   allowToolOnce,
@@ -74,7 +67,9 @@ const onlyChatId = () => {
 
 const assistants = (chatId: string) =>
   [...getChatModel(chatId).messages().values()]
-    .filter((message): message is AssistantMessage => message.role === 'assistant')
+    .filter(
+      (message): message is AssistantMessage => message.role === 'assistant',
+    )
     .sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id))
 
 const lastAssistant = (chatId: string) => assistants(chatId).at(-1)!
@@ -116,7 +111,9 @@ describe('F-30 Rule Fusion from chat', () => {
     mockChatStreams([cubeToolCallScript, cubeFollowUpScript])
     getChatModel('new').updateSettings({ mcpEnabled: false })
     await send('new', input(cubeAsk))
-    expect(encoded(bodies()[0]?.tools ?? [])).not.toContain(fusionToolNames.execute)
+    expect(encoded(bodies()[0]?.tools ?? [])).not.toContain(
+      fusionToolNames.execute,
+    )
 
     const chatId = onlyChatId()
     getChatModel(chatId).updateSettings({ mcpEnabled: true })
@@ -156,7 +153,11 @@ describe('F-30 Rule Fusion from chat', () => {
 
   test('Persisted completed MCP results are sent as role:tool on the next user send', async () => {
     await enableMcp()
-    mockChatStreams([cubeToolCallScript, cubeFollowUpScript, mcpPlainReplyScript])
+    mockChatStreams([
+      cubeToolCallScript,
+      cubeFollowUpScript,
+      mcpPlainReplyScript,
+    ])
     await send('new', input(cubeAsk))
     const chatId = onlyChatId()
     const pending = lastAssistant(chatId)
@@ -185,8 +186,12 @@ describe('F-30 Rule Fusion from chat', () => {
     )
     const toolTurn = messages?.find((message) => message.role === 'tool')
     expect(toolTurn?.content).toBe(storedResult)
-    expect(toolTurn?.toolCallId ?? toolTurn?.tool_call_id).toBe('call_fusion_cube')
-    expect(messages?.filter((message) => message.role === 'tool')).toHaveLength(1)
+    expect(toolTurn?.toolCallId ?? toolTurn?.tool_call_id).toBe(
+      'call_fusion_cube',
+    )
+    expect(messages?.filter((message) => message.role === 'tool')).toHaveLength(
+      1,
+    )
   })
 
   test('Connected MCP function tools keep tools/list inputSchema required properties', async () => {
@@ -223,7 +228,9 @@ describe('F-30 Rule Fusion from chat', () => {
     expect(toolCallIntent(execute)).toMatch(/10\s*mm cube/i)
     expect(toolCallIntent(execute)).not.toMatch(/with the arguments below/i)
     expect(
-      toolCallIntent(execute, [{ name: 'execute', description: 'unused generic' }]),
+      toolCallIntent(execute, [
+        { name: 'execute', description: 'unused generic' },
+      ]),
     ).toMatch(/10\s*mm cube/i)
     expect(
       toolCallIntent(
@@ -238,10 +245,12 @@ describe('F-30 Rule Fusion from chat', () => {
       }),
     ).toMatch(/export|STEP/i)
     expect(
-      toolCallIntent(
-        { name: fusionToolNames.read, arguments: '{}' },
-        [{ name: 'read', description: 'Read the open document without changing it.' }],
-      ),
+      toolCallIntent({ name: fusionToolNames.read, arguments: '{}' }, [
+        {
+          name: 'read',
+          description: 'Read the open document without changing it.',
+        },
+      ]),
     ).toMatch(/without changing it/i)
   })
 })

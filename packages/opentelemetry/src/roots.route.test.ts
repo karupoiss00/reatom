@@ -1,4 +1,3 @@
-
 import {
   action,
   context,
@@ -159,7 +158,6 @@ test('a route with loaders gives one short route root and one traceId including 
   expect(BigInt(routeSpan.endTimeUnixNano)).toBeLessThanOrEqual(
     BigInt(afterSpan!.startTimeUnixNano),
   )
-
 })
 
 test('withOTel({ boundary: false }) modal stays in the page trace with its own short span', async () => {
@@ -209,7 +207,6 @@ test('withOTel({ boundary: false }) modal stays in the page trace with its own s
   expect(dialogSpan!.traceId).toBe(pageSpan!.traceId)
   expect(dialogSpan!.endTimeUnixNano).toEqual(expect.any(String))
   expect(dialogSpan!.attributes['reatom.kind']).toBe('route')
-
 })
 
 test('roots: [] creates no automatic route root while traceVar.set(createTrace()) still works', async () => {

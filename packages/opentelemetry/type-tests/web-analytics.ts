@@ -3,9 +3,9 @@
  * `errorSampling` is the analytics exception ratio; `sampling.errors` stays the
  * tracer ring-buffer flag (`'always'`).
  *
- * Public entry is `@reatom/opentelemetry/web-analytics` (package exports → dist).
- * Type-tests compile source, so they import the barrel path rather than the
- * root package (the root must not export `connectWebAnalytics`).
+ * Public entry is `@reatom/opentelemetry/web-analytics` (package exports →
+ * dist). Type-tests compile source, so they import the barrel path rather than
+ * the root package (the root must not export `connectWebAnalytics`).
  */
 import * as root from '../src/index.ts'
 import * as webAnalytics from '../src/web-analytics/index.ts'

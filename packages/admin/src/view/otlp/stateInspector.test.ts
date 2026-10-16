@@ -77,12 +77,16 @@ test('timeline buttons stay on atom rows and open that source', () => {
       .flatMap((node) => [node, ...node.children])
       .find((node) => node.atomName === 'score.total')
     expect(total?.id.startsWith('atom:')).toBe(true)
-    const totalGroup = admin.stateTree().find((node) =>
-      node.children.some((child) => child.atomName === 'score.total'),
-    )
-    const totalRow = readFieldPage(totalGroup?.children, hooks, 20)?.entries.find(
-      (entry) => entry.id === total?.id,
-    )
+    const totalGroup = admin
+      .stateTree()
+      .find((node) =>
+        node.children.some((child) => child.atomName === 'score.total'),
+      )
+    const totalRow = readFieldPage(
+      totalGroup?.children,
+      hooks,
+      20,
+    )?.entries.find((entry) => entry.id === total?.id)
     expect(totalRow?.label).toBe('total')
   })
 })

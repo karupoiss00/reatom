@@ -127,7 +127,10 @@ export async function clickAdminCauseChainEntry(
   const causeTab = Array.from(detail.querySelectorAll('[role="tab"]')).find(
     (candidate) => candidate.getAttribute('aria-label') === 'Cause Chain',
   )
-  if (causeTab instanceof HTMLButtonElement && causeTab.getAttribute('aria-selected') !== 'true') {
+  if (
+    causeTab instanceof HTMLButtonElement &&
+    causeTab.getAttribute('aria-selected') !== 'true'
+  ) {
     await userEvent.click(causeTab)
   }
 

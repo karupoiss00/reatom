@@ -39,7 +39,8 @@ const readBundle = (value: unknown): ExportBundle | null => {
   if (!Array.isArray(presets)) return null
   for (const preset of presets) {
     if (!isRecord(preset)) return null
-    if (typeof preset.id !== 'string' || typeof preset.name !== 'string') return null
+    if (typeof preset.id !== 'string' || typeof preset.name !== 'string')
+      return null
   }
   for (const entry of value.chats) {
     if (!isRecord(entry)) return null

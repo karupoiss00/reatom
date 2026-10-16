@@ -35,5 +35,4 @@ export const parseTraceparent = (
 export const formatTraceparent = (
   context: { traceId: string; spanId: string },
   sampled: boolean,
-): string =>
-  `00-${context.traceId}-${context.spanId}-${sampled ? '01' : '00'}`
+): string => `00-${context.traceId}-${context.spanId}-${sampled ? '01' : '00'}`

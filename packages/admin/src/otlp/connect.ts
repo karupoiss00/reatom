@@ -34,13 +34,13 @@ export interface AdminOtelOptionsSnapshot {
   /** `true` warns when a callback without `wrap` starts a new trace. */
   warnContextLoss?: boolean
   /**
-   * Span count that starts a linked trace. `Infinity` disables the limit.
-   * The tracer default is 1000.
+   * Span count that starts a linked trace. `Infinity` disables the limit. The
+   * tracer default is 1000.
    */
   maxSpansPerTrace?: number
   /**
-   * Milliseconds that start a linked trace. `Infinity` disables the limit.
-   * The tracer default is 60000.
+   * Milliseconds that start a linked trace. `Infinity` disables the limit. The
+   * tracer default is 60000.
    */
   maxTraceMs?: number
 }
@@ -75,8 +75,8 @@ export interface AdminOtelInstance {
   }
   stats(): AdminOtelStats
   /**
-   * Live references for a raw record from `records()`.
-   * Absent on older instances; admin then keeps masked attributes only.
+   * Live references for a raw record from `records()`. Absent on older
+   * instances; admin then keeps masked attributes only.
    */
   localValuesOf?(record: unknown): AdminLocalValues | undefined
 }
@@ -90,9 +90,9 @@ export interface ConnectAdminOptions {
    */
   localValues?: boolean | 'all'
   /**
-   * Register the tracing switches and forward them to `otel.options`.
-   * Default `true`. `false` skips registration and leaves those options
-   * untouched, for hosts that render their own controls.
+   * Register the tracing switches and forward them to `otel.options`. Default
+   * `true`. `false` skips registration and leaves those options untouched, for
+   * hosts that render their own controls.
    */
   tracingSettings?: boolean
 }
@@ -124,7 +124,8 @@ export interface AdminConnection {
   warnContextLoss: Atom<boolean>
   /**
    * `true` writes the connect-time `maxSpansPerTrace` and `maxTraceMs`
-   * (`undefined` keeps the tracer default). `false` writes `Infinity` for both.
+   * (`undefined` keeps the tracer default). `false` writes `Infinity` for
+   * both.
    */
   splitLongTraces: Atom<boolean>
 }
@@ -470,8 +471,7 @@ export function connectAdmin(
     })
     const lookup =
       mode !== false && typeof instance.localValuesOf === 'function'
-        ? (raw: unknown) =>
-            runInAppFrame(() => instance.localValuesOf?.(raw))
+        ? (raw: unknown) => runInAppFrame(() => instance.localValuesOf?.(raw))
         : undefined
     admin.setLocalValues(lookup)
   }

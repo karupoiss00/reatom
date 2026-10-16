@@ -14,12 +14,12 @@ How do Reatom frames become OTLP so the cause chain survives (`reatom.frame.id` 
 
 ## Variants (already in 02)
 
-| Id | `detail` | Spans | Updates / diamonds | Status |
-| --- | --- | --- | --- | --- |
-| **1** | `'spans'` | Every action, atom write, computed recompute | Multi-cause updates **cannot** be expressed | Local debug only |
-| **2** | `'events'` (default) | Action call (async ends on promise settle). `span: true` on an atom/computed is the per-target override | Atom / computed updates are log records `reatom.atom.update` / `reatom.computed.update` with the **current action span context**, name, serialized **body**, frame/cause ids | **Shipped direction** (`causes.test.ts` F-12; `buildLogRecord.ts`) |
-| **3** | add-on to 2 | Same as 2. A computed with causes from **different traces** becomes a **short span**; parent = primary (triggering) cause; one **link** per other trace (`reatom.link.reason = computed.dependency`). Single-cause stays a log | Diamonds keep several `traceId`s without a span per frame | **Default add-on** (OT-9). `buildSpan.ts` still lacks a `links` field; route links are already asserted in `roots.route.test.ts` |
-| **4** | `'summary'` | Action spans only | No update records. Span attrs `reatom.updates.count` / `reatom.updates.names` | Production budget mode |
+| Id    | `detail`             | Spans                                                                                                                                                                                                                          | Updates / diamonds                                                                                                                                                           | Status                                                                                                                           |
+| ----- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| **1** | `'spans'`            | Every action, atom write, computed recompute                                                                                                                                                                                   | Multi-cause updates **cannot** be expressed                                                                                                                                  | Local debug only                                                                                                                 |
+| **2** | `'events'` (default) | Action call (async ends on promise settle). `span: true` on an atom/computed is the per-target override                                                                                                                        | Atom / computed updates are log records `reatom.atom.update` / `reatom.computed.update` with the **current action span context**, name, serialized **body**, frame/cause ids | **Shipped direction** (`causes.test.ts` F-12; `buildLogRecord.ts`)                                                               |
+| **3** | add-on to 2          | Same as 2. A computed with causes from **different traces** becomes a **short span**; parent = primary (triggering) cause; one **link** per other trace (`reatom.link.reason = computed.dependency`). Single-cause stays a log | Diamonds keep several `traceId`s without a span per frame                                                                                                                    | **Default add-on** (OT-9). `buildSpan.ts` still lacks a `links` field; route links are already asserted in `roots.route.test.ts` |
+| **4** | `'summary'`          | Action spans only                                                                                                                                                                                                              | No update records. Span attrs `reatom.updates.count` / `reatom.updates.names`                                                                                                | Production budget mode                                                                                                           |
 
 **Cause ids are in every variant.** Each span and log gets `reatom.frame.id` (per-instance counter, scoped by `service.instance.id`) and `reatom.cause.ids` (`pubs[0]` first, then changed deps). That is the Reatom graph on the wire. Admin (later, R13) rebuilds it from OTLP alone; the mapping pick must not wait on that UI.
 
@@ -46,46 +46,46 @@ flowchart TD
 
 One user gesture with **no calling Reatom frame**: 1 click action + 2 nested actions + 8 atom writes + 6 computed updates (**3 action spans, 14 updates**). Capture on, small values (`[{"sku":"42"}]`, numeric/object bodies of a few fields). OTLP/JSON **record** sizes from the 05-shaped builders (no gzip; resource envelope ~0.5 KiB per signal batch):
 
-| Record | Bytes |
-| --- | --- |
+| Record                                          | Bytes    |
+| ----------------------------------------------- | -------- |
 | Action span (`reatom.*` + small params/payload) | ~0.7 KiB |
-| Same span + one route/computed **link** | ~0.9 KiB |
-| Atom/computed **span** (variant 1) | ~0.6 KiB |
-| `reatom.atom.update` **log** | ~0.5 KiB |
-| Link object alone | ~0.2 KiB |
+| Same span + one route/computed **link**         | ~0.9 KiB |
+| Atom/computed **span** (variant 1)              | ~0.6 KiB |
+| `reatom.atom.update` **log**                    | ~0.5 KiB |
+| Link object alone                               | ~0.2 KiB |
 
 Ceiling, not typical: serializer budget is **8 KiB per captured value** (`serialize.ts`); `MAX_RECORD_BYTES` is 16 KiB. Fourteen fat updates can exceed the **60 KiB unload** budget on their own. `sampling.updates` and `detail: 'summary'` exist for that.
 
 ### Per typical click — mapping
 
-| Mapping | Spans | Logs | OTLP/JSON (two signals, small values) |
-| --- | --- | --- | --- |
-| 1 `'spans'` | **17** (3 actions + 14 updates) | 0 | ~10 KiB traces |
+| Mapping              | Spans                                                     | Logs   | OTLP/JSON (two signals, small values)    |
+| -------------------- | --------------------------------------------------------- | ------ | ---------------------------------------- |
+| 1 `'spans'`          | **17** (3 actions + 14 updates)                           | 0      | ~10 KiB traces                           |
 | **2 + 3** `'events'` | **3** (+ 0–1 short diamond span; 0 on a same-trace click) | **14** | ~3 KiB traces + ~8 KiB logs ≈ **11 KiB** |
-| 4 `'summary'` | **3** | 0 | ~3 KiB traces |
+| 4 `'summary'`        | **3**                                                     | 0      | ~3 KiB traces                            |
 
 Variant 1 does **not** win on bytes. It wins only on “everything is a span,” and it **drops diamonds**.
 
 ### `route: 'child'` vs `'link'` (same click, variants 2 + 3)
 
-| | `'child'` (default) | `'link'` |
-| --- | --- | --- |
-| New `traceId` | 0 (page leftover after the short `route <leaf>` span) | **1** (the top-level action) |
-| Extra span | 0 | 0 (same 3 action spans) |
-| Extra link | 0 | **1** on the top-level span, `reatom.link.reason = route.page` |
-| Bytes vs child | baseline ~11 KiB | **+~0.2 KiB** |
-| Nested actions / loader work | same `traceId` | stay **in the new scenario trace** (they have a calling frame; C4) |
+|                              | `'child'` (default)                                   | `'link'`                                                           |
+| ---------------------------- | ----------------------------------------------------- | ------------------------------------------------------------------ |
+| New `traceId`                | 0 (page leftover after the short `route <leaf>` span) | **1** (the top-level action)                                       |
+| Extra span                   | 0                                                     | 0 (same 3 action spans)                                            |
+| Extra link                   | 0                                                     | **1** on the top-level span, `reatom.link.reason = route.page`     |
+| Bytes vs child               | baseline ~11 KiB                                      | **+~0.2 KiB**                                                      |
+| Nested actions / loader work | same `traceId`                                        | stay **in the new scenario trace** (they have a calling frame; C4) |
 
 Bytes per click barely move. What moves is **trace cardinality** and waterfall length.
 
 15-step loan, one typical click per step, ~10 client spans nested per step (Viktor’s ~150 requests):
 
-| | `'child'` | `'link'` |
-| --- | --- | --- |
-| Traces | **1** page trace | **15** scenario traces + 1 page trace |
-| Action+request spans | ~45 + 150 | same counts, split |
-| Update logs | ~210 | ~210 |
-| Payload | same order (~0.25 MiB raw JSON over the session) | +~3 KiB of links |
+|                      | `'child'`                                        | `'link'`                              |
+| -------------------- | ------------------------------------------------ | ------------------------------------- |
+| Traces               | **1** page trace                                 | **15** scenario traces + 1 page trace |
+| Action+request spans | ~45 + 150                                        | same counts, split                    |
+| Update logs          | ~210                                             | ~210                                  |
+| Payload              | same order (~0.25 MiB raw JSON over the session) | +~3 KiB of links                      |
 
 Pay-on-desktop / check-on-phone is **not** decided by `route`. The phone is another page load. Linking those two traces is `traceparent` / `createTrace` (Т16, Т34), not `'child'`.
 
@@ -93,11 +93,11 @@ Pay-on-desktop / check-on-phone is **not** decided by `route`. The phone is anot
 
 Do **not** treat Jaeger as a log-record viewer. Jaeger is traces only.
 
-| Backend | Spans / waterfall | Span events | OTLP **log records** | Span **links** |
-| --- | --- | --- | --- | --- |
-| **Jaeger** | Excellent tree/Gantt | Shown on the span (legacy “logs” in the trace UI) | **Not stored, not painted** | Same-trace edges in Trace Graph (dashed); cross-trace is a jump at best. Some UIs still mis-read a link as `FOLLOWS_FROM` parentage (blank/cyclic traces) |
-| **Tempo** (Grafana) | Excellent | Shown on the span | **Not in Tempo.** Trace-to-logs is a Loki (or other) hop on `traceId`; often the whole trace, not the span | **Best of the three for `'link'`:** span details → View Linked Span, including **another `traceId`** |
-| **SigNoz** | Good | Shown | **Native:** Logs tab on the span when the record carries `traceId` + `spanId` (exactly variant 2) | Present as references; not a diamond DAG |
+| Backend             | Spans / waterfall    | Span events                                       | OTLP **log records**                                                                                       | Span **links**                                                                                                                                            |
+| ------------------- | -------------------- | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Jaeger**          | Excellent tree/Gantt | Shown on the span (legacy “logs” in the trace UI) | **Not stored, not painted**                                                                                | Same-trace edges in Trace Graph (dashed); cross-trace is a jump at best. Some UIs still mis-read a link as `FOLLOWS_FROM` parentage (blank/cyclic traces) |
+| **Tempo** (Grafana) | Excellent            | Shown on the span                                 | **Not in Tempo.** Trace-to-logs is a Loki (or other) hop on `traceId`; often the whole trace, not the span | **Best of the three for `'link'`:** span details → View Linked Span, including **another `traceId`**                                                      |
+| **SigNoz**          | Good                 | Shown                                             | **Native:** Logs tab on the span when the record carries `traceId` + `spanId` (exactly variant 2)          | Present as references; not a diamond DAG                                                                                                                  |
 
 Readability verdict:
 

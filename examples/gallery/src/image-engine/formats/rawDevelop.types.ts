@@ -10,5 +10,4 @@ export type RawEncodeRequest = {
 }
 
 export type RawEncodeResponse =
-  | { id: number; blob: Blob }
-  | { id: number; error: string }
+  { id: number; blob: Blob } | { id: number; error: string }

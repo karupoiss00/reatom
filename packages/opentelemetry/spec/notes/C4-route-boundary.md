@@ -26,12 +26,12 @@ Do not add `reatom.kind = 'route.pathless'`. Do not add `traceBoundary` on `reat
 
 Four top-level factories can share `pattern === '/'`:
 
-| Factory | `hasNoExplicitPath` | Typical use | Must cut a page trace? |
-| --- | --- | --- | --- |
-| `reatomRoute('')` | false | home page | **yes** when navigating to `/` |
-| `reatomRoute({ layout: true })` | true | always-on shell | no — already matched; name the leaf |
-| `reatomRoute({ search: z.object({ dialog: … }) })` | true | search-only modal | only with default `boundary` |
-| `reatomRoute({ params(arg) { … } })` | true | in-memory modal gate | only with default `boundary` |
+| Factory                                            | `hasNoExplicitPath` | Typical use          | Must cut a page trace?              |
+| -------------------------------------------------- | ------------------- | -------------------- | ----------------------------------- |
+| `reatomRoute('')`                                  | false               | home page            | **yes** when navigating to `/`      |
+| `reatomRoute({ layout: true })`                    | true                | always-on shell      | no — already matched; name the leaf |
+| `reatomRoute({ search: z.object({ dialog: … }) })` | true                | search-only modal    | only with default `boundary`        |
+| `reatomRoute({ params(arg) { … } })`               | true                | in-memory modal gate | only with default `boundary`        |
 
 Core already treats the last three as pathless for **navigation** (`getUrl` keeps `url.pathname` when the child added no path; `matchPath` forces `exact: true` when `hasNoExplicitPath && segments.length === 0`). That is a URL/match rule, not a telemetry rule.
 
@@ -81,7 +81,7 @@ Rules for T-035:
 1. **Leaf name.** The short root span is `route <leafName>`. The leaf is the deepest newly-matched bounding route (longest parent chain / pattern). An always-matched pathless layout stays in the set and does not re-name every click.
 2. **Cut overwrites the navigator.** `go()` from a submit action must not carry that action's `traceId` onto the new page (Т1). The route-root hook calls `traceVar.set(createTrace({ name: 'route <leaf>' }))` when the bounding set changes.
 3. **The route span is short.** It opens at navigation start and ends when bounding loaders settle (`isSomeLoaderPending` false, or each new bounding `loader.ready()`). Т4: the **trace** does not end. Keep `pageTrace` on the instance so later actions still see that `traceId` after the root span has `endTime`.
-4. **Same bounding set, new params.** `/users/1` → `/users/2` or `?q=` on the same page route does **not** cut (02: the matched *set* of route atoms). Loader rework stays on the existing page trace. R1 may revisit; do not wait.
+4. **Same bounding set, new params.** `/users/1` → `/users/2` or `?q=` on the same page route does **not** cut (02: the matched _set_ of route atoms). Loader rework stays on the existing page trace. R1 may revisit; do not wait.
 5. **Form submit that navigates** is a bounding-set change. New `traceId`. The submit span stays on the old trace.
 6. **Pathless / modal without the opt-out** is still a bounding route. Opening it **does** cut. That is the footgun the docs recipe exists for. Do not auto-spare pathless (home would be a false positive).
 7. **`boundary: false`.** Newly matched (or unmatched) such a route never mints a `traceId`. Emit one short span `route <name>` with `reatom.kind = 'route'` as a **child of the current page route span** (same `traceId`, `parentSpanId` = page span). If there is no `pageTrace` yet, attach that short span to `app.session`.
@@ -89,20 +89,20 @@ Rules for T-035:
 
 ## `roots: []` and `route: 'child' | 'link'`
 
-These are instance options. They do not change what a pathless route *is*.
+These are instance options. They do not change what a pathless route _is_.
 
-| Setting | Route root | Modal with `boundary: false` | Later top-level action |
-| --- | --- | --- | --- |
-| `roots` default, `route: 'child'` | New `traceId`, short `route <leaf>` | Short `route <name>` in that `traceId` | Same `traceId` (page context is "found") |
-| `roots` default, `route: 'link'` | Same page `traceId` and short route span | Still in the **page** `traceId` (boundary wins) | New `traceId` each, link to the **page** span, `reatom.link.reason = route.page` |
-| `roots: []` | None. No `route *` spans | None. `boundary` is ignored | None, unless `traceVar.set(otel.createTrace())` |
+| Setting                           | Route root                               | Modal with `boundary: false`                    | Later top-level action                                                           |
+| --------------------------------- | ---------------------------------------- | ----------------------------------------------- | -------------------------------------------------------------------------------- |
+| `roots` default, `route: 'child'` | New `traceId`, short `route <leaf>`      | Short `route <name>` in that `traceId`          | Same `traceId` (page context is "found")                                         |
+| `roots` default, `route: 'link'`  | Same page `traceId` and short route span | Still in the **page** `traceId` (boundary wins) | New `traceId` each, link to the **page** span, `reatom.link.reason = route.page` |
+| `roots: []`                       | None. No `route *` spans                 | None. `boundary` is ignored                     | None, unless `traceVar.set(otel.createTrace())`                                  |
 
 Details:
 
 - **`roots: []`** turns the whole route-root machine off (02 test 21 / F-03). App-session still exists. Manual `traceVar.set(otel.createTrace())` still opens a trace. Do not emit automatic route, mount, action, or atom roots.
 - **`route: 'child'`** (default, R1 fallback): an action or atom set without a calling-frame trace uses `pageTrace` when it exists. That is how post-loader clicks stay on the page `traceId`.
 - **`route: 'link'`** applies to **top-level actions** (no calling frame), not to the modal span. Loader-invoked work (`fetchX` from `loader`) has a calling frame and stays on the route `traceId` even in `'link'` mode. The 02 sentence "with `route: 'link'` it gets its own trace with a link instead" is the **action** rule, not a second modal mode. Do not mint a modal `traceId` when `boundary: false`.
-- **`boundary: true`** (default) plus `'link'`: a forgotten modal opt-out *does* cut a new route trace; later top-level actions link to **that** route span.
+- **`boundary: true`** (default) plus `'link'`: a forgotten modal opt-out _does_ cut a new route trace; later top-level actions link to **that** route span.
 
 ```mermaid
 flowchart TD
@@ -156,7 +156,7 @@ If the owner later asks for a core boolean, add `pathless` on the route object (
 5. [R3](R3-kinds.md) — no `route.pathless` kind; C3 `pathless` boolean is optional and not a kind.
 6. [R4](R4-computed-trace.md) — computeds do not mint traces; route roots are a tracer hook, not the route computed.
 7. [README Q12](../README.md#open-questions-for-the-owner) — pathless setting vs C4 extension.
-8. [R23](../06-research-backlog.md) fallback — short span inside the page trace; `'link'` for its own *action* traces.
+8. [R23](../06-research-backlog.md) fallback — short span inside the page trace; `'link'` for its own _action_ traces.
 9. REFERENCE Routing — search-only preserves pathname; modal gate is in-memory; `urlAtom.routes` is the registry.
 10. `packages/core/src/routing/route.ts` — `hasNoExplicitPath`, `getUrl`, `matchPath`, `go` + `cachedParams`, `urlAtom.routes[name] = routeAtom`.
 11. `packages/core/src/web/url.ts` — `routes: {}`, `pattern: '/'`.

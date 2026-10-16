@@ -48,9 +48,7 @@ const asList = (
 const persistKeyOf = (name: string, persist: boolean | string): string =>
   typeof persist === 'string' ? persist : `reatom.gdpr.${name}`
 
-const booleanRecord = (
-  value: unknown,
-): Record<string, boolean> | undefined => {
+const booleanRecord = (value: unknown): Record<string, boolean> | undefined => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return
   const categories: Record<string, boolean> = {}
   for (const [key, entry] of Object.entries(value)) {
@@ -123,12 +121,12 @@ export type ReatomGDPR<
 
 /**
  * Consent form of category booleans. Submit writes `consent` and updates
- * {@link ReatomGDPR.snapshot}. It does not rewrite `signals`.
- * Explicit `diagnostics: false` holds the tracer. A form that does not offer
- * diagnostics leaves trace export as it was. Attaching an instance leaves
- * signals unchanged, so the tracer keeps exporting until an explicit denial.
- * Persist uses `withLocalStorage` (memory fallback where Web Storage is
- * missing). This is not legal advice.
+ * {@link ReatomGDPR.snapshot}. It does not rewrite `signals`. Explicit
+ * `diagnostics: false` holds the tracer. A form that does not offer diagnostics
+ * leaves trace export as it was. Attaching an instance leaves signals
+ * unchanged, so the tracer keeps exporting until an explicit denial. Persist
+ * uses `withLocalStorage` (memory fallback where Web Storage is missing). This
+ * is not legal advice.
  */
 export const reatomGDPR = <
   Categories extends Record<string, boolean> = GdprCategories,
@@ -163,10 +161,9 @@ export const reatomGDPR = <
       writeConsent(instance, categories, diagnosticsOffered)
   }
 
-  const consentRecord = (
-    value: unknown,
-  ): value is Record<string, boolean> => {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const consentRecord = (value: unknown): value is Record<string, boolean> => {
+    if (!value || typeof value !== 'object' || Array.isArray(value))
+      return false
     return Object.values(value).every((entry) => typeof entry === 'boolean')
   }
 

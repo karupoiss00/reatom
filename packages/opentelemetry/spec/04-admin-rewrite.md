@@ -18,23 +18,23 @@ The UI is built with `@reatom/jsx` (Д36).
 
 ### Reuse matrix
 
-| Module | Decision |
-| --- | --- |
-| `reporter/` | Retired under option B (below). During migration it becomes an adapter that converts frames to records, so existing stories keep passing |
-| `store/` | Rewrite on `reatomLinkedList` with indexes |
-| `filters/engine`, `expression`, `predicates`, `tags` | Keep the expression tree and modes. Add targets and a text parser for the calculator |
-| `filters/search`, `persistence` | Keep. Saved rules stay in storage as today. New string-serialized filters are TODO (Д30) |
-| `cause-graph/` | Keep the traversal algorithms. Input comes from `reatom.cause.ids` plus links |
-| `timeline/` | Merged into the Gantt time axis (Д32). `utils` buckets feed a minimap |
-| `session/` | Export/import format v2 (JSON, Д41), with a v1 importer |
-| `view/screens`, `view/components` | Redesigned (see Design process) |
-| `view/design-system` | Kept as raw material. Tokens and visuals are redone after the design debate |
-| `stories/`, `testing/`, `workflow/` | Kept, extended with new journeys |
+| Module                                               | Decision                                                                                                                                 |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `reporter/`                                          | Retired under option B (below). During migration it becomes an adapter that converts frames to records, so existing stories keep passing |
+| `store/`                                             | Rewrite on `reatomLinkedList` with indexes                                                                                               |
+| `filters/engine`, `expression`, `predicates`, `tags` | Keep the expression tree and modes. Add targets and a text parser for the calculator                                                     |
+| `filters/search`, `persistence`                      | Keep. Saved rules stay in storage as today. New string-serialized filters are TODO (Д30)                                                 |
+| `cause-graph/`                                       | Keep the traversal algorithms. Input comes from `reatom.cause.ids` plus links                                                            |
+| `timeline/`                                          | Merged into the Gantt time axis (Д32). `utils` buckets feed a minimap                                                                    |
+| `session/`                                           | Export/import format v2 (JSON, Д41), with a v1 importer                                                                                  |
+| `view/screens`, `view/components`                    | Redesigned (see Design process)                                                                                                          |
+| `view/design-system`                                 | Kept as raw material. Tokens and visuals are redone after the design debate                                                              |
+| `stories/`, `testing/`, `workflow/`                  | Kept, extended with new journeys                                                                                                         |
 
 ### Reporter versus OTel records (Д10, Д13)
 
 - **Option A — two pipelines.** Keep the Reporter for dev and correlate its frames with spans through a shared `reatom.frame.id`. This means double interception overhead, two schemas, and an admin that differs between dev and prod.
-- **Option B — OTel-first (recommended).** The tracer instance is the only in-app recorder. In dev it runs with `endpoint: null` or next to a real endpoint (`connectAdmin` turns on `keepRecords`), and its `records` sink feeds admin directly. Admin's clear buttons call `otel.clearRecords()`. Because `detail` and capture settings now decide what admin sees, `connectAdmin` may raise them locally in dev; it never changes what production exports. A "frame" in admin *is* a record: spans for actions, `reatom.*.update` logs for atoms and computeds, with `reatom.frame.id` and `reatom.cause.ids` rebuilding the cause graph ([05](05-telemetry-schema.md)). The result is one schema for dev, prod and agents, and admin also works for non-Reatom OTel apps. What the tracer must guarantee for this: under `detail: 'events'` it records every non-private atom update, including those outside actions, with state bodies. Live state that has not changed since connect comes from the control channel, not from records.
+- **Option B — OTel-first (recommended).** The tracer instance is the only in-app recorder. In dev it runs with `endpoint: null` or next to a real endpoint (`connectAdmin` turns on `keepRecords`), and its `records` sink feeds admin directly. Admin's clear buttons call `otel.clearRecords()`. Because `detail` and capture settings now decide what admin sees, `connectAdmin` may raise them locally in dev; it never changes what production exports. A "frame" in admin _is_ a record: spans for actions, `reatom.*.update` logs for atoms and computeds, with `reatom.frame.id` and `reatom.cause.ids` rebuilding the cause graph ([05](05-telemetry-schema.md)). The result is one schema for dev, prod and agents, and admin also works for non-Reatom OTel apps. What the tracer must guarantee for this: under `detail: 'events'` it records every non-private atom update, including those outside actions, with state bodies. Live state that has not changed since connect comes from the control channel, not from records.
 
 Step AD-1 is a deep analysis of the existing package that validates option B against every current story. It lists anything the Reporter shows that records would not.
 
@@ -185,14 +185,14 @@ Every connected app, tab, or remote query is a source tab. A merged view across 
 
 JSON messages over WebSocket, or a direct in-page call for the widget:
 
-| `type` | Direction | Content |
-| --- | --- | --- |
-| `hello` | app → admin | protocol version, `service.name`, `service.instance.id`, platform, capabilities |
-| `records` | app → admin | a batch of OTLP JSON (spans and logs), when not sent over OTLP/HTTP |
-| `snapshot.subscribe` / `snapshot` | admin ↔ app | atom values by name prefix, serialized with the tracer's serializer |
-| `atom.set` | admin → app | name, JSON value |
-| `action.call` | admin → app | name, JSON params |
-| `ack` | both | sequence numbers. The app buffers unacknowledged batches in a bounded ring |
+| `type`                            | Direction   | Content                                                                         |
+| --------------------------------- | ----------- | ------------------------------------------------------------------------------- |
+| `hello`                           | app → admin | protocol version, `service.name`, `service.instance.id`, platform, capabilities |
+| `records`                         | app → admin | a batch of OTLP JSON (spans and logs), when not sent over OTLP/HTTP             |
+| `snapshot.subscribe` / `snapshot` | admin ↔ app | atom values by name prefix, serialized with the tracer's serializer             |
+| `atom.set`                        | admin → app | name, JSON value                                                                |
+| `action.call`                     | admin → app | name, JSON params                                                               |
+| `ack`                             | both        | sequence numbers. The app buffers unacknowledged batches in a bounded ring      |
 
 Batches are sent at most every 100 ms and at most 256 KB each.
 
@@ -200,16 +200,16 @@ Batches are sent at most every 100 ms and at most 256 KB each.
 
 The admin model is extended with `withMCP` ([12] in README) on its atoms and actions. That includes actions, so agents can do more than read. Tools, each accepting the calculator filter language:
 
-| Tool | Returns |
-| --- | --- |
-| `admin.summary` | Sources, counts by trace, name and error, the time range |
-| `admin.listTraces({ filter, page, pageSize })` | Root name, duration, span count, error count, route, and a cursor |
-| `admin.getTrace({ traceId, depth, cursor })` | A summarized span tree with truncated values and child counts. Deeper pages via cursor |
-| `admin.search({ filter, cursor })` | Matching records, summarized |
-| `admin.getRecord({ id })` | The full record, with cause ids resolved to names |
-| `admin.getState({ path })` | A subtree of the state tree |
-| `admin.setAtom`, `admin.callAction` | Dev control, same permissions as the UI |
-| `admin.clear`, `admin.selectSource`, `admin.connectRemote` | Housekeeping |
+| Tool                                                       | Returns                                                                                |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `admin.summary`                                            | Sources, counts by trace, name and error, the time range                               |
+| `admin.listTraces({ filter, page, pageSize })`             | Root name, duration, span count, error count, route, and a cursor                      |
+| `admin.getTrace({ traceId, depth, cursor })`               | A summarized span tree with truncated values and child counts. Deeper pages via cursor |
+| `admin.search({ filter, cursor })`                         | Matching records, summarized                                                           |
+| `admin.getRecord({ id })`                                  | The full record, with cause ids resolved to names                                      |
+| `admin.getState({ path })`                                 | A subtree of the state tree                                                            |
+| `admin.setAtom`, `admin.callAction`                        | Dev control, same permissions as the UI                                                |
+| `admin.clear`, `admin.selectSource`, `admin.connectRemote` | Housekeeping                                                                           |
 
 Every response is capped (default 20 KB), with `nextCursor` and a summary header, so a large trace never floods the agent's context (Д34). Custom attributes (`reatom.*`, `app.*`) are always included; the Maple MCP lacked this, which made it useless (Vlad). As of Maple HEAD 2026-10 its MCP returns custom attributes, but only in the cloud, not in local mode.
 
@@ -221,7 +221,7 @@ Export is JSON v2: normalized records plus source metadata, with a v1 importer. 
 
 ## Design process (Д3, Д38–Д40)
 
-1. **Research R14:** Evil Martians' devtools design guides and their devtools work, plus the Chrome Network panel for density. Reatom v3 devtools is the reference for *functionality*, not visuals ("functionality great, visuals awful").
+1. **Research R14:** Evil Martians' devtools design guides and their devtools work, plus the Chrome Network panel for density. Reatom v3 devtools is the reference for _functionality_, not visuals ("functionality great, visuals awful").
 2. **Debate:** two or three designer agents on different models propose the Gantt, frame card and filter panel in `spec/notes/admin-design-*.md`. A third agent critiques, and the orchestrator picks.
 3. **Implementation in Storybook:** the designer agent implements, screenshots through visual tests, self-reviews against the brief, and iterates. No mockups beforehand (Д40).
 4. **Accessibility now:** basic keyboard navigation (focus order, arrows in the Gantt, Enter to expand, Esc to close).
@@ -229,21 +229,21 @@ Export is JSON v2: normalized records plus source metadata, with a v1 importer. 
 
 ## Implementation steps
 
-| ID | Step | Depends on | Acceptance |
-| --- | --- | --- | --- |
-| AD-1 | Deep analysis of the existing admin against option B (Д10, Д13) | — | `spec/notes/AD-1-admin-analysis.md` maps every current capability to a record-based equivalent, or to a gap for the tracer |
-| AD-2 | `AdminRecord`, OTLP ingest, linked-list store, indexes, clear buttons; fixtures recorded from the v2 tracer | P3 schema freeze | Ingest of the e2e scenario reproduces spans, logs and cause ids |
-| AD-3 | `reatomGantt` headless model | AD-2 | Tree, axis, columns, grouping, modes, keyboard model covered by unit tests |
-| AD-4 | Filters: two searches, calculator parser to `FilterGroup`, new targets, shared by views | AD-2; informed by R15 | Parser round-trips. Engine tests pass for new targets |
-| AD-5 | Sources: local sink, file import/export v2, WebSocket client, standalone hub with OTLP receiver and token | AD-2; informed by R16 | A React Native-style Node client sends records through the hub. Wrong token rejected |
-| AD-6 | Control channel: snapshot subscription, live state, `atom.set`, `action.call` | AD-5 | Edits produce records with `reatom.origin = admin` |
-| AD-7 | MCP tools with pagination and caps + the stdio bridge in the hub | AD-4, AD-6 | Agent journey test: find the failing trace of a scenario through tools only |
-| AD-8 | Remote ClickHouse source with credentials | AD-4; informed by R20 | The e2e ClickHouse data opens in admin |
-| AD-9 | Hosts: widget, PiP popout, standalone UI | AD-5 | Storybook journeys in each host |
-| AD-10 | Design debate, then views: Gantt, frame card, state tree, cause graph with diamonds, navigation, open in editor | AD-3, AD-6, R14 (no fallback); informed by R13 | Visual baselines committed. Journeys from `stories/gallery` and `reatom-jsx-xo` ported |
-| AD-11 | Perf gate: 100k records | AD-10 | Interaction stays responsive (expand, filter, scroll) within agreed budgets |
-| AD-12 | a11y baseline; later the hotkeys epic | AD-10 | Storybook a11y addon in CI (existing backlog task `a11y-enforcement`) |
-| AD-13 | Docs: connect in `setup.ts`, hosts, standalone for React Native, remote backends, MCP guide | all | Docs-site pages |
+| ID    | Step                                                                                                            | Depends on                                     | Acceptance                                                                                                                 |
+| ----- | --------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| AD-1  | Deep analysis of the existing admin against option B (Д10, Д13)                                                 | —                                              | `spec/notes/AD-1-admin-analysis.md` maps every current capability to a record-based equivalent, or to a gap for the tracer |
+| AD-2  | `AdminRecord`, OTLP ingest, linked-list store, indexes, clear buttons; fixtures recorded from the v2 tracer     | P3 schema freeze                               | Ingest of the e2e scenario reproduces spans, logs and cause ids                                                            |
+| AD-3  | `reatomGantt` headless model                                                                                    | AD-2                                           | Tree, axis, columns, grouping, modes, keyboard model covered by unit tests                                                 |
+| AD-4  | Filters: two searches, calculator parser to `FilterGroup`, new targets, shared by views                         | AD-2; informed by R15                          | Parser round-trips. Engine tests pass for new targets                                                                      |
+| AD-5  | Sources: local sink, file import/export v2, WebSocket client, standalone hub with OTLP receiver and token       | AD-2; informed by R16                          | A React Native-style Node client sends records through the hub. Wrong token rejected                                       |
+| AD-6  | Control channel: snapshot subscription, live state, `atom.set`, `action.call`                                   | AD-5                                           | Edits produce records with `reatom.origin = admin`                                                                         |
+| AD-7  | MCP tools with pagination and caps + the stdio bridge in the hub                                                | AD-4, AD-6                                     | Agent journey test: find the failing trace of a scenario through tools only                                                |
+| AD-8  | Remote ClickHouse source with credentials                                                                       | AD-4; informed by R20                          | The e2e ClickHouse data opens in admin                                                                                     |
+| AD-9  | Hosts: widget, PiP popout, standalone UI                                                                        | AD-5                                           | Storybook journeys in each host                                                                                            |
+| AD-10 | Design debate, then views: Gantt, frame card, state tree, cause graph with diamonds, navigation, open in editor | AD-3, AD-6, R14 (no fallback); informed by R13 | Visual baselines committed. Journeys from `stories/gallery` and `reatom-jsx-xo` ported                                     |
+| AD-11 | Perf gate: 100k records                                                                                         | AD-10                                          | Interaction stays responsive (expand, filter, scroll) within agreed budgets                                                |
+| AD-12 | a11y baseline; later the hotkeys epic                                                                           | AD-10                                          | Storybook a11y addon in CI (existing backlog task `a11y-enforcement`)                                                      |
+| AD-13 | Docs: connect in `setup.ts`, hosts, standalone for React Native, remote backends, MCP guide                     | all                                            | Docs-site pages                                                                                                            |
 
 Update `packages/admin/workflow/backlog.yaml` with these IDs, and rewrite `TSD.md` after AD-1.
 

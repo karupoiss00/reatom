@@ -11,7 +11,13 @@ import {
 } from 'kahraman'
 import { userEvent } from 'storybook/test'
 
-import { apiKey, completeOAuthFromUrl, forgetKey, readStoredKey, startOAuth } from '../auth'
+import {
+  apiKey,
+  completeOAuthFromUrl,
+  forgetKey,
+  readStoredKey,
+  startOAuth,
+} from '../auth'
 import { busyCountdown, leaveOAuthError } from '../features/welcome/model'
 import { library } from '../chat/library'
 import { openChat } from '../routes'
@@ -126,9 +132,7 @@ test('Tom connects, Maya pastes a key, and a saved chat stays read-only without 
   leaveOAuthError()
 
   await I.fill(limit, '0')
-  await I.see(
-    text('Enter a limit above 0, or clear the field for no limit.'),
-  )
+  await I.see(text('Enter a limit above 0, or clear the field for no limit.'))
   await I.seeDisabled(button('Connect with OpenRouter'))
   expect(urls).toHaveLength(1)
 
@@ -171,7 +175,9 @@ test('Tom connects, Maya pastes a key, and a saved chat stays read-only without 
   const pasteDialog = role('dialog', 'Paste an API key')
   await I.see(pasteDialog.wait())
   await I.see(link('Create a key at openrouter.ai/keys').within(pasteDialog))
-  await I.seeChecked(role('checkbox', /Remember on this device/).within(pasteDialog))
+  await I.seeChecked(
+    role('checkbox', /Remember on this device/).within(pasteDialog),
+  )
   await I.seeDisabled(button('Check and connect').within(pasteDialog))
   await settle()
   await shoot('F-02', 'empty')

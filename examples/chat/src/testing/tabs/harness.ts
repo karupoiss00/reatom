@@ -33,7 +33,9 @@ const openTabs = new Set<TabHandle>()
  * Appended to `<html>` rather than `<body>` so `bootApp`, which replaces the
  * body, does not close the second tab.
  */
-export const openTab = async (options: OpenTabOptions = {}): Promise<TabHandle> => {
+export const openTab = async (
+  options: OpenTabOptions = {},
+): Promise<TabHandle> => {
   const url = new URL('./tab.html', import.meta.url)
   if (options.webLocks === false) url.searchParams.set('locks', 'off')
   const frame = document.createElement('iframe')

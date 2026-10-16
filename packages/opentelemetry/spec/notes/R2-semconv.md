@@ -17,11 +17,11 @@ For every name in 05, should Reatom freeze a private `reatom.*` / `app.*` dialec
 
 ## Options
 
-| Id | Policy | Exception signal | Analytics event names |
-| --- | --- | --- | --- |
-| **A** | Alias aggressively onto every Development-status name | logs only | `session.start`, `browser.navigation`, `enduser.pseudo.id`, drop `event.name` |
-| **B** | **Fallback.** Freeze 05 as written | log **plus span event** | keep `app.page_view`, `app.session.start`, `app.visitor.id` |
-| **C** | **Chosen.** Follow 05’s own rule: official name when it exists **and** the semantics match; otherwise keep `reatom.*` / `app.*` | **logs only** (opt-in span event later) | keep most `app.*`; rename only collisions and MUST-named events |
+| Id    | Policy                                                                                                                          | Exception signal                        | Analytics event names                                                         |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- | ----------------------------------------------------------------------------- |
+| **A** | Alias aggressively onto every Development-status name                                                                           | logs only                               | `session.start`, `browser.navigation`, `enduser.pseudo.id`, drop `event.name` |
+| **B** | **Fallback.** Freeze 05 as written                                                                                              | log **plus span event**                 | keep `app.page_view`, `app.session.start`, `app.visitor.id`                   |
+| **C** | **Chosen.** Follow 05’s own rule: official name when it exists **and** the semantics match; otherwise keep `reatom.*` / `app.*` | **logs only** (opt-in span event later) | keep most `app.*`; rename only collisions and MUST-named events               |
 
 A is the FOR voice. B is the AGAINST voice and the backlog fallback. C is the synthesis: B’s catalog, A’s exception rule, plus two small renames that 05 would collide with if left alone.
 
@@ -49,21 +49,21 @@ Verdicts: **keep** = freeze as in 05; **alias** = emit the official name instead
 
 ### Resource
 
-| 05 name | Verdict | Official analog | Notes |
-| --- | --- | --- | --- |
-| `service.name` | official | Resource `service` | Required |
-| `service.version` | official | Resource `service` | |
-| `deployment.environment.name` | official | Resource | |
-| `service.instance.id` | official | Resource `service` | Random per page; scopes `reatom.frame.id` |
-| `telemetry.sdk.name` | official | `@reatom/opentelemetry` | Must **not** be `opentelemetry` — that identifier is reserved for the OTel SDK |
-| `telemetry.sdk.language` | official | `webjs` (browser) / `nodejs` | |
-| `telemetry.sdk.version` | official | package version | |
-| `reatom.schema.version` | keep | none | Schema contract |
-| `reatom.instance.name` | keep | none | Instance `name` option |
-| `browser.language` | official | Browser resource | `navigator.language`; R7 |
-| `browser.brands` | official | Browser resource | UA-CH `brands`; omit if missing |
-| `browser.platform` | official | Browser resource | UA-CH `platform`; do **not** fall back to `navigator.platform` |
-| `browser.mobile` | official | Browser resource | UA-CH `mobile`; omit if missing |
+| 05 name                       | Verdict  | Official analog              | Notes                                                                          |
+| ----------------------------- | -------- | ---------------------------- | ------------------------------------------------------------------------------ |
+| `service.name`                | official | Resource `service`           | Required                                                                       |
+| `service.version`             | official | Resource `service`           |                                                                                |
+| `deployment.environment.name` | official | Resource                     |                                                                                |
+| `service.instance.id`         | official | Resource `service`           | Random per page; scopes `reatom.frame.id`                                      |
+| `telemetry.sdk.name`          | official | `@reatom/opentelemetry`      | Must **not** be `opentelemetry` — that identifier is reserved for the OTel SDK |
+| `telemetry.sdk.language`      | official | `webjs` (browser) / `nodejs` |                                                                                |
+| `telemetry.sdk.version`       | official | package version              |                                                                                |
+| `reatom.schema.version`       | keep     | none                         | Schema contract                                                                |
+| `reatom.instance.name`        | keep     | none                         | Instance `name` option                                                         |
+| `browser.language`            | official | Browser resource             | `navigator.language`; R7                                                       |
+| `browser.brands`              | official | Browser resource             | UA-CH `brands`; omit if missing                                                |
+| `browser.platform`            | official | Browser resource             | UA-CH `platform`; do **not** fall back to `navigator.platform`                 |
+| `browser.mobile`              | official | Browser resource             | UA-CH `mobile`; omit if missing                                                |
 
 Do **not** add `user_agent.original` or `browser.document.url.full` by default (fingerprint / URL-on-resource). R7 already decided that.
 
@@ -71,73 +71,73 @@ Do **not** add `user_agent.original` or `browser.document.url.full` by default (
 
 No OpenTelemetry document defines frame ids, cause arrays, abort/Suspense outcomes, or factory-instance cardinality. Naming rules say a system-specific attribute starts with `{system_name}.*.{property}`. `reatom` is that system name. **Keep every `reatom.*` key.**
 
-| 05 name | Verdict | Near-miss that must **not** be used |
-| --- | --- | --- |
-| `reatom.kind` | keep | OTel `SpanKind` is a different field |
-| `reatom.name` | keep | span `name` is the normalized form; this is the raw name |
-| `reatom.instance` | keep | not `service.instance.id` |
-| `reatom.frame.id` | keep | none |
-| `reatom.cause.ids` | keep | none; admin rebuilds the DAG from this |
-| `reatom.params` / `reatom.payload` | keep | not span events |
-| `reatom.outcome` | keep | not `error.type` (that is failure class, not abort/suspense/pending) |
-| `reatom.importance` | keep | undocumented abort/Suspense marker |
-| `reatom.attempt` | keep | **not** `http.request.resend_count` (HTTP wire resend, 1-based resend ordinal). Reatom retries are action/computed attempts |
-| `reatom.updates.count` / `.names` | keep | variant 4 summary |
-| `reatom.route.pattern` | keep | **not** `http.route` (HTTP server route). SPA pattern sits next to `url.path` |
-| `reatom.origin` | keep | `admin` from `attributesVar` |
-| `reatom.link.reason` | keep | link attribute |
-| `reatom.log` / `.label` / `.state` | keep | `LOG` records |
-| `reatom.atom.update` / `reatom.computed.update` | keep | log `eventName` |
-| `reatom.async.settle` / `reatom.async.pending` | keep | R3 decides emission, not the name |
-| `reatom.state.prev` | keep if R1 adds it | none |
+| 05 name                                         | Verdict            | Near-miss that must **not** be used                                                                                         |
+| ----------------------------------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| `reatom.kind`                                   | keep               | OTel `SpanKind` is a different field                                                                                        |
+| `reatom.name`                                   | keep               | span `name` is the normalized form; this is the raw name                                                                    |
+| `reatom.instance`                               | keep               | not `service.instance.id`                                                                                                   |
+| `reatom.frame.id`                               | keep               | none                                                                                                                        |
+| `reatom.cause.ids`                              | keep               | none; admin rebuilds the DAG from this                                                                                      |
+| `reatom.params` / `reatom.payload`              | keep               | not span events                                                                                                             |
+| `reatom.outcome`                                | keep               | not `error.type` (that is failure class, not abort/suspense/pending)                                                        |
+| `reatom.importance`                             | keep               | undocumented abort/Suspense marker                                                                                          |
+| `reatom.attempt`                                | keep               | **not** `http.request.resend_count` (HTTP wire resend, 1-based resend ordinal). Reatom retries are action/computed attempts |
+| `reatom.updates.count` / `.names`               | keep               | variant 4 summary                                                                                                           |
+| `reatom.route.pattern`                          | keep               | **not** `http.route` (HTTP server route). SPA pattern sits next to `url.path`                                               |
+| `reatom.origin`                                 | keep               | `admin` from `attributesVar`                                                                                                |
+| `reatom.link.reason`                            | keep               | link attribute                                                                                                              |
+| `reatom.log` / `.label` / `.state`              | keep               | `LOG` records                                                                                                               |
+| `reatom.atom.update` / `reatom.computed.update` | keep               | log `eventName`                                                                                                             |
+| `reatom.async.settle` / `reatom.async.pending`  | keep               | R3 decides emission, not the name                                                                                           |
+| `reatom.state.prev`                             | keep if R1 adds it | none                                                                                                                        |
 
 Span **names** `route <…>`, `mount <…>`, `page_view <path>`, `app.session` are Reatom watershed labels, not log event names. Keep them. Do not confuse the `app.session` **span** (one per instance per page load, Т28) with the analytics **event** `app.session.start`.
 
 ### Already-official signals in 05 (do not fork)
 
-| 05 name | Verdict | Convention | Status |
-| --- | --- | --- | --- |
-| `exception` (log `eventName`) | official | Exceptions in logs. Global handlers SHOULD use `exception` | Stable (logs) |
-| `exception.type` / `.message` / `.stacktrace` | official | same | Stable |
-| `browser.web_vital` + `.name` `.value` `.delta` `.id` `.rating` `.navigation_type` | official | Browser events. Optional `.attribution.*` stays extra | Development |
-| `feature_flag.evaluation` | official | Feature-flag events | Development |
-| `feature_flag.key` / `feature_flag.result.variant` | official | same | |
-| `url.path` / `url.full` | official | URL registry. 05 already drops query/fragment by default | Stable (`url.path`) |
-| `code.file.path` / `code.line.number` | official | Code registry | Stable |
-| `user.id` | official | User registry (app sets after login) | |
-| `session.id` / `session.previous_id` | official | Session. Opt-In on arbitrary records; Required on `session.start` | Development |
-| `event.name` attribute | **keep dual-write** | Deprecated: value MUST now be LogRecord `EventName` | Deprecated as attribute |
-| `network.online` | keep (custom) | **Not** in the network registry. `network.connection.state` is TCP states (`established`, `time_wait`, …), not `navigator.onLine` | — |
+| 05 name                                                                            | Verdict             | Convention                                                                                                                        | Status                  |
+| ---------------------------------------------------------------------------------- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| `exception` (log `eventName`)                                                      | official            | Exceptions in logs. Global handlers SHOULD use `exception`                                                                        | Stable (logs)           |
+| `exception.type` / `.message` / `.stacktrace`                                      | official            | same                                                                                                                              | Stable                  |
+| `browser.web_vital` + `.name` `.value` `.delta` `.id` `.rating` `.navigation_type` | official            | Browser events. Optional `.attribution.*` stays extra                                                                             | Development             |
+| `feature_flag.evaluation`                                                          | official            | Feature-flag events                                                                                                               | Development             |
+| `feature_flag.key` / `feature_flag.result.variant`                                 | official            | same                                                                                                                              |                         |
+| `url.path` / `url.full`                                                            | official            | URL registry. 05 already drops query/fragment by default                                                                          | Stable (`url.path`)     |
+| `code.file.path` / `code.line.number`                                              | official            | Code registry                                                                                                                     | Stable                  |
+| `user.id`                                                                          | official            | User registry (app sets after login)                                                                                              |                         |
+| `session.id` / `session.previous_id`                                               | official            | Session. Opt-In on arbitrary records; Required on `session.start`                                                                 | Development             |
+| `event.name` attribute                                                             | **keep dual-write** | Deprecated: value MUST now be LogRecord `EventName`                                                                               | Deprecated as attribute |
+| `network.online`                                                                   | keep (custom)       | **Not** in the network registry. `network.connection.state` is TCP states (`established`, `time_wait`, …), not `navigator.onLine` | —                       |
 
 ### `app.*` analytics facts
 
 Official `app.*` in the registry is **client UI identity and crashes**: `app.screen.id` / `.name` / `.coordinate.*`, `app.widget.*`, `app.installation.id`, `app.crash`, `app.jank`. It is **not** web analytics. The OpenTelemetry Demo also uses `app.*` for cart/order — that is a demo dialect, not a convention.
 
-| 05 name | Verdict | Official analog | Why |
-| --- | --- | --- | --- |
-| `app.page_view` | **keep** | `browser.navigation` in opentelemetry-browser / js-contrib; **not** in official browser-events.md (only `browser.web_vital` is). PR that added `browser.page_view` was superseded | Analytics page view (title, referrer, UTM, watershed) ≠ hard/soft navigation with `hash_change` / `type` |
-| `app.page.title` / `app.page.referrer` | keep | no `page.title`. Do **not** use `http.request.header.referer` (header array, opt-in, HTTP spans) | |
-| `app.viewport.width` / `.height` | keep | none | |
-| `app.screen.width` / `.height` | **rename** → `app.display.width` / `.height` | Official `app.screen.*` is UI screen identity, not `window.screen` pixels | Collision |
-| `app.utm.*` / `app.click_id.*` | keep | none | |
-| `app.session.start` | **alias** → `session.start` | Session events: event name MUST be `session.start`; `session.id` required; `session.previous_id` when continuing | 05 already emits those attributes. Campaign/timeout/midnight rotation **is** a new OTel session |
-| `app.attribution.first.*` / `.last.*` | keep | extras on `session.start` | |
-| `app.visitor.id` | **keep** | `enduser.pseudo.id` (pseudonymous, PII warning). `app.installation.id` is per-install and MUST persist across upgrades | Visitor rotates, is consent-gated, and survives login next to `user.id`. Not an install id. Optional extra alias after consent, never a replacement |
-| `app.analytics.consent` | keep | none | |
-| `app.page.engagement` / `app.engagement.*` | keep | none | |
-| `app.visibility.change` / `app.visibility.state` | keep | none | |
-| `app.network.change` | keep | none; keep `network.online` | |
-| `app.focus.change` / `app.focus.state` | keep | none | |
-| `app.ecommerce.*` | keep until WA-9 | **No** ecommerce semconv. Demo uses `app.order.*` | |
-| `app.scroll.depth` | keep | none | |
-| `app.click.outbound` | keep | not `app.widget.click` / `app.screen.click` (those need widget/screen ids and pixel coordinates) | |
-| `app.form.submit` | keep | none | |
-| `app.click.rage` | keep | not `app.screen.click` | |
-| `app.long_task` | keep | not `app.jank` (jank is frame-threshold UI stall, not `PerformanceLongTaskTiming`) | |
-| `app.breadcrumb` | keep | none | |
-| `app.exception.count` | keep | on `exception.suppressed` | |
-| `exception.suppressed` | keep | custom summary event, not `exception` | |
-| `app.order.value` (example) | keep | demo-style domain attr | |
+| 05 name                                          | Verdict                                      | Official analog                                                                                                                                                                   | Why                                                                                                                                                 |
+| ------------------------------------------------ | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `app.page_view`                                  | **keep**                                     | `browser.navigation` in opentelemetry-browser / js-contrib; **not** in official browser-events.md (only `browser.web_vital` is). PR that added `browser.page_view` was superseded | Analytics page view (title, referrer, UTM, watershed) ≠ hard/soft navigation with `hash_change` / `type`                                            |
+| `app.page.title` / `app.page.referrer`           | keep                                         | no `page.title`. Do **not** use `http.request.header.referer` (header array, opt-in, HTTP spans)                                                                                  |                                                                                                                                                     |
+| `app.viewport.width` / `.height`                 | keep                                         | none                                                                                                                                                                              |                                                                                                                                                     |
+| `app.screen.width` / `.height`                   | **rename** → `app.display.width` / `.height` | Official `app.screen.*` is UI screen identity, not `window.screen` pixels                                                                                                         | Collision                                                                                                                                           |
+| `app.utm.*` / `app.click_id.*`                   | keep                                         | none                                                                                                                                                                              |                                                                                                                                                     |
+| `app.session.start`                              | **alias** → `session.start`                  | Session events: event name MUST be `session.start`; `session.id` required; `session.previous_id` when continuing                                                                  | 05 already emits those attributes. Campaign/timeout/midnight rotation **is** a new OTel session                                                     |
+| `app.attribution.first.*` / `.last.*`            | keep                                         | extras on `session.start`                                                                                                                                                         |                                                                                                                                                     |
+| `app.visitor.id`                                 | **keep**                                     | `enduser.pseudo.id` (pseudonymous, PII warning). `app.installation.id` is per-install and MUST persist across upgrades                                                            | Visitor rotates, is consent-gated, and survives login next to `user.id`. Not an install id. Optional extra alias after consent, never a replacement |
+| `app.analytics.consent`                          | keep                                         | none                                                                                                                                                                              |                                                                                                                                                     |
+| `app.page.engagement` / `app.engagement.*`       | keep                                         | none                                                                                                                                                                              |                                                                                                                                                     |
+| `app.visibility.change` / `app.visibility.state` | keep                                         | none                                                                                                                                                                              |                                                                                                                                                     |
+| `app.network.change`                             | keep                                         | none; keep `network.online`                                                                                                                                                       |                                                                                                                                                     |
+| `app.focus.change` / `app.focus.state`           | keep                                         | none                                                                                                                                                                              |                                                                                                                                                     |
+| `app.ecommerce.*`                                | keep until WA-9                              | **No** ecommerce semconv. Demo uses `app.order.*`                                                                                                                                 |                                                                                                                                                     |
+| `app.scroll.depth`                               | keep                                         | none                                                                                                                                                                              |                                                                                                                                                     |
+| `app.click.outbound`                             | keep                                         | not `app.widget.click` / `app.screen.click` (those need widget/screen ids and pixel coordinates)                                                                                  |                                                                                                                                                     |
+| `app.form.submit`                                | keep                                         | none                                                                                                                                                                              |                                                                                                                                                     |
+| `app.click.rage`                                 | keep                                         | not `app.screen.click`                                                                                                                                                            |                                                                                                                                                     |
+| `app.long_task`                                  | keep                                         | not `app.jank` (jank is frame-threshold UI stall, not `PerformanceLongTaskTiming`)                                                                                                |                                                                                                                                                     |
+| `app.breadcrumb`                                 | keep                                         | none                                                                                                                                                                              |                                                                                                                                                     |
+| `app.exception.count`                            | keep                                         | on `exception.suppressed`                                                                                                                                                         |                                                                                                                                                     |
+| `exception.suppressed`                           | keep                                         | custom summary event, not `exception`                                                                                                                                             |                                                                                                                                                     |
+| `app.order.value` (example)                      | keep                                         | demo-style domain attr                                                                                                                                                            |                                                                                                                                                     |
 
 `opentelemetry-browser` also emits `browser.navigation` (url.full, same_document, hash_change, type), web-vitals as logs, and unhandled errors. Reatom analytics is not that instrumentation. Sharing `browser.web_vital` and `exception` is enough. Do not ship a second `browser.navigation` event unless we later drop `app.page_view` after that convention lands in browser-events.md **and** matches URL-based page views (including `pageView()`).
 
@@ -180,7 +180,7 @@ Do not put URLs, viewport, or session ids on the resource.
 
 Reatom v2 is not a compatibility shim for a frozen producer. It is a **new major instrumentation**. The fallback — keep 05 as written, and also write `exception` as a span event — is the conservative answer for an old library that already shipped the dead shape. It is the wrong answer here. 05 itself already states the rule: naming follows OpenTelemetry semantic conventions wherever a convention exists. Own names live in `reatom.*` (runtime facts) and `app.*` (analytics facts). R2 exists to enforce that sentence before the P3 freeze, not to bless a private dialect that looks almost official.
 
-The cost of a near-miss name is forever. Admin, ClickHouse, Grafana, Tempo, and every MCP tool will query the strings we freeze. Dual-writing a deprecated form “until backends catch up” is how those backends never catch up: they keep consuming the museum copy. FLOWS in 02 already emit exceptions as log records with span context. The Span Event API is deprecated. The next major of an existing instrumentation is allowed to drop the duplicate. We *are* that next major, and we have no prior contract to honor. Take the official names. Do not invent a second schema next to them.
+The cost of a near-miss name is forever. Admin, ClickHouse, Grafana, Tempo, and every MCP tool will query the strings we freeze. Dual-writing a deprecated form “until backends catch up” is how those backends never catch up: they keep consuming the museum copy. FLOWS in 02 already emit exceptions as log records with span context. The Span Event API is deprecated. The next major of an existing instrumentation is allowed to drop the duplicate. We _are_ that next major, and we have no prior contract to honor. Take the official names. Do not invent a second schema next to them.
 
 Every `reatom.*` name stays. `reatom.kind`, `reatom.frame.id`, `reatom.cause.ids`, `reatom.outcome` (`abort` / `suspense`) describe Reatom’s frame graph. No semantic convention defines those facts. Inventing `code.*` or `app.*` aliases for them would smash runtime into namespaces that mean something else.
 
@@ -243,12 +243,12 @@ Keep dual `eventName` + `event.name`. 05 already solved ingest compatibility. So
 
 ### What changes in 05 (before P3)
 
-| Change | Why |
-| --- | --- |
-| Log `eventName` `app.session.start` → `session.start` | Session MUST name |
-| Attributes `app.screen.width` / `.height` → `app.display.width` / `.height` | Collision with `app.screen.*` |
-| Exception span event **off** by default | Logs convention + 2026 deprecation; not required for new majors |
-| Note in 05: `app.session` span ≠ `session.start` event | Vocabulary clash |
+| Change                                                                      | Why                                                             |
+| --------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| Log `eventName` `app.session.start` → `session.start`                       | Session MUST name                                               |
+| Attributes `app.screen.width` / `.height` → `app.display.width` / `.height` | Collision with `app.screen.*`                                   |
+| Exception span event **off** by default                                     | Logs convention + 2026 deprecation; not required for new majors |
+| Note in 05: `app.session` span ≠ `session.start` event                      | Vocabulary clash                                                |
 
 Everything else in 05 stays. Admin ingest and ClickHouse e2e update those two event/attribute names and stop expecting a span event named `exception`.
 

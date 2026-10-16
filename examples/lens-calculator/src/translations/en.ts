@@ -1,8 +1,7 @@
 export const vocab = {
   meta: {
     title: 'Prime — size and weight of a lens',
-    documentTitle: (designation: string) =>
-      `${designation} — Prime, lens size`,
+    documentTitle: (designation: string) => `${designation} — Prime, lens size`,
   },
   header: {
     wordmark: 'Prime',

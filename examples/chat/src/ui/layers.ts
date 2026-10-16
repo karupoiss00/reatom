@@ -10,16 +10,20 @@ let layerGeneration = 0
  * has closed, and do nothing while it is above zero:
  *
  * @example
- *   window.addEventListener('keydown', (event) => {
- *     if (event.key !== 'Escape' || openLayerCount() > 0) return
- *     stopStreaming()
- *   }, true)
+ *   window.addEventListener(
+ *     'keydown',
+ *     (event) => {
+ *       if (event.key !== 'Escape' || openLayerCount() > 0) return
+ *       stopStreaming()
+ *     },
+ *     true,
+ *   )
  */
 export const openLayerCount = computed(() => openLayers(), 'ui.layers.count')
 
 /**
- * Marks one overlay as open. Call the returned release function when it
- * closes; extra calls, and calls after `resetOpenLayers`, are ignored.
+ * Marks one overlay as open. Call the returned release function when it closes;
+ * extra calls, and calls after `resetOpenLayers`, are ignored.
  */
 export const registerOpenLayer = () => {
   const generation = layerGeneration

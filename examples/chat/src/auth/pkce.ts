@@ -12,7 +12,11 @@ export interface PendingOAuth {
 
 export const sameOriginReturnTo = (value: unknown): string | null => {
   if (typeof value !== 'string' || value.length === 0) return null
-  if (!value.startsWith('/') || value.startsWith('//') || value.includes('\\')) {
+  if (
+    !value.startsWith('/') ||
+    value.startsWith('//') ||
+    value.includes('\\')
+  ) {
     return null
   }
   if (/[\u0000-\u001F\u007F]/.test(value)) return null
@@ -23,7 +27,8 @@ export const sameOriginReturnTo = (value: unknown): string | null => {
     return null
   }
   if (url.origin !== location.origin) return null
-  if (!url.pathname.startsWith('/') || url.pathname.startsWith('//')) return null
+  if (!url.pathname.startsWith('/') || url.pathname.startsWith('//'))
+    return null
   return `${url.pathname}${url.search}${url.hash}`
 }
 

@@ -112,8 +112,7 @@ export type FieldValidateOption<State = any, Value = State> = (meta: {
   focus: FieldFocus
   validation: FieldValidation
 }) =>
-  | FieldValidateOptionResult<State>
-  | Promise<FieldValidateOptionResult<State>>
+  FieldValidateOptionResult<State> | Promise<FieldValidateOptionResult<State>>
 
 /**
  * Possible return types from a validation function. Supports simple error

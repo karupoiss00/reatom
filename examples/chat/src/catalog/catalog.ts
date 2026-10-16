@@ -78,8 +78,7 @@ const readPersisted = async (key: string): Promise<unknown> => {
       notifyCatalogDb(db as unknown as IDBDatabase)
       if (!db.objectStoreNames.contains(catalogStore)) return undefined
       const record = (await db.get(catalogStore, key)) as
-        | { data?: unknown }
-        | undefined
+        { data?: unknown } | undefined
       return record?.data
     } finally {
       db.close()

@@ -58,14 +58,20 @@ const scopedExtension = (extension: MarkdownExtension): MarkedExtension => {
       const wrapped: Record<string, unknown> = {}
       for (const [key, value] of Object.entries(renderer)) {
         wrapped[key] =
-          typeof value === 'function' ? wrapRender(value as RenderFn, extra) : value
+          typeof value === 'function'
+            ? wrapRender(value as RenderFn, extra)
+            : value
       }
       scoped.renderer = wrapped as MarkedExtension['renderer']
     }
   }
   if (nested) {
     scoped.extensions = nested.map((item) => {
-      if (!extra || !('renderer' in item) || typeof item.renderer !== 'function') {
+      if (
+        !extra ||
+        !('renderer' in item) ||
+        typeof item.renderer !== 'function'
+      ) {
         return item
       }
       return {

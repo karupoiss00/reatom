@@ -6,8 +6,7 @@ import { adminSettings } from '../settings'
 export function isEditableTarget(target: EventTarget | null): boolean {
   return (
     target instanceof Element &&
-    target.closest('input, textarea, select, [contenteditable="true"]') !==
-      null
+    target.closest('input, textarea, select, [contenteditable="true"]') !== null
   )
 }
 

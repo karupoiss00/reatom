@@ -221,11 +221,14 @@ const applyUpdate = (args: Record<string, unknown>) => {
     }
   }
   const name = typeof args.name === 'string' ? args.name : ''
-  const raw = typeof args.value === 'string' ? args.value : String(args.value ?? '')
+  const raw =
+    typeof args.value === 'string' ? args.value : String(args.value ?? '')
   const amount = Number.parseFloat(raw)
   if (!name || Number.isNaN(amount)) {
     return {
-      content: [{ type: 'text', text: 'Need a parameter name and numeric value.' }],
+      content: [
+        { type: 'text', text: 'Need a parameter name and numeric value.' },
+      ],
       isError: true,
     }
   }
@@ -292,7 +295,10 @@ const fulfillRpc = async (
       },
     }
   }
-  if (message.method === 'tools/list' || message.method === 'tools/listChanged') {
+  if (
+    message.method === 'tools/list' ||
+    message.method === 'tools/listChanged'
+  ) {
     return { jsonrpc: '2.0', id, result: { tools: toolList() } }
   }
   if (message.method === 'tools/call') {
@@ -328,10 +334,13 @@ const tryMcpFetch = async (request: Request): Promise<Response | null> => {
   if (behavior.hangInitialize) return hangUntilAbort(request.signal)
   guardReachable(url)
   if (behavior.htmlError) {
-    return new Response('<!doctype html><html><body>Bad Gateway</body></html>', {
-      status: 502,
-      headers: { 'content-type': 'text/html' },
-    })
+    return new Response(
+      '<!doctype html><html><body>Bad Gateway</body></html>',
+      {
+        status: 502,
+        headers: { 'content-type': 'text/html' },
+      },
+    )
   }
   if (request.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders })
@@ -346,13 +355,19 @@ const tryMcpFetch = async (request: Request): Promise<Response | null> => {
   if (Array.isArray(body)) {
     const replies = []
     for (const entry of body) {
-      const reply = await fulfillRpc(asRecord(entry) as JsonRpcRequest, request.signal)
+      const reply = await fulfillRpc(
+        asRecord(entry) as JsonRpcRequest,
+        request.signal,
+      )
       if (reply !== undefined) replies.push(reply)
     }
     return jsonResponse(replies)
   }
   const message = asRecord(body) as JsonRpcRequest
-  if (message.method === 'notifications/initialized' || message.id === undefined) {
+  if (
+    message.method === 'notifications/initialized' ||
+    message.id === undefined
+  ) {
     if (message.method === 'initialize') {
       const reply = await fulfillRpc(message, request.signal)
       return jsonResponse(reply)

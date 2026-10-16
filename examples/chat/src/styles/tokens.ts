@@ -343,18 +343,46 @@ export const colorTokenGroups: ReadonlyArray<{
 }> = [
   {
     title: 'Surfaces',
-    tokens: ['bg', 'bg-elevated', 'bg-sunken', 'surface-hover', 'surface-active', 'surface-selected'],
+    tokens: [
+      'bg',
+      'bg-elevated',
+      'bg-sunken',
+      'surface-hover',
+      'surface-active',
+      'surface-selected',
+    ],
   },
   {
     title: 'Ink',
-    tokens: ['text', 'text-muted', 'text-faint', 'text-disabled', 'line', 'line-strong'],
+    tokens: [
+      'text',
+      'text-muted',
+      'text-faint',
+      'text-disabled',
+      'line',
+      'line-strong',
+    ],
   },
   {
     title: 'Accent',
-    tokens: ['accent', 'accent-hover', 'accent-text', 'accent-soft', 'accent-ink', 'focus'],
+    tokens: [
+      'accent',
+      'accent-hover',
+      'accent-text',
+      'accent-soft',
+      'accent-ink',
+      'focus',
+    ],
   },
   {
     title: 'Tones',
-    tokens: ['success', 'success-soft', 'warning', 'warning-soft', 'danger', 'danger-soft'],
+    tokens: [
+      'success',
+      'success-soft',
+      'warning',
+      'warning-soft',
+      'danger',
+      'danger-soft',
+    ],
   },
 ]

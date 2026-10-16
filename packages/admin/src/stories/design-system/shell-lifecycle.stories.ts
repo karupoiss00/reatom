@@ -3,12 +3,7 @@ import { resetAdminFrame } from '../../root'
 import type { Meta, StoryObj } from '@storybook/html'
 import { expect, waitFor } from 'storybook/test'
 
-import {
-  button,
-  createActor,
-  heading,
-  role,
-} from '../../../.storybook/helpers'
+import { button, createActor, heading, role } from '../../../.storybook/helpers'
 import { getAdminRoot } from '../../testing/admin-root'
 import {
   registerStoryCleanup,
@@ -348,9 +343,7 @@ export const CloseLeavesCornerIcon: Story = {
     })
 
     await I.click(button('Close').within(shell()))
-    const icon = await I.see(
-      button('Open Reatom Admin').within(shell()).wait(),
-    )
+    const icon = await I.see(button('Open Reatom Admin').within(shell()).wait())
     await waitFor(() => {
       const box = icon.getBoundingClientRect()
       expect(Math.abs(box.left - 16)).toBeLessThan(8)

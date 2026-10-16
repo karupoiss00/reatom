@@ -86,8 +86,7 @@ const readPersistedModels = async (): Promise<CatalogModel[] | null> => {
     return null
   }
   const record = (await db.get('atoms', 'atelier.catalog')) as
-    | { data?: CatalogModel[] }
-    | undefined
+    { data?: CatalogModel[] } | undefined
   db.close()
   return Array.isArray(record?.data) ? record.data : null
 }
@@ -119,7 +118,11 @@ test('With a cache present, the picker list is visible within 100 ms of the clic
   await refreshCatalog()
   await expect
     .poll(readPersistedModels)
-    .toEqual(expect.arrayContaining([expect.objectContaining({ id: 'openai/gpt-4o-mini' })]))
+    .toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'openai/gpt-4o-mini' }),
+      ]),
+    )
   mockRouteDelay('/models', 400)
   const pending = refreshCatalog()
   const picker = reatomPicker('catalog.test.cache')
@@ -229,7 +232,12 @@ test('Filter chips combine with AND: Free plus Images shows only models that pas
   picker.chips.free.set(false)
   picker.chips.reasoning.set(true)
   picker.chips.longContext.set(true)
-  expect(picker.sections().all.map((model) => model.id).sort()).toEqual(
+  expect(
+    picker
+      .sections()
+      .all.map((model) => model.id)
+      .sort(),
+  ).toEqual(
     [
       'anthropic/claude-sonnet-4',
       'google/gemini-2.5-pro',
@@ -302,15 +310,13 @@ test('"Free" is shown only when both the prompt and completion prices are "0". A
     top_provider: { is_moderated: false },
   })
   expect(pricedFreeSuffix?.isFree).toBe(false)
-  expect(modelPriceLabel(pricedFreeSuffix!)).toBe(
-    '$1.00 / $2.00 per 1M in/out',
-  )
+  expect(modelPriceLabel(pricedFreeSuffix!)).toBe('$1.00 / $2.00 per 1M in/out')
   const o3 = catalogById().get('openai/o3-mini')
   expect(o3?.supportedEfforts).toEqual(['minimal', 'low', 'medium', 'high'])
   expect(o3?.isReasoning).toBe(true)
-  expect(catalogById().get('mistralai/mistral-7b-instruct-v0.3')?.isReasoning).toBe(
-    false,
-  )
+  expect(
+    catalogById().get('mistralai/mistral-7b-instruct-v0.3')?.isReasoning,
+  ).toBe(false)
   expect(modelName('openai/gpt-4o-mini')).toBe('OpenAI: GPT-4o-mini')
   expect(modelName('custom/missing')).toBe('custom/missing')
 })
@@ -628,7 +634,9 @@ test('a reset overlapping a persisted catalog read does not restore the old cata
     opened.push(db)
     const nativeClose = db.close.bind(db)
     db.close = () => {
-      rejectRead(new DOMException('The database connection is closing', 'AbortError'))
+      rejectRead(
+        new DOMException('The database connection is closing', 'AbortError'),
+      )
       nativeClose()
     }
     registerDbForReset(db)

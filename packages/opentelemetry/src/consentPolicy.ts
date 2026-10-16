@@ -5,20 +5,18 @@ export type TracerSignals = {
 
 export type TracerSignal = keyof TracerSignals
 
-const isConsentRecord = (
-  value: unknown,
-): value is Record<string, boolean> => {
+const isConsentRecord = (value: unknown): value is Record<string, boolean> => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
   return Object.values(value).every((entry) => typeof entry === 'boolean')
 }
 
 /**
- * One tracer signal. No submitted consent leaves the signal on.
- * A consent record holds it only when `diagnostics` is explicitly `false`
- * (the checkbox was offered and left off, or set false). Analytics-only
- * consent, with no `diagnostics` key, does not hold the tracer.
- * `signals[signal] === false` is an app kill switch for that signal alone,
- * including after a diagnostics grant. Consent submit does not write it.
+ * One tracer signal. No submitted consent leaves the signal on. A consent
+ * record holds it only when `diagnostics` is explicitly `false` (the checkbox
+ * was offered and left off, or set false). Analytics-only consent, with no
+ * `diagnostics` key, does not hold the tracer. `signals[signal] === false` is
+ * an app kill switch for that signal alone, including after a diagnostics
+ * grant. Consent submit does not write it.
  */
 export const tracerSignalEnabled = (
   options: {

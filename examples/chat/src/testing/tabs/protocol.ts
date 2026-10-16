@@ -71,5 +71,17 @@ export type TabRequest = {
 
 export type TabMessage =
   | { tag: typeof harnessTag; type: 'ready' }
-  | { tag: typeof harnessTag; type: 'reply'; id: number; ok: true; value: unknown }
-  | { tag: typeof harnessTag; type: 'reply'; id: number; ok: false; error: string }
+  | {
+      tag: typeof harnessTag
+      type: 'reply'
+      id: number
+      ok: true
+      value: unknown
+    }
+  | {
+      tag: typeof harnessTag
+      type: 'reply'
+      id: number
+      ok: false
+      error: string
+    }

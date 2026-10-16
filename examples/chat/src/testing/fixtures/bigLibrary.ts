@@ -1,5 +1,8 @@
 import { repo } from '../../storage/repo'
-import { createChatRecord, createDefaultChatSettings } from '../../storage/records'
+import {
+  createChatRecord,
+  createDefaultChatSettings,
+} from '../../storage/records'
 import type { ChatRecord, UserMessage } from '../../storage/types'
 
 export const bigLibraryChats = 500
@@ -46,13 +49,19 @@ export const seedBigLibrary = async (): Promise<{
         settings,
       }),
     )
-    for (let messageIndex = 0; messageIndex < messagesPerChat; messageIndex += 1) {
+    for (
+      let messageIndex = 0;
+      messageIndex < messagesPerChat;
+      messageIndex += 1
+    ) {
       const needle = chatIndex === needleChat && messageIndex === needleMessage
       messages.push(
         userMessage(
           chatId,
           `${chatId}-m${messageIndex}`,
-          needle ? `Keep ${bigLibraryNeedle} in the archive.` : `Filler ${chatIndex}-${messageIndex}`,
+          needle
+            ? `Keep ${bigLibraryNeedle} in the archive.`
+            : `Filler ${chatIndex}-${messageIndex}`,
           at + messageIndex + 1,
         ),
       )

@@ -244,9 +244,9 @@ export const slowStreamText = 'slow '.repeat(4000)
 const slowChunkCount = 10
 const slowChunkSize = slowStreamText.length / slowChunkCount
 
-export const slowStreamScript = withGenerationId('gen-15', Array.from(
-  { length: slowChunkCount },
-  (_, index) => {
+export const slowStreamScript = withGenerationId(
+  'gen-15',
+  Array.from({ length: slowChunkCount }, (_, index) => {
     const start = index * slowChunkSize
     const text = slowStreamText.slice(start, start + slowChunkSize)
     const last = index === slowChunkCount - 1
@@ -258,5 +258,5 @@ export const slowStreamScript = withGenerationId('gen-15', Array.from(
         last ? { usage: usage(0, false) } : {},
       ),
     }
-  },
-))
+  }),
+)

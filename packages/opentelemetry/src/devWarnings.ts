@@ -15,8 +15,8 @@ const readBundlerDev = (): boolean | undefined => {
 
 /**
  * Development when `NODE_ENV` is `development` or `test`. When `NODE_ENV` is
- * unset, follow the bundler's `import.meta.env.DEV`. `production`, and a
- * bundle where both signals are missing, stay quiet.
+ * unset, follow the bundler's `import.meta.env.DEV`. `production`, and a bundle
+ * where both signals are missing, stay quiet.
  */
 export const developmentFromSignals = (
   nodeEnv: string | undefined,

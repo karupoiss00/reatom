@@ -29,7 +29,9 @@ type ClassifiableFailure =
       contentReceived?: boolean
     })
 
-const context = (patch: Partial<ClassifiableContext> = {}): ClassifiableContext => ({
+const context = (
+  patch: Partial<ClassifiableContext> = {},
+): ClassifiableContext => ({
   modelId: 'anthropic/claude-sonnet-4.5',
   modelName: 'Claude Sonnet 4.5',
   provider: 'Anthropic',
@@ -94,7 +96,11 @@ type Row = {
 }
 
 const longer = [
-  { id: 'google/gemini-2.5-flash', name: 'Gemini 2.5 Flash', contextLength: 1_000_000 },
+  {
+    id: 'google/gemini-2.5-flash',
+    name: 'Gemini 2.5 Flash',
+    contextLength: 1_000_000,
+  },
   { id: 'openai/gpt-4o', name: 'GPT-4o', contextLength: 128_000 },
   { id: 'meta/llama-3.1-405b', name: 'Llama 3.1 405B', contextLength: 128_000 },
   { id: 'extra/fourth', name: 'Fourth', contextLength: 200_000 },
@@ -114,7 +120,7 @@ const rows: Row[] = [
     notice: false,
   },
   {
-    name: 'F-17 402 openrouter_credits: You\'re out of OpenRouter credits.',
+    name: "F-17 402 openrouter_credits: You're out of OpenRouter credits.",
     failure: http(
       402,
       wire('Insufficient credits', { limit_source: 'openrouter_credits' }, 402),
@@ -145,7 +151,11 @@ const rows: Row[] = [
     name: 'F-17 402 openrouter_in_flight_budget: Retry in 12s',
     failure: http(
       402,
-      wire('In-flight budget', { limit_source: 'openrouter_in_flight_budget' }, 402),
+      wire(
+        'In-flight budget',
+        { limit_source: 'openrouter_in_flight_budget' },
+        402,
+      ),
       { 'Retry-After': '12' },
     ),
     kind: 'in-flight-budget',
@@ -159,7 +169,11 @@ const rows: Row[] = [
     name: 'F-17 402 in-flight budget enables Retry at 0',
     failure: http(
       402,
-      wire('In-flight budget', { limitSource: 'openrouter_in_flight_budget' }, 402),
+      wire(
+        'In-flight budget',
+        { limitSource: 'openrouter_in_flight_budget' },
+        402,
+      ),
       { 'retry-after': '0' },
     ),
     kind: 'in-flight-budget',
@@ -195,7 +209,8 @@ const rows: Row[] = [
       ),
     ),
     kind: 'moderation',
-    title: "The request was blocked by Anthropic's moderation: violence, self-harm.",
+    title:
+      "The request was blocked by Anthropic's moderation: violence, self-harm.",
     sentence: '',
     primary: { id: 'edit-message', label: 'Edit message' },
     retryAfterSec: null,
@@ -294,14 +309,20 @@ const rows: Row[] = [
     sentence: '',
     primary: retry(true),
     secondary: [
-      { id: 'use-paid', label: 'Use paid version', modelId: 'meta/llama-3.1-8b' },
+      {
+        id: 'use-paid',
+        label: 'Use paid version',
+        modelId: 'meta/llama-3.1-8b',
+      },
     ],
     retryAfterSec: 23,
     notice: false,
   },
   {
     name: 'F-17b 502: model is unavailable, Try fallback, Retry-After honored',
-    failure: http(502, wire('Bad gateway', undefined, 502), { 'retry-after': '8' }),
+    failure: http(502, wire('Bad gateway', undefined, 502), {
+      'retry-after': '8',
+    }),
     context: {
       fallbackModel: { id: 'openai/gpt-4o-mini', name: 'GPT-4o mini' },
     },
@@ -366,7 +387,9 @@ const rows: Row[] = [
       label: 'Try GPT-4o mini',
       modelId: 'openai/gpt-4o-mini',
     },
-    secondary: [{ id: 'loosen-privacy', label: 'Loosen privacy for this chat' }],
+    secondary: [
+      { id: 'loosen-privacy', label: 'Loosen privacy for this chat' },
+    ],
     retryAfterSec: null,
     notice: false,
   },
@@ -405,14 +428,24 @@ const rows: Row[] = [
     name: 'F-17c context_length_exceeded',
     failure: http(
       400,
-      wire('Context length exceeded', { error_type: 'context_length_exceeded' }, 400),
+      wire(
+        'Context length exceeded',
+        { error_type: 'context_length_exceeded' },
+        400,
+      ),
     ),
     context: { longerContextModels: longer },
     kind: 'context-too-long',
-    title: 'This conversation is too long for Claude Sonnet 4.5 (≈210k of 128k tokens).',
+    title:
+      'This conversation is too long for Claude Sonnet 4.5 (≈210k of 128k tokens).',
     sentence: '',
-    primary: { id: 'switch-longer-context', label: 'Switch to a longer-context model' },
-    secondary: [{ id: 'new-chat-last-4', label: 'New chat with the last 4 messages' }],
+    primary: {
+      id: 'switch-longer-context',
+      label: 'Switch to a longer-context model',
+    },
+    secondary: [
+      { id: 'new-chat-last-4', label: 'New chat with the last 4 messages' },
+    ],
     suggestions: longer.slice(0, 3),
     retryAfterSec: null,
     notice: false,
@@ -424,14 +457,17 @@ const rows: Row[] = [
       wire('max tokens', { errorType: 'max_tokens_exceeded' }, 400),
     ),
     kind: 'context-too-long',
-    title: 'This conversation is too long for Claude Sonnet 4.5 (≈210k of 128k tokens).',
+    title:
+      'This conversation is too long for Claude Sonnet 4.5 (≈210k of 128k tokens).',
     sentence: '',
     primary: {
       id: 'switch-longer-context',
       label: 'No larger-context model available',
       disabled: true,
     },
-    secondary: [{ id: 'new-chat-last-4', label: 'New chat with the last 4 messages' }],
+    secondary: [
+      { id: 'new-chat-last-4', label: 'New chat with the last 4 messages' },
+    ],
     suggestions: [],
     retryAfterSec: null,
     notice: false,
@@ -441,14 +477,24 @@ const rows: Row[] = [
     failure: http(400, wire('token_limit_exceeded', undefined, 400)),
     context: {
       longerContextModels: [
-        { id: 'google/gemini-2.5-flash', name: 'Gemini 2.5 Flash', contextLength: 1_000_000 },
+        {
+          id: 'google/gemini-2.5-flash',
+          name: 'Gemini 2.5 Flash',
+          contextLength: 1_000_000,
+        },
       ],
     },
     kind: 'context-too-long',
-    title: 'This conversation is too long for Claude Sonnet 4.5 (≈210k of 128k tokens).',
+    title:
+      'This conversation is too long for Claude Sonnet 4.5 (≈210k of 128k tokens).',
     sentence: '',
-    primary: { id: 'switch-longer-context', label: 'Switch to a longer-context model' },
-    secondary: [{ id: 'new-chat-last-4', label: 'New chat with the last 4 messages' }],
+    primary: {
+      id: 'switch-longer-context',
+      label: 'Switch to a longer-context model',
+    },
+    secondary: [
+      { id: 'new-chat-last-4', label: 'New chat with the last 4 messages' },
+    ],
     suggestions: [
       {
         id: 'google/gemini-2.5-flash',
@@ -518,7 +564,10 @@ const rows: Row[] = [
   },
   {
     name: 'F-16 400 rejected parameter',
-    failure: http(400, wire('Unsupported parameter: temperature', undefined, 400)),
+    failure: http(
+      400,
+      wire('Unsupported parameter: temperature', undefined, 400),
+    ),
     kind: 'param-rejected',
     title: 'Claude Sonnet 4.5 rejected parameter temperature.',
     sentence: '',
@@ -527,16 +576,23 @@ const rows: Row[] = [
     notice: false,
   },
   {
-    name: 'F-21 Web search isn\'t available with zero data retention.',
+    name: "F-21 Web search isn't available with zero data retention.",
     failure: http(
       400,
-      wire('Web search cannot be used with zero data retention', undefined, 400),
+      wire(
+        'Web search cannot be used with zero data retention',
+        undefined,
+        400,
+      ),
     ),
     context: { webSearchOn: true, zdrOn: true },
     kind: 'web-search-zdr',
     title: "Web search isn't available with zero data retention.",
     sentence: '',
-    primary: { id: 'send-without-web-search', label: 'Send without web search' },
+    primary: {
+      id: 'send-without-web-search',
+      label: 'Send without web search',
+    },
     retryAfterSec: null,
     notice: false,
   },
@@ -645,7 +701,9 @@ const rows: Row[] = [
       'Claude Sonnet 4.5 used its whole token budget on thinking (3,900 reasoning tokens) and wrote no answer.',
     sentence: '',
     primary: { id: 'retry-lower-effort', label: 'Retry with lower effort' },
-    secondary: [{ id: 'retry-higher-max-tokens', label: 'Retry with higher max tokens' }],
+    secondary: [
+      { id: 'retry-higher-max-tokens', label: 'Retry with higher max tokens' },
+    ],
     retryAfterSec: null,
     notice: true,
   },
@@ -663,7 +721,10 @@ const rows: Row[] = [
     title:
       'Claude Sonnet 4.5 used its whole token budget on thinking (3,900 reasoning tokens) and wrote no answer.',
     sentence: '',
-    primary: { id: 'retry-higher-max-tokens', label: 'Retry with higher max tokens' },
+    primary: {
+      id: 'retry-higher-max-tokens',
+      label: 'Retry with higher max tokens',
+    },
     retryAfterSec: null,
     notice: true,
   },
@@ -758,7 +819,9 @@ const rows: Row[] = [
     title: 'GPT-4o mini is unavailable right now.',
     sentence: 'Your privacy or routing settings may exclude all providers.',
     primary: { id: 'pick-model', label: 'Pick another model' },
-    secondary: [{ id: 'loosen-privacy', label: 'Loosen privacy for this chat' }],
+    secondary: [
+      { id: 'loosen-privacy', label: 'Loosen privacy for this chat' },
+    ],
     retryAfterSec: null,
     notice: false,
   },
@@ -766,7 +829,11 @@ const rows: Row[] = [
     name: 'F-21 404 web search rejected under ZDR',
     failure: http(
       404,
-      wire('Web search cannot be used with zero data retention', undefined, 404),
+      wire(
+        'Web search cannot be used with zero data retention',
+        undefined,
+        404,
+      ),
     ),
     context: {
       modelId: 'openai/gpt-4o-mini',
@@ -778,7 +845,10 @@ const rows: Row[] = [
     kind: 'web-search-zdr',
     title: "Web search isn't available with zero data retention.",
     sentence: '',
-    primary: { id: 'send-without-web-search', label: 'Send without web search' },
+    primary: {
+      id: 'send-without-web-search',
+      label: 'Send without web search',
+    },
     retryAfterSec: null,
     notice: false,
   },
@@ -885,7 +955,8 @@ test.each(rows)('$name', (row) => {
   expect(info.notice).toBe(row.notice)
   expect(info.secondary).toEqual(row.secondary ?? [])
   if (row.flaggedInput) expect(info.flaggedInput).toBe(row.flaggedInput)
-  if (row.suggestions !== undefined) expect(info.suggestions).toEqual(row.suggestions)
+  if (row.suggestions !== undefined)
+    expect(info.suggestions).toEqual(row.suggestions)
   expect(info.sentence).not.toBe('Provider returned error')
   expect(info.title).not.toBe('Provider returned error')
   const actionIds = [info.primary, ...info.secondary].flatMap((action) =>
@@ -929,7 +1000,10 @@ test('F-17 429 without a daily-cap signal quotes the raw message in Details', ()
 
 test('F-17 moderation with only flagged_input still edits and does not retry', () => {
   const info = classifyFailure(
-    http(403, wire('blocked', { flaggedInput: 'excerpt under 100 chars' }, 403)),
+    http(
+      403,
+      wire('blocked', { flaggedInput: 'excerpt under 100 chars' }, 403),
+    ),
     context({ provider: null }),
   )
   expect(info?.kind).toBe('moderation')
@@ -1035,14 +1109,19 @@ test('fromSdkError maps SDKValidationError raw limit_source to the key-limit car
   expect(failure).toMatchObject({
     source: 'stream-error',
     code: 402,
-    metadata: { limit_source: 'openrouter_key_limit', provider_name: 'Anthropic' },
+    metadata: {
+      limit_source: 'openrouter_key_limit',
+      provider_name: 'Anthropic',
+    },
   })
   const info = classifyFailure(
     failure as ClassifiableFailure,
     context({ keyLimit: { limit: 10, reset: 'monthly' } }),
   )
   expect(info?.kind).toBe('key-limit')
-  expect(info?.title).toBe('This key reached its spending limit ($10.00, resets monthly).')
+  expect(info?.title).toBe(
+    'This key reached its spending limit ($10.00, resets monthly).',
+  )
   expect(info?.sentence).toBe('')
 })
 
@@ -1065,8 +1144,10 @@ test('fromStreamErrorChunk reads snake_case limit_source from a raw error-only c
   })
   if (!failure || failure.source !== 'stream-error') return
   expect(
-    classifyFailure(failure, context({ keyLimit: { limit: 10, reset: 'monthly' } }))
-      ?.kind,
+    classifyFailure(
+      failure,
+      context({ keyLimit: { limit: 10, reset: 'monthly' } }),
+    )?.kind,
   ).toBe('key-limit')
 })
 
@@ -1077,7 +1158,9 @@ test('fromSdkError converts Retry-After HTTP-dates to seconds and leaves integer
     const future = fromSdkError(
       new OpenRouterError('rate', {
         response: new Response(
-          JSON.stringify({ error: { code: 429, message: 'Rate limit exceeded' } }),
+          JSON.stringify({
+            error: { code: 429, message: 'Rate limit exceeded' },
+          }),
           {
             status: 429,
             headers: { 'retry-after': 'Mon, 05 Oct 2026 12:00:12 GMT' },
@@ -1086,13 +1169,17 @@ test('fromSdkError converts Retry-After HTTP-dates to seconds and leaves integer
         request: new Request('https://openrouter.ai/api/v1/chat/completions', {
           method: 'POST',
         }),
-        body: JSON.stringify({ error: { code: 429, message: 'Rate limit exceeded' } }),
+        body: JSON.stringify({
+          error: { code: 429, message: 'Rate limit exceeded' },
+        }),
       }),
     )
     const past = fromSdkError(
       new OpenRouterError('rate', {
         response: new Response(
-          JSON.stringify({ error: { code: 429, message: 'Rate limit exceeded' } }),
+          JSON.stringify({
+            error: { code: 429, message: 'Rate limit exceeded' },
+          }),
           {
             status: 429,
             headers: { 'retry-after': 'Mon, 05 Oct 2026 11:00:00 GMT' },
@@ -1101,24 +1188,39 @@ test('fromSdkError converts Retry-After HTTP-dates to seconds and leaves integer
         request: new Request('https://openrouter.ai/api/v1/chat/completions', {
           method: 'POST',
         }),
-        body: JSON.stringify({ error: { code: 429, message: 'Rate limit exceeded' } }),
+        body: JSON.stringify({
+          error: { code: 429, message: 'Rate limit exceeded' },
+        }),
       }),
     )
     const integer = fromSdkError(
       new OpenRouterError('rate', {
         response: new Response(
-          JSON.stringify({ error: { code: 429, message: 'Rate limit exceeded' } }),
+          JSON.stringify({
+            error: { code: 429, message: 'Rate limit exceeded' },
+          }),
           { status: 429, headers: { 'retry-after': '23' } },
         ),
         request: new Request('https://openrouter.ai/api/v1/chat/completions', {
           method: 'POST',
         }),
-        body: JSON.stringify({ error: { code: 429, message: 'Rate limit exceeded' } }),
+        body: JSON.stringify({
+          error: { code: 429, message: 'Rate limit exceeded' },
+        }),
       }),
     )
-    expect(future).toMatchObject({ source: 'http', headers: { 'retry-after': '12' } })
-    expect(past).toMatchObject({ source: 'http', headers: { 'retry-after': '0' } })
-    expect(integer).toMatchObject({ source: 'http', headers: { 'retry-after': '23' } })
+    expect(future).toMatchObject({
+      source: 'http',
+      headers: { 'retry-after': '12' },
+    })
+    expect(past).toMatchObject({
+      source: 'http',
+      headers: { 'retry-after': '0' },
+    })
+    expect(integer).toMatchObject({
+      source: 'http',
+      headers: { 'retry-after': '23' },
+    })
     if (future === 'aborted' || future.source !== 'http') return
     if (past === 'aborted' || past.source !== 'http') return
     expect(classifyFailure(future, context())).toMatchObject({
@@ -1139,7 +1241,9 @@ test('fromSdkError converts Retry-After HTTP-dates to seconds and leaves integer
 })
 
 test('OpenRouterDefaultError statusCode 504 is the timeout card', () => {
-  const body = JSON.stringify({ error: { code: 504, message: 'Gateway timeout' } })
+  const body = JSON.stringify({
+    error: { code: 504, message: 'Gateway timeout' },
+  })
   const failure = fromSdkError(
     new OpenRouterDefaultError('Gateway timeout', {
       response: new Response(body, { status: 504 }),

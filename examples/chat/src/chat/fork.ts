@@ -86,13 +86,16 @@ export const forkChat = action(
         copyMessage(message, {
           id,
           chatId: forkedId,
-          parentId: message.parentId ? (idMap.get(message.parentId) ?? null) : null,
+          parentId: message.parentId
+            ? (idMap.get(message.parentId) ?? null)
+            : null,
         }),
       )
     }
 
     const selection: Record<string, MessageId> = {}
-    for (const message of copies) selection[selectionKeyOf(message)] = message.id
+    for (const message of copies)
+      selection[selectionKeyOf(message)] = message.id
     const forked = createChatRecord({
       id: forkedId,
       at,

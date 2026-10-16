@@ -91,11 +91,11 @@ with an explicit schema/checker change when a concrete check needs them.
 
 ## Section templates
 
-| Group | Suggested H2 headings |
-| --- | --- |
+| Group     | Suggested H2 headings                                                         |
+| --------- | ----------------------------------------------------------------------------- |
 | component | When to use; When not to use; Public API; Behaviour and states; Accessibility |
-| layout | When to use; When not to use; Public API; Composition; Accessibility |
-| pattern | When to use; When not to use; Structure; Composition; Verification |
+| layout    | When to use; When not to use; Public API; Composition; Accessibility          |
+| pattern   | When to use; When not to use; Structure; Composition; Verification            |
 
 The checker validates metadata, nonempty included sections, paths, links and source
 hashes. It does not assess whether omitted topics are inapplicable or whether selection

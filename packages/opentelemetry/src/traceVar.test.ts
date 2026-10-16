@@ -62,7 +62,6 @@ test('await wrap(Promise.resolve()) keeps the child action on the parent trace',
     const childSpan = span(spans, 'wrapped.child')
     expect(childSpan.traceId).toBe(parentSpan.traceId)
     expect(childSpan.parentSpanId).toBe(parentSpan.spanId)
-
   } finally {
     otel.dispose()
   }

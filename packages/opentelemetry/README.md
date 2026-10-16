@@ -79,11 +79,11 @@ bundle with neither signal stay quiet.
 
 ## Entries
 
-| Import | What |
-| --- | --- |
-| `@reatom/opentelemetry` | `reatomOpentelemetry` |
-| `@reatom/opentelemetry/web-analytics` | `connectWebAnalytics` |
-| `@reatom/opentelemetry/gdpr` | `reatomGDPR` consent form |
+| Import                                | What                      |
+| ------------------------------------- | ------------------------- |
+| `@reatom/opentelemetry`               | `reatomOpentelemetry`     |
+| `@reatom/opentelemetry/web-analytics` | `connectWebAnalytics`     |
+| `@reatom/opentelemetry/gdpr`          | `reatomGDPR` consent form |
 
 Omitted consent is `false`. Analytics stores nothing and sends nothing before
 the visitor **submits** a choice. `submit()` writes `consent` and does not

@@ -5,10 +5,7 @@
 // https://opentelemetry.io/docs/specs/otlp/#otlphttp-request
 export type OtlpHttpSignal = 'traces' | 'logs'
 
-export const signalUrl = (
-  endpoint: string,
-  signal: OtlpHttpSignal,
-): string => {
+export const signalUrl = (endpoint: string, signal: OtlpHttpSignal): string => {
   const url = new URL(endpoint)
   url.pathname = url.pathname.replace(/\/$/, '') + `/v1/${signal}`
   return url.toString()

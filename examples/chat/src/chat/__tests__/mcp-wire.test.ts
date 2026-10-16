@@ -29,7 +29,9 @@ describe('F-32 Fusion unreachable', () => {
     }
     expect(toolError.role).toBe('tool')
     expect(String(toolError.content)).toContain('Reconnect')
-    expect(String(toolError.content)).toContain('enable the Fusion MCP checkbox')
+    expect(String(toolError.content)).toContain(
+      'enable the Fusion MCP checkbox',
+    )
   })
 })
 
@@ -40,7 +42,9 @@ describe('F-35 First Fusion ask, not connected', () => {
       content: 'Paste http://127.0.0.1:27182/mcp from Fusion Preferences.',
     }
     expect(ordinary.role).toBe('assistant')
-    expect('toolCalls' in ordinary ? ordinary.toolCalls : undefined).toBeUndefined()
+    expect(
+      'toolCalls' in ordinary ? ordinary.toolCalls : undefined,
+    ).toBeUndefined()
   })
 })
 

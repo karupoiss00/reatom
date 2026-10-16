@@ -225,7 +225,8 @@ export const cubeDeniedFollowUpScript = [
         {
           index: 0,
           delta: {
-            content: 'I did not run that Fusion execute. Want to try another way?',
+            content:
+              'I did not run that Fusion execute. Want to try another way?',
           },
           finish_reason: 'stop' as const,
         },

@@ -1,7 +1,4 @@
-import {
-  isAdminPanelCorner,
-  type AdminPanelCorner,
-} from './settings'
+import { isAdminPanelCorner, type AdminPanelCorner } from './settings'
 
 export interface ResizeOrigin {
   anchorRight: boolean

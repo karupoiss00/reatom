@@ -4,12 +4,7 @@ import type { MessageId } from '../storage/types'
 import { openLayerCount as primitiveLayerCount } from '../ui'
 
 export type AppSettingsSection =
-  | 'account'
-  | 'appearance'
-  | 'data'
-  | 'privacy'
-  | 'keyboard'
-  | 'mcp'
+  'account' | 'appearance' | 'data' | 'privacy' | 'keyboard' | 'mcp'
 export const appSettingsSectionIds = [
   'account',
   'appearance',

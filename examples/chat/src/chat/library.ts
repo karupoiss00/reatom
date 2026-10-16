@@ -194,10 +194,7 @@ export const chatsTombstoned = action(
   'chat.library.chatsTombstoned',
 )
 
-export const chatPurged = action(
-  (id: ChatId) => id,
-  'chat.library.chatPurged',
-)
+export const chatPurged = action((id: ChatId) => id, 'chat.library.chatPurged')
 
 const pendingPurges = new Map<
   ChatId,

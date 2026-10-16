@@ -13,16 +13,16 @@ How should `@reatom/opentelemetry` head-sample, honor the W3C sampled flag, and 
 
 Keep the 06 fallback. Do not wait for more research.
 
-| Default | Value | Why |
-| --- | --- | --- |
-| Sampler | `ParentBased` | OTel SDK default. Honors parent `SampledFlag`. |
-| Root | AlwaysOn (`ratio: 1`) | Spec principle: more traces, not fewer. Matches `OTEL_TRACES_SAMPLER=parentbased_always_on`. |
-| Ratio `< 1` | `ParentBased(root = TraceIdRatioBased(ratio))` only | Bare `TraceIdRatioBased` **MUST NOT** be used. |
-| `by` | `'trace'` | One decision per `traceId`. `'session'` is opt-in, still ParentBased. |
-| `errors` | `'always'` | Ring-buffer unsampled traces; export on exception. Cheap no-op at ratio 1. |
-| Baggage | off | Do not emit, parse, or default tenant/flag/tier into `baggage`. |
-| Sampled flag | bitwise AND `0x01` | `01` and `03` are both sampled. Equality on `"01"` is wrong. |
-| Outgoing `traceparent` | `…-01` if sampled, `…-00` if not | Server ParentBased follows this bit. |
+| Default                | Value                                               | Why                                                                                          |
+| ---------------------- | --------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Sampler                | `ParentBased`                                       | OTel SDK default. Honors parent `SampledFlag`.                                               |
+| Root                   | AlwaysOn (`ratio: 1`)                               | Spec principle: more traces, not fewer. Matches `OTEL_TRACES_SAMPLER=parentbased_always_on`. |
+| Ratio `< 1`            | `ParentBased(root = TraceIdRatioBased(ratio))` only | Bare `TraceIdRatioBased` **MUST NOT** be used.                                               |
+| `by`                   | `'trace'`                                           | One decision per `traceId`. `'session'` is opt-in, still ParentBased.                        |
+| `errors`               | `'always'`                                          | Ring-buffer unsampled traces; export on exception. Cheap no-op at ratio 1.                   |
+| Baggage                | off                                                 | Do not emit, parse, or default tenant/flag/tier into `baggage`.                              |
+| Sampled flag           | bitwise AND `0x01`                                  | `01` and `03` are both sampled. Equality on `"01"` is wrong.                                 |
+| Outgoing `traceparent` | `…-01` if sampled, `…-00` if not                    | Server ParentBased follows this bit.                                                         |
 
 Never recommend, document, or copy the JS language-docs snippet that constructs a bare `TraceIdRatioBasedSampler` on `WebTracerProvider`. That sampler **MUST ignore** the parent `SampledFlag` by spec, so a remote `00` parent can still be sampled and a remote `01` parent can still be dropped. That splits the distributed trace.
 
@@ -38,22 +38,22 @@ W3C `traceparent` is `version-trace-id-parent-id-trace-flags`. `trace-flags` is 
 
 OTel SDK sampling is two bits, not one:
 
-| `IsRecording` | `SampledFlag` | Processor | Exporter | Allowed |
-| --- | --- | --- | --- | --- |
-| true | true | yes | yes | `RECORD_AND_SAMPLE` |
-| true | false | yes | no | `RECORD_ONLY` (local sink / admin) |
-| false | true | — | — | **forbidden** (gaps in the trace) |
-| false | false | no | no | `DROP` |
+| `IsRecording` | `SampledFlag` | Processor | Exporter | Allowed                            |
+| ------------- | ------------- | --------- | -------- | ---------------------------------- |
+| true          | true          | yes       | yes      | `RECORD_AND_SAMPLE`                |
+| true          | false         | yes       | no       | `RECORD_ONLY` (local sink / admin) |
+| false         | true          | —         | —        | **forbidden** (gaps in the trace)  |
+| false         | false         | no        | no       | `DROP`                             |
 
 `ParentBased` is a decorator. Built-in defaults:
 
-| Parent | Remote | Sampled | Delegate (default) |
-| --- | --- | --- | --- |
-| absent (root) | — | — | `root()` |
-| present | yes | yes | AlwaysOn |
-| present | yes | no | AlwaysOff |
-| present | no | yes | AlwaysOn |
-| present | no | no | AlwaysOff |
+| Parent        | Remote | Sampled | Delegate (default) |
+| ------------- | ------ | ------- | ------------------ |
+| absent (root) | —      | —       | `root()`           |
+| present       | yes    | yes     | AlwaysOn           |
+| present       | yes    | no      | AlwaysOff          |
+| present       | no     | yes     | AlwaysOn           |
+| present       | no     | no      | AlwaysOff          |
 
 SDK default sampler is `ParentBased(root=AlwaysOn)`. Reatom's `sampling.ratio: 1` is that sampler. `sampling.ratio: 0.1` must be `ParentBased(root=TraceIdRatioBased(0.1))`, not a standalone ratio sampler.
 
@@ -152,7 +152,7 @@ Shared:
 
 **SigNoz.** Browser docs: OTLP/HTTP JSON to the collector, CORS on the receiver, `propagateTraceHeaderCorsUrls` for API `traceparent`. Cost-control docs recommend `OTEL_TRACES_SAMPLER=parentbased_traceidratio` (ParentBased wrapping a ratio), plus collector `tail_sampling` that keeps ERROR, slow, and a small rest. ClickHouse table `distributed_signoz_index_v3` stores `flags UInt32`, `trace_id FixedString(32)`, `has_error`, `is_remote`. Empty flags are legal but then `flags & 1` cannot distinguish sampled. Do not put tenant/flag/tier in baggage; they belong in attributes maps SigNoz already indexes.
 
-**ClickHouse (contrib `clickhouseexporter`).** `otel_traces` is keyed by `Timestamp`, `TraceId`, `SpanId`, `ParentSpanId`, `TraceState`, `StatusCode`. The traces table has **no `TraceFlags` column** (logs *do* have `TraceFlags UInt32`). ClickHouse will not filter on the sampled bit at ingest; the collector must drop first. Expect hex ids, stable `TraceId` across client and server spans, `StatusCode = ERROR` on failed spans (for SQL and for tail `status_code` policies), and links arrays for variant-3 cause links. Browser producers should still set OTLP `flags` so a later schema or SigNoz-style view can read them.
+**ClickHouse (contrib `clickhouseexporter`).** `otel_traces` is keyed by `Timestamp`, `TraceId`, `SpanId`, `ParentSpanId`, `TraceState`, `StatusCode`. The traces table has **no `TraceFlags` column** (logs _do_ have `TraceFlags UInt32`). ClickHouse will not filter on the sampled bit at ingest; the collector must drop first. Expect hex ids, stable `TraceId` across client and server spans, `StatusCode = ERROR` on failed spans (for SQL and for tail `status_code` policies), and links arrays for variant-3 cause links. Browser producers should still set OTLP `flags` so a later schema or SigNoz-style view can read them.
 
 Recommended collector recipe (docs / OT-15), ratio 1 in the browser:
 
@@ -198,12 +198,12 @@ W3C costs:
 
 Use cases that look like baggage, and the spec 02 primitive that already covers them:
 
-| Want | Put it in | Not in |
-| --- | --- | --- |
-| Tenant after login | `otel.options.set({ attributes: { 'tenant.id': … } })` | resource (changes during the page), baggage |
-| Per-subtree scenario | `attributesVar.run({ … }, …)` | baggage |
-| Experiment exposure | `feature_flag.evaluation` event (schema 05, А13) | baggage |
-| Sampling probability | W3C `tracestate` `ot=th:…` (future; not v2 default) | baggage |
+| Want                 | Put it in                                              | Not in                                      |
+| -------------------- | ------------------------------------------------------ | ------------------------------------------- |
+| Tenant after login   | `otel.options.set({ attributes: { 'tenant.id': … } })` | resource (changes during the page), baggage |
+| Per-subtree scenario | `attributesVar.run({ … }, …)`                          | baggage                                     |
+| Experiment exposure  | `feature_flag.evaluation` event (schema 05, А13)       | baggage                                     |
+| Sampling probability | W3C `tracestate` `ot=th:…` (future; not v2 default)    | baggage                                     |
 
 An opt-in baggage helper can wait. If it ships, it is explicit (`headers: { baggage: … }` or a lazy module), origin-allowlisted like `patch-fetch`, and documented as a CORS + privacy footgun. No default keys.
 

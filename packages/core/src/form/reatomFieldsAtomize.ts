@@ -61,9 +61,7 @@ export type FieldsAtomizeInitState =
  */
 export type FieldsAtomizeInitStateRecord = {
   [fieldKey: string]:
-    | FieldsAtomizeInitState
-    | FieldLikeAtom
-    | Array<FieldsAtomizeInitState>
+    FieldsAtomizeInitState | FieldLikeAtom | Array<FieldsAtomizeInitState>
 }
 
 /**

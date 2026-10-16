@@ -38,17 +38,17 @@ analytics.otel.traceVar
 
 Options beyond the ones above, all with defaults:
 
-| Option | Default | Meaning |
-| --- | --- | --- |
-| `autoPageViews` | `true` | Record page views on start and URL change |
-| `errors` | `true` | Listen to `error` and `unhandledrejection` |
-| `persistVisitor` | `true` | `false` keeps the visitor id in memory for the session only |
-| `captureQuery` | `false` | Record the full URL with query and fragment, as in the prototype |
-| `captureErrorDetails` | `false` | `true` adds the scrubbed message and stack, after consent only. Off by default because messages often carry emails and ids (О19, doc 11) |
-| `navigation` | see Page and navigation | `'urlAtom'`, `'navigation-api'` or `'popstate'` |
-| `storageKey` | from the instance `name` | Storage namespace. doc 11 used `serviceName`; `name` is unique per instance, so widgets stay isolated |
-| `rateLimit` | see Sampling | Per-event-name and per-error-signature limits |
-| `sessionTimeout`, `perTab`, `rotateAtMidnight`, `attributionParams` | see Identity | Session and attribution settings |
+| Option                                                              | Default                  | Meaning                                                                                                                                  |
+| ------------------------------------------------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `autoPageViews`                                                     | `true`                   | Record page views on start and URL change                                                                                                |
+| `errors`                                                            | `true`                   | Listen to `error` and `unhandledrejection`                                                                                               |
+| `persistVisitor`                                                    | `true`                   | `false` keeps the visitor id in memory for the session only                                                                              |
+| `captureQuery`                                                      | `false`                  | Record the full URL with query and fragment, as in the prototype                                                                         |
+| `captureErrorDetails`                                               | `false`                  | `true` adds the scrubbed message and stack, after consent only. Off by default because messages often carry emails and ids (О19, doc 11) |
+| `navigation`                                                        | see Page and navigation  | `'urlAtom'`, `'navigation-api'` or `'popstate'`                                                                                          |
+| `storageKey`                                                        | from the instance `name` | Storage namespace. doc 11 used `serviceName`; `name` is unique per instance, so widgets stay isolated                                    |
+| `rateLimit`                                                         | see Sampling             | Per-event-name and per-error-signature limits                                                                                            |
+| `sessionTimeout`, `perTab`, `rotateAtMidnight`, `attributionParams` | see Identity             | Session and attribution settings                                                                                                         |
 
 It returns a Reatom model, not a tracking API:
 
@@ -76,12 +76,12 @@ interface WebAnalytics {
 
 Research R9 (А4, А7) ranks candidate automatic events by value per byte. This is the starting ranking:
 
-| Tier | Contents | Where |
-| --- | --- | --- |
-| 0 (base, ≤ ~3 KB) | page view on start and URL change, session start/rotation, visitor id, UTM, referrer and click-id attribution, engagement time on page, visibility change as a flush point, online/offline, `window.onerror` and `unhandledrejection` with dedup, viewport and screen, consent gating | `web-analytics` |
+| Tier               | Contents                                                                                                                                                                                                                                                                                    | Where                    |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ |
+| 0 (base, ≤ ~3 KB)  | page view on start and URL change, session start/rotation, visitor id, UTM, referrer and click-id attribution, engagement time on page, visibility change as a flush point, online/offline, `window.onerror` and `unhandledrejection` with dedup, viewport and screen, consent gating       | `web-analytics`          |
 | 1 (opt-in modules) | web-vitals adapter (the library is passed in from outside), scroll depth, outbound link and download clicks, form submit, rage clicks, long tasks, light diagnostic breadcrumbs (#1272), experiment exposure (А13: "yes", so it is wanted, and only the byte budget keeps it out of tier 0) | `web-analytics/<module>` |
-| 2 (opt-in modules) | e-commerce schema (product view, cart, purchase, GA4-like), opt-in monkeypatch modules | `web-analytics/<module>` |
-| docs only | forwarding to GA4 / Metrika via Measurement Protocol, ready-made Grafana/ClickHouse dashboards | docs (А23, А24) |
+| 2 (opt-in modules) | e-commerce schema (product view, cart, purchase, GA4-like), opt-in monkeypatch modules                                                                                                                                                                                                      | `web-analytics/<module>` |
+| docs only          | forwarding to GA4 / Metrika via Measurement Protocol, ready-made Grafana/ClickHouse dashboards                                                                                                                                                                                              | docs (А23, А24)          |
 
 The CI gate is a `size-limit` entry `web-analytics (over opentelemetry)` measured as the delta against the tracer entry. A PR that grows tier 0 past the budget must move something to a module.
 
@@ -176,18 +176,18 @@ The browser is the target. Under SSR, React Native, workers and extensions the p
 
 ## Implementation steps
 
-| ID | Step | Depends on | Acceptance |
-| --- | --- | --- | --- |
-| WA-1 | Skeleton on the instance's logs pipeline; `visibilityAtom`, `onLineAtom` and `urlAtom` from core; no own transport | OT-4, OT-12, C0 | The e2e shop scenario (test 1) passes through the official collector |
-| WA-2 | Page view as a watershed + trace context rules | OT-6, OT-7 | Page view opens or joins the route trace, and events attach to it |
-| WA-3 | Visitor, session, attribution with configurable storage | WA-1 | Session rotation, cross-tab sharing, first and last touch |
-| WA-4 | Consent gating + pre-consent mode | OT-13; informed by R11 | `consent` false means zero storage writes. Categories toggle event groups synchronously |
-| WA-5 | Errors + dedup + tracer overlap | OT-8 | 100 identical errors give 10 records plus a suppressed summary |
-| WA-6 | Engagement (visible and active) | WA-1; informed by R9 | Engagement is flushed on page change and on hide |
-| WA-7 | `size-limit` gate for tier 0 | WA-1…6 | Delta ≤ ~3 KB brotli, or items moved to modules |
-| WA-8 | Modules: web-vitals, scroll depth, outbound clicks, forms, rage clicks, long tasks, breadcrumbs, experiments | WA-7; informed by R12, R2 | Each module has its own size entry and a test |
-| WA-9 | Modules: e-commerce schema, opt-in monkeypatch modules (`history`, `fetch` timing) | WA-7; informed by R2 | Schema documented in 05. Monkeypatch modules are removable and cost nothing when not imported |
-| WA-10 | Docs: install without Reatom in the app, catalog, name rules, consent recipe and the GDPR/152-ФЗ guide, GA4/Metrika forwarding recipe through the app's own endpoint (docs only), web-vitals to p75 recipe, example ClickHouse SQL for daily uniques, top pages, sources | all | Docs-site pages |
+| ID    | Step                                                                                                                                                                                                                                                                     | Depends on                | Acceptance                                                                                    |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------- | --------------------------------------------------------------------------------------------- |
+| WA-1  | Skeleton on the instance's logs pipeline; `visibilityAtom`, `onLineAtom` and `urlAtom` from core; no own transport                                                                                                                                                       | OT-4, OT-12, C0           | The e2e shop scenario (test 1) passes through the official collector                          |
+| WA-2  | Page view as a watershed + trace context rules                                                                                                                                                                                                                           | OT-6, OT-7                | Page view opens or joins the route trace, and events attach to it                             |
+| WA-3  | Visitor, session, attribution with configurable storage                                                                                                                                                                                                                  | WA-1                      | Session rotation, cross-tab sharing, first and last touch                                     |
+| WA-4  | Consent gating + pre-consent mode                                                                                                                                                                                                                                        | OT-13; informed by R11    | `consent` false means zero storage writes. Categories toggle event groups synchronously       |
+| WA-5  | Errors + dedup + tracer overlap                                                                                                                                                                                                                                          | OT-8                      | 100 identical errors give 10 records plus a suppressed summary                                |
+| WA-6  | Engagement (visible and active)                                                                                                                                                                                                                                          | WA-1; informed by R9      | Engagement is flushed on page change and on hide                                              |
+| WA-7  | `size-limit` gate for tier 0                                                                                                                                                                                                                                             | WA-1…6                    | Delta ≤ ~3 KB brotli, or items moved to modules                                               |
+| WA-8  | Modules: web-vitals, scroll depth, outbound clicks, forms, rage clicks, long tasks, breadcrumbs, experiments                                                                                                                                                             | WA-7; informed by R12, R2 | Each module has its own size entry and a test                                                 |
+| WA-9  | Modules: e-commerce schema, opt-in monkeypatch modules (`history`, `fetch` timing)                                                                                                                                                                                       | WA-7; informed by R2      | Schema documented in 05. Monkeypatch modules are removable and cost nothing when not imported |
+| WA-10 | Docs: install without Reatom in the app, catalog, name rules, consent recipe and the GDPR/152-ФЗ guide, GA4/Metrika forwarding recipe through the app's own endpoint (docs only), web-vitals to p75 recipe, example ClickHouse SQL for daily uniques, top pages, sources | all                       | Docs-site pages                                                                               |
 
 ## Tests
 

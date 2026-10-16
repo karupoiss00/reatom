@@ -108,8 +108,7 @@ export const vocab: Vocab = {
     mount: 'Система / байонет',
     identityOnly: 'совпали только оптические данные',
     loadingProduction: 'Каталог загружается…',
-    noMatch: (count: number) =>
-      `Близкого объектива нет. В каталоге ${count}.`,
+    noMatch: (count: number) => `Близкого объектива нет. В каталоге ${count}.`,
     closeMatches: (matches: number, loaded: number) =>
       `${matches} близких, загружено ${loaded}`,
     catalogFoot: (count: number) =>

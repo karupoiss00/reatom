@@ -79,7 +79,8 @@ export const isCatalogModel = (value: unknown): value is CatalogModel => {
     typeof model.isFree === 'boolean' &&
     Array.isArray(model.inputModalities) &&
     Array.isArray(model.supportedParameters) &&
-    (model.supportedEfforts === null || Array.isArray(model.supportedEfforts)) &&
+    (model.supportedEfforts === null ||
+      Array.isArray(model.supportedEfforts)) &&
     (model.maxCompletionTokens === null ||
       readFinite(model.maxCompletionTokens) !== null) &&
     typeof model.isModerated === 'boolean' &&
@@ -91,7 +92,8 @@ export const isCatalogModel = (value: unknown): value is CatalogModel => {
 }
 
 const readCreatedMs = (value: unknown): number | null => {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return null
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0)
+    return null
   const milliseconds = value < 1e11 ? value * 1000 : value
   return Math.round(milliseconds)
 }
@@ -114,8 +116,7 @@ export const normalizeModel = (wire: unknown): CatalogModel | null => {
   const webValue = webText === '' ? Number.NaN : Number(webText)
 
   const architecture = asRecord(readField(record, 'architecture')) ?? {}
-  const top =
-    asRecord(readField(record, 'topProvider', 'top_provider')) ?? {}
+  const top = asRecord(readField(record, 'topProvider', 'top_provider')) ?? {}
   const reasoning = asRecord(readField(record, 'reasoning'))
   const supportedParameters = readStringList(
     readField(record, 'supportedParameters', 'supported_parameters'),
@@ -142,8 +143,7 @@ export const normalizeModel = (wire: unknown): CatalogModel | null => {
     supportedParameters,
     supportedEfforts,
     maxCompletionTokens: readFinite(maxRaw),
-    isModerated:
-      readField(top, 'isModerated', 'is_moderated') === true,
+    isModerated: readField(top, 'isModerated', 'is_moderated') === true,
     isReasoning:
       reasoning !== null ||
       supportedParameters.includes('reasoning') ||

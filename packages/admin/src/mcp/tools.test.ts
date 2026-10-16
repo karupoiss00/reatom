@@ -66,7 +66,12 @@ function ingest(
 
 test('summary counts traces, names, errors, and the time range', () => {
   const { admin, mcp } = createMcp()
-  ingest(admin, [explodingSpan, exceptionJoin.log, atomUpdate.span, atomUpdate.log])
+  ingest(admin, [
+    explodingSpan,
+    exceptionJoin.log,
+    atomUpdate.span,
+    atomUpdate.log,
+  ])
 
   const result = mcp.summary()
   expect(result.ok).toBe(true)
@@ -84,7 +89,12 @@ test('summary counts traces, names, errors, and the time range', () => {
 
 test('typed filter uses store indexes and hasError / query / kind', () => {
   const { admin, mcp } = createMcp()
-  ingest(admin, [explodingSpan, exceptionJoin.log, atomUpdate.span, atomUpdate.log])
+  ingest(admin, [
+    explodingSpan,
+    exceptionJoin.log,
+    atomUpdate.span,
+    atomUpdate.log,
+  ])
 
   const errors = mcp.search({ filter: { hasError: true } })
   expect(errors.ok).toBe(true)
@@ -152,7 +162,12 @@ test('highlight mode flags matching search rows and listTraces', () => {
 
 test('listTraces pages matching traces and keeps domain attributes on search', () => {
   const { admin, mcp } = createMcp()
-  ingest(admin, [explodingSpan, exceptionJoin.log, atomUpdate.span, atomUpdate.log])
+  ingest(admin, [
+    explodingSpan,
+    exceptionJoin.log,
+    atomUpdate.span,
+    atomUpdate.log,
+  ])
 
   const listed = mcp.listTraces({
     filter: { hasError: true },
@@ -212,7 +227,12 @@ test('missing trace, record, and state path return a structured miss', () => {
 
 test('getRecord resolves cause ids to names and keeps reatom.* / app.*', () => {
   const { admin, mcp } = createMcp()
-  ingest(admin, [explodingSpan, exceptionJoin.log, atomUpdate.span, atomUpdate.log])
+  ingest(admin, [
+    explodingSpan,
+    exceptionJoin.log,
+    atomUpdate.span,
+    atomUpdate.log,
+  ])
 
   const checked = mcp.search({ filter: { query: 'tree.checked' } })
   expect(checked.ok).toBe(true)
@@ -281,7 +301,9 @@ test('a large synthetic batch truncates with nextCursor and the next page contin
     traceId: `t${index.toString().padStart(31, '0')}`,
     spanId: `s${index.toString().padStart(15, '0')}`,
     name: `synth.action.${index}`,
-    startTimeUnixNano: String(1761000000000000000n + BigInt(index) * 1_000_000n),
+    startTimeUnixNano: String(
+      1761000000000000000n + BigInt(index) * 1_000_000n,
+    ),
     endTimeUnixNano: String(1761000000001000000n + BigInt(index) * 1_000_000n),
     attributes: {
       'reatom.name': `synth.action.${index}`,
@@ -465,7 +487,11 @@ test('many app.* keys stay present under the byte cap with ids intact', () => {
   const { mcp, stored, traceId, spanId, count } = ingestManyAppKeys(1500)
   expect(stored.id.startsWith('local:')).toBe(true)
 
-  const assertIdentity = (id: string, foundTraceId: string, foundSpanId: string) => {
+  const assertIdentity = (
+    id: string,
+    foundTraceId: string,
+    foundSpanId: string,
+  ) => {
     expect(id).toBe(stored.id)
     expect(id).not.toMatch(/…/)
     expect(foundTraceId).toBe(traceId)
@@ -701,4 +727,3 @@ test('MCP output does not include live local values', () => {
   expect(JSON.stringify(mcp.search())).not.toContain(secret)
   expect(JSON.stringify(mcp.getState())).not.toContain(secret)
 })
-

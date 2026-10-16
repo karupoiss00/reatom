@@ -20,10 +20,10 @@ export interface RailLayoutNode extends RailInputNode {
 }
 
 /**
- * `straight` stays in one lane. `branch` leaves the parent lane right below
- * the parent and runs down the child lane. `merge` runs down the parent lane
- * and joins the child lane right above the child: second parents and siblings
- * that sit before the child continuing the parent lane both use it.
+ * `straight` stays in one lane. `branch` leaves the parent lane right below the
+ * parent and runs down the child lane. `merge` runs down the parent lane and
+ * joins the child lane right above the child: second parents and siblings that
+ * sit before the child continuing the parent lane both use it.
  */
 export type RailEdgeShape = 'straight' | 'branch' | 'merge'
 
@@ -253,9 +253,7 @@ function placeLanes(
     const heirId =
       primaryParentId === undefined ? undefined : heirById.get(primaryParentId)
     const peelsOffParentLane =
-      hasPlacedParent &&
-      heirId !== undefined &&
-      row < rowById.get(heirId)!
+      hasPlacedParent && heirId !== undefined && row < rowById.get(heirId)!
     const startRow = !hasPlacedParent
       ? row
       : peelsOffParentLane
@@ -299,10 +297,7 @@ function connectedIds(
   ])
 }
 
-function edgeRelation(
-  from: RailRelation,
-  to: RailRelation,
-): RailRelation {
+function edgeRelation(from: RailRelation, to: RailRelation): RailRelation {
   if (from === 'cause' && (to === 'cause' || to === 'selected')) return 'cause'
   if ((from === 'selected' || from === 'effect') && to === 'effect') {
     return 'effect'

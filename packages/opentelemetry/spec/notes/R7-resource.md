@@ -14,24 +14,24 @@ Keep the fallback list. Do not add `user_agent.original`. Do not call `navigator
 
 Snapshot once when the instance is created and whenever `options.resource` / identity fields change. Resource attributes that would change during a page (login, tenant, viewport, URL) stay on `options.attributes` or the record, never on the resource.
 
-| Attribute | Browser default | Node default | Cost | Privacy |
-| --- | --- | --- | --- | --- |
-| `service.name` | required, from options | same | none | none |
-| `service.version` | from options if set | same | none | none |
-| `deployment.environment.name` | from `environment` if set | same | none | none (ops label) |
-| `service.instance.id` | `crypto.randomUUID()` once per page load | once per process | cheap | low if not persisted; high cardinality |
-| `telemetry.sdk.name` | `@reatom/opentelemetry` | same | none | none |
-| `telemetry.sdk.language` | `webjs` | `nodejs` | none | none |
-| `telemetry.sdk.version` | package version | same | none | none |
-| `reatom.schema.version` | `1` (schema contract) | same | none | none |
-| `reatom.instance.name` | instance `name` | same | none | none |
-| `browser.language` | `navigator.language` | omit | sync read | low–moderate locale |
-| `browser.brands` | UA-CH `brands` if present | omit | sync read | low (GREASE) |
-| `browser.platform` | UA-CH `platform` if present | omit | sync read | low (coarse OS) |
-| `browser.mobile` | UA-CH `mobile` if present | omit | sync read | low |
-| `process.runtime.name` | omit | `nodejs` / `bun` / `deno` | sync | none (server) |
-| `process.runtime.version` | omit | `process.versions.node` (or bun/deno) | sync | none (server) |
-| `process.pid` | omit | `process.pid` | sync | none (server) |
+| Attribute                     | Browser default                          | Node default                          | Cost      | Privacy                                |
+| ----------------------------- | ---------------------------------------- | ------------------------------------- | --------- | -------------------------------------- |
+| `service.name`                | required, from options                   | same                                  | none      | none                                   |
+| `service.version`             | from options if set                      | same                                  | none      | none                                   |
+| `deployment.environment.name` | from `environment` if set                | same                                  | none      | none (ops label)                       |
+| `service.instance.id`         | `crypto.randomUUID()` once per page load | once per process                      | cheap     | low if not persisted; high cardinality |
+| `telemetry.sdk.name`          | `@reatom/opentelemetry`                  | same                                  | none      | none                                   |
+| `telemetry.sdk.language`      | `webjs`                                  | `nodejs`                              | none      | none                                   |
+| `telemetry.sdk.version`       | package version                          | same                                  | none      | none                                   |
+| `reatom.schema.version`       | `1` (schema contract)                    | same                                  | none      | none                                   |
+| `reatom.instance.name`        | instance `name`                          | same                                  | none      | none                                   |
+| `browser.language`            | `navigator.language`                     | omit                                  | sync read | low–moderate locale                    |
+| `browser.brands`              | UA-CH `brands` if present                | omit                                  | sync read | low (GREASE)                           |
+| `browser.platform`            | UA-CH `platform` if present              | omit                                  | sync read | low (coarse OS)                        |
+| `browser.mobile`              | UA-CH `mobile` if present                | omit                                  | sync read | low                                    |
+| `process.runtime.name`        | omit                                     | `nodejs` / `bun` / `deno`             | sync      | none (server)                          |
+| `process.runtime.version`     | omit                                     | `process.versions.node` (or bun/deno) | sync      | none (server)                          |
+| `process.pid`                 | omit                                     | `process.pid`                         | sync      | none (server)                          |
 
 Off by default everywhere: `user_agent.original`, high-entropy UA-CH, `navigator.platform`, `browser.document.url.full`, `device.*`, `host.id` / `host.ip` / `host.mac`, `process.command_line` / `process.command_args` / `process.owner`. Users can still set them through `options.resource`.
 
@@ -53,11 +53,11 @@ Safari and Firefox have no `navigator.userAgentData`. There, emit `browser.langu
 
 Low-entropy hints (sent by default on Chromium HTTPS, no `Accept-CH`, no user prompt). JS mirrors are the **sync** `NavigatorUAData` properties, not the Promise API:
 
-| Hint | Header | JS | OTel attr |
-| --- | --- | --- | --- |
-| brands + significant version | `Sec-CH-UA` | `navigator.userAgentData.brands` | `browser.brands` (`string[]`, `"Brand version"`) |
-| mobile | `Sec-CH-UA-Mobile` | `.mobile` | `browser.mobile` |
-| platform | `Sec-CH-UA-Platform` | `.platform` | `browser.platform` |
+| Hint                         | Header               | JS                               | OTel attr                                        |
+| ---------------------------- | -------------------- | -------------------------------- | ------------------------------------------------ |
+| brands + significant version | `Sec-CH-UA`          | `navigator.userAgentData.brands` | `browser.brands` (`string[]`, `"Brand version"`) |
+| mobile                       | `Sec-CH-UA-Mobile`   | `.mobile`                        | `browser.mobile`                                 |
+| platform                     | `Sec-CH-UA-Platform` | `.platform`                      | `browser.platform`                               |
 
 High-entropy (need `Accept-CH` on the network, or `getHighEntropyValues([...])` in JS). Do not collect:
 
@@ -77,26 +77,26 @@ Not Baseline: UA-CH is Chromium-only (Chrome, Edge, Opera). Firefox and Safari: 
 
 Fingerprint entropy is the cost that matters for a default resource. Legal (GDPR / 152-ФЗ / ePrivacy) is R11; this table is technical.
 
-| Attr | Why it is cheap | Privacy | Notes |
-| --- | --- | --- | --- |
-| `service.name` / `.version` | constructor options | none | Required identity of the _app_, not the user |
-| `deployment.environment.name` | options | none | `development` / `staging` / `production` / `test` |
-| `service.instance.id` | one UUID | low if ephemeral | Distinguishes tabs/processes. Do not persist. High cardinality for Tempo/Jaeger indexes; still required by 05 to scope `reatom.frame.id` |
-| `telemetry.sdk.*` | constants | none | SDK spec requires them. Name must **not** be the reserved `opentelemetry` |
-| `reatom.schema.version`, `reatom.instance.name` | constants / options | none | Contract for admin and agents |
-| `browser.language` | `navigator.language` | locale | Coarse (e.g. `en-US`). Fine for diagnostics. Combine with visitor id only after consent (R11) |
-| `browser.brands` | UA-CH sync | low | Major brand+version plus GREASE. Market-share grain, not a device id |
-| `browser.platform` | UA-CH sync | low | `Windows` / `macOS` / `Android` / `Linux` / `iOS` / `Chrome OS` / `Unknown`. Coarse |
-| `browser.mobile` | UA-CH sync | low | One bit |
-| `user_agent.original` | `navigator.userAgent` | **high** | Reduced UA still encodes brand, major, OS class, mobile. Off |
-| high-entropy UA-CH | Promise / `Accept-CH` | **high** | Device model, arch, full version, OS version. Off |
-| `browser.document.url.full` | `location.href` | **high**, also unstable | Query, fragment, PII in paths. Analytics already has gated `url.*` |
-| `device.id` / model | RN / UA-CH model | **high** | Semconv marks `device.id` Opt-In. Never in browser default |
-| `host.id` / `.ip` / `.mac` | Node files / os | **high** on shared hosts | Machine-id is a device fingerprint. Skip |
-| `host.name` | `os.hostname()` | moderate | Internal names. Skip as default; user can set |
-| `process.command_line` / `_args` | `process.argv` | secrets | Semconv: SHOULD NOT collect by default |
-| `process.owner` | `os.userInfo()` | username | Skip as default |
-| `process.pid` / `process.runtime.*` | Node globals | none on a server | Cheap Node defaults. Do not put UA into `process.runtime.version` (OTel JS BrowserDetector does; do not copy) |
+| Attr                                            | Why it is cheap       | Privacy                  | Notes                                                                                                                                    |
+| ----------------------------------------------- | --------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `service.name` / `.version`                     | constructor options   | none                     | Required identity of the _app_, not the user                                                                                             |
+| `deployment.environment.name`                   | options               | none                     | `development` / `staging` / `production` / `test`                                                                                        |
+| `service.instance.id`                           | one UUID              | low if ephemeral         | Distinguishes tabs/processes. Do not persist. High cardinality for Tempo/Jaeger indexes; still required by 05 to scope `reatom.frame.id` |
+| `telemetry.sdk.*`                               | constants             | none                     | SDK spec requires them. Name must **not** be the reserved `opentelemetry`                                                                |
+| `reatom.schema.version`, `reatom.instance.name` | constants / options   | none                     | Contract for admin and agents                                                                                                            |
+| `browser.language`                              | `navigator.language`  | locale                   | Coarse (e.g. `en-US`). Fine for diagnostics. Combine with visitor id only after consent (R11)                                            |
+| `browser.brands`                                | UA-CH sync            | low                      | Major brand+version plus GREASE. Market-share grain, not a device id                                                                     |
+| `browser.platform`                              | UA-CH sync            | low                      | `Windows` / `macOS` / `Android` / `Linux` / `iOS` / `Chrome OS` / `Unknown`. Coarse                                                      |
+| `browser.mobile`                                | UA-CH sync            | low                      | One bit                                                                                                                                  |
+| `user_agent.original`                           | `navigator.userAgent` | **high**                 | Reduced UA still encodes brand, major, OS class, mobile. Off                                                                             |
+| high-entropy UA-CH                              | Promise / `Accept-CH` | **high**                 | Device model, arch, full version, OS version. Off                                                                                        |
+| `browser.document.url.full`                     | `location.href`       | **high**, also unstable  | Query, fragment, PII in paths. Analytics already has gated `url.*`                                                                       |
+| `device.id` / model                             | RN / UA-CH model      | **high**                 | Semconv marks `device.id` Opt-In. Never in browser default                                                                               |
+| `host.id` / `.ip` / `.mac`                      | Node files / os       | **high** on shared hosts | Machine-id is a device fingerprint. Skip                                                                                                 |
+| `host.name`                                     | `os.hostname()`       | moderate                 | Internal names. Skip as default; user can set                                                                                            |
+| `process.command_line` / `_args`                | `process.argv`        | secrets                  | Semconv: SHOULD NOT collect by default                                                                                                   |
+| `process.owner`                                 | `os.userInfo()`       | username                 | Skip as default                                                                                                                          |
+| `process.pid` / `process.runtime.*`             | Node globals          | none on a server         | Cheap Node defaults. Do not put UA into `process.runtime.version` (OTel JS BrowserDetector does; do not copy)                            |
 
 Viewport and screen (`app.viewport.*`, `app.screen.*` in 05) change and belong on analytics records, not the resource. Faro puts them on browser meta; that is the wrong layer for OTLP resource.
 

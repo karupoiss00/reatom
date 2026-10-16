@@ -76,7 +76,9 @@ See also [`AGENTS.md`](AGENTS.md) and [`skills/README.md`](skills/README.md) for
 
 - bug fixes should also add tests that reproduce the addressed bug
 - all new features should be tested and documented
+
 <!-- - always use `@ts-expect-error` instead of `@ts-ignore` -->
+
 - use `// @ts-ignore` if you're not sure why an error appears or you think it's acceptable to suppress it temporarily. Use `// @ts-expect-error` if you're certain the error is a false positive and you want TypeScript to expect it.
 
 ## Commit messages

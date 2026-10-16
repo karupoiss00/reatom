@@ -168,12 +168,16 @@ test('models.list parses the catalog through the SDK', async () => {
   ).toBe(true)
   expect(
     models.some((model) =>
-      model.architecture.inputModalities.some((modality) => modality === 'image'),
+      model.architecture.inputModalities.some(
+        (modality) => modality === 'image',
+      ),
     ),
   ).toBe(true)
   expect(
     models.some((model) =>
-      model.architecture.inputModalities.some((modality) => modality === 'file'),
+      model.architecture.inputModalities.some(
+        (modality) => modality === 'file',
+      ),
     ),
   ).toBe(true)
   expect(models.some((model) => (model.contextLength ?? 0) >= 1_000_000)).toBe(
@@ -231,9 +235,9 @@ test('chat stream parses text, usage cost, and the request body', async () => {
 
 test('chat stream parses reasoning deltas and BYOK usage', async () => {
   const chunks = await readChat(reasoningScript)
-  expect(chunks.some((chunk) => chunk.choices[0]?.delta.reasoning === 'think')).toBe(
-    true,
-  )
+  expect(
+    chunks.some((chunk) => chunk.choices[0]?.delta.reasoning === 'think'),
+  ).toBe(true)
   const detail = chunks
     .flatMap((chunk) => chunk.choices[0]?.delta.reasoningDetails ?? [])
     .find((entry) => entry.type === 'reasoning.text')
@@ -251,9 +255,9 @@ test('mid-stream error chunk is yielded with finish_reason error', async () => {
   expect(failed?.error?.message).toBe('Provider disconnected')
   expect(failed?.error?.metadata?.errorType).toBe('server')
   expect(failed?.choices[0]?.finishReason).toBe('error')
-  expect(chunks.some((chunk) => chunk.choices[0]?.delta.content === 'Partial')).toBe(
-    true,
-  )
+  expect(
+    chunks.some((chunk) => chunk.choices[0]?.delta.content === 'Partial'),
+  ).toBe(true)
 })
 
 test('finish_reason length is parsed with usage cost', async () => {
@@ -282,7 +286,9 @@ test('AbortSignal rejects chat.send with RequestAbortedError', async () => {
 
 test('generations.getGeneration parses cost and isByok', async () => {
   mockGeneration(generationRecord)
-  const generation = await client.generations.getGeneration({ id: 'gen-fixture' })
+  const generation = await client.generations.getGeneration({
+    id: 'gen-fixture',
+  })
   expect(generation.data.id).toBe('gen-fixture')
   expect(generation.data.totalCost).toBe(0.000012)
   expect(generation.data.isByok).toBe(true)
@@ -690,9 +696,15 @@ test('an error-only 200 yields the error chunk', async () => {
 test('empty length with reasoning tokens parses', async () => {
   const chunks = await readChat(emptyReasoningLengthScript)
   expect(textOf(chunks)).toBe('')
-  expect(chunks.some((chunk) => chunk.choices[0]?.delta.reasoning === 'planning the answer')).toBe(true)
+  expect(
+    chunks.some(
+      (chunk) => chunk.choices[0]?.delta.reasoning === 'planning the answer',
+    ),
+  ).toBe(true)
   expect(chunks.at(-1)?.choices[0]?.finishReason).toBe('length')
-  expect(chunks.at(-1)?.usage?.completionTokensDetails?.reasoningTokens).toBe(3900)
+  expect(chunks.at(-1)?.usage?.completionTokensDetails?.reasoningTokens).toBe(
+    3900,
+  )
 })
 
 test('empty stop parses as an empty reply', async () => {
@@ -896,7 +908,10 @@ const readRecord = (name: string, storeName: string, key: string) =>
         resolve(undefined)
         return
       }
-      const get = db.transaction(storeName, 'readonly').objectStore(storeName).get(key)
+      const get = db
+        .transaction(storeName, 'readonly')
+        .objectStore(storeName)
+        .get(key)
       get.onsuccess = () => {
         const value = get.result
         db.close()
@@ -1079,7 +1094,9 @@ test('non-OpenRouter fetches are recorded and blocked, same-origin passes', asyn
     (caught: unknown) => caught,
   )
   expect(allowed).toBeInstanceOf(TypeError)
-  expect((allowed as TypeError).message.toLowerCase()).toContain('failed to fetch')
+  expect((allowed as TypeError).message.toLowerCase()).toContain(
+    'failed to fetch',
+  )
   const page = await fetch(`${location.origin}/`)
   expect(page).toBeInstanceOf(Response)
 })

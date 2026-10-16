@@ -1,4 +1,3 @@
-
 import {
   action,
   atom,
@@ -230,7 +229,6 @@ test('LOG outside any action emits reatom.log on the app-session trace, never a 
       expect(record.traceId).toBe(session[0]!.traceId)
       expect(record.spanId).toBe(session[0]!.spanId)
     }
-
   } finally {
     otel.dispose()
     restore()
@@ -280,7 +278,6 @@ test('thrown Error emits exception log severity ERROR with span context, not a s
       'captured-stack: boom at throw-error',
     )
     expect(record.attributes['event.name']).toBe('exception')
-
   } finally {
     otel.dispose()
   }
@@ -330,7 +327,6 @@ test('AbortError and thrown Promise set reatom.outcome abort/suspense with unset
     expect(suspenseSpan[0]!.status).toBeUndefined()
     expect(suspenseSpan[0]!.attributes['reatom.outcome']).toBe('suspense')
     expect(suspenseSpan[0]!.attributes['reatom.importance']).toBe('low')
-
   } finally {
     otel.dispose()
   }
@@ -364,7 +360,6 @@ test('pending async at pagehide exports outcome=pending inside a 60 KiB unload b
     expect(pending[0]!.status).toBeUndefined()
     expect(pending[0]!.attributes['reatom.outcome']).toBe('pending')
     expect(pending[0]!.endTimeUnixNano).toMatch(/^\d+$/)
-
   } finally {
     otel.dispose()
     restore()

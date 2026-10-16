@@ -6,13 +6,7 @@ export type ChatId = string
 export type MessageId = string
 export type PresetId = string
 export type ReasoningEffort =
-  | 'none'
-  | 'minimal'
-  | 'low'
-  | 'medium'
-  | 'high'
-  | 'xhigh'
-  | 'max'
+  'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 export type PdfEngineLabel = 'text' | 'ocr' | 'native'
 
 export interface ChatParams {
@@ -106,11 +100,7 @@ export type AssistantStatus =
   | 'cut-off'
   | 'refused'
 export type ToolCallStatus =
-  | 'waiting'
-  | 'calling'
-  | 'completed'
-  | 'denied'
-  | 'error'
+  'waiting' | 'calling' | 'completed' | 'denied' | 'error'
 export interface ToolCallRecord {
   id: string
   name: string

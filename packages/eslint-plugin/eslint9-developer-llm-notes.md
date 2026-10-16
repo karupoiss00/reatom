@@ -41,9 +41,7 @@ export default plugin
 // OR for CommonJS
 import type { ESLint } from 'eslint'
 
-const plugin: ESLint.Plugin = {
-  /* ... */
-}
+const plugin: ESLint.Plugin = {/* ... */}
 module.exports = plugin
 ```
 
@@ -183,13 +181,9 @@ Bundle configurations within a plugin using the `configs` key. This is useful fo
 import type { ESLint } from 'eslint'
 
 const plugin: ESLint.Plugin = {
-  meta: {
-    /* ... */
-  },
+  meta: {/* ... */},
   configs: {},
-  rules: {
-    /* ... */
-  },
+  rules: {/* ... */},
 }
 
 // Assign configs after plugin definition to reference `plugin`
@@ -243,14 +237,10 @@ declare const plugin: ESLint.Plugin // Assuming plugin is defined elsewhere
 
 Object.assign(plugin.configs, {
   // flat config format
-  'flat/recommended': [
-    /* ... flat config object ... */
-  ],
+  'flat/recommended': [/* ... flat config object ... */],
 
   // eslintrc format
-  recommended: {
-    /* ... eslintrc config object ... */
-  },
+  recommended: {/* ... eslintrc config object ... */},
 })
 ```
 
@@ -375,9 +365,7 @@ import type { Rule } from 'eslint'
 import type { AST } from '@typescript-eslint/utils'
 
 const rule: Rule.RuleModule = {
-  meta: {
-    /* ... */
-  },
+  meta: {/* ... */},
   create(context: Rule.RuleContext) {
     return {
       VariableDeclarator(node: AST.Node) {

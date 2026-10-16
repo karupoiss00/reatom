@@ -1,10 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import {
-  isMcpWriteTool,
-  mcpAlwaysAllows,
-  rememberMcpAlwaysAllow,
-} from './busy'
+import { isMcpWriteTool, mcpAlwaysAllows, rememberMcpAlwaysAllow } from './busy'
 import { fusionToolNames } from '../testing/fixtures/mcp'
 
 describe('P5 Always hunt on execute (F-31)', () => {

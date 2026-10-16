@@ -86,9 +86,7 @@ test('name search filters gantt rows and restores them when cleared', () => {
       'makeMove',
     ])
     admin.filterName.set('WIN')
-    expect(admin.gantt.rows().map((record) => record.name)).toEqual([
-      'winner',
-    ])
+    expect(admin.gantt.rows().map((record) => record.name)).toEqual(['winner'])
     admin.filterName.set('')
     expect(admin.gantt.rows().map((record) => record.name)).toEqual(
       expect.arrayContaining(['makeMove', 'board', 'winner']),

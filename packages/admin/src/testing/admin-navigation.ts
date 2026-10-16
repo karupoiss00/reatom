@@ -8,11 +8,7 @@ import {
 } from '../stories/reatom-jsx-xo/testing'
 
 export type AdminRouteLabel =
-  | 'Activity'
-  | 'State'
-  | 'Timeline'
-  | 'Graph'
-  | 'Filters'
+  'Activity' | 'State' | 'Timeline' | 'Graph' | 'Filters'
 
 const ROUTE_PATHS: Record<AdminRouteLabel, string> = {
   Activity: '/',

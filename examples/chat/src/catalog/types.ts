@@ -17,13 +17,7 @@ export interface CatalogModel {
   created?: number | null
 }
 export type CatalogStatus =
-  | 'loading'
-  | 'cached'
-  | 'revalidating'
-  | 'ready'
-  | 'stale'
-  | 'empty'
-  | 'error'
+  'loading' | 'cached' | 'revalidating' | 'ready' | 'stale' | 'empty' | 'error'
 export interface PickerSections {
   favorites: CatalogModel[]
   recent: CatalogModel[]

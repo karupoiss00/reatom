@@ -37,9 +37,9 @@ export interface AdminRecordError {
 }
 
 /**
- * Symbol slot for live params, payload, state, and error.
- * JSON and `Object.entries` skip it, so exports stay masked.
- * Object spread copies the reference, so undo and restore keep it.
+ * Symbol slot for live params, payload, state, and error. JSON and
+ * `Object.entries` skip it, so exports stay masked. Object spread copies the
+ * reference, so undo and restore keep it.
  */
 export const LOCAL_VALUES: unique symbol = Symbol('reatom.admin.localValues')
 
@@ -114,11 +114,14 @@ export interface OtlpStoreOptions {
   sourceId: string
   resource: Record<string, unknown>
   onClear?: () => void
-  /** Resolves live values for a raw OTLP item. `undefined` leaves the record masked. */
+  /**
+   * Resolves live values for a raw OTLP item. `undefined` leaves the record
+   * masked.
+   */
   localValues?: (raw: unknown) => AdminLocalValues | undefined
   /**
-   * How many newest records keep live values.
-   * Older ones fall back to masked attributes. Default 5000.
+   * How many newest records keep live values. Older ones fall back to masked
+   * attributes. Default 5000.
    */
   localValuesLimit?: number
 }
@@ -139,7 +142,10 @@ export function reatomOtlpStore(options: OtlpStoreOptions) {
     resource = { ...next }
   }
 
-  /** Replaces the lookup used for later ingests. `undefined` stops attaching new values. */
+  /**
+   * Replaces the lookup used for later ingests. `undefined` stops attaching new
+   * values.
+   */
   const setLocalValues = (lookup: OtlpStoreOptions['localValues']) => {
     localValuesLookup = lookup
   }

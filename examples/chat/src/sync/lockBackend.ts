@@ -3,9 +3,15 @@ export interface HeldLock {
 }
 
 export interface LockBackend {
-  /** Exclusive and non-blocking: resolves `null` when anyone already holds `name`. */
+  /**
+   * Exclusive and non-blocking: resolves `null` when anyone already holds
+   * `name`.
+   */
   acquireExclusive(name: string): Promise<HeldLock | null>
-  /** Shared presence that other tabs can observe, granted without contention checks. */
+  /**
+   * Shared presence that other tabs can observe, granted without contention
+   * checks.
+   */
   hold(name: string): HeldLock
   isHeld(name: string): Promise<boolean>
   waitUntilFree(name: string, signal: AbortSignal): Promise<void>

@@ -32,9 +32,7 @@ export type MockStreamScript = {
 }
 
 export type MockChatScript =
-  | readonly MockChatChunk[]
-  | MockStatus
-  | MockStreamScript
+  readonly MockChatChunk[] | MockStatus | MockStreamScript
 
 const apiOrigin = 'https://openrouter.ai/api/v1'
 
@@ -75,8 +73,7 @@ const abortError = () =>
 const isCurrent = (gen: number) => gen === generation
 
 const isMockStatus = (value: object): value is MockStatus =>
-  'status' in value &&
-  typeof (value as { status: unknown }).status === 'number'
+  'status' in value && typeof (value as { status: unknown }).status === 'number'
 
 const isChunkList = (
   script: MockChatScript,
@@ -156,7 +153,11 @@ const jsonResponse = (
   })
 
 const statusResponse = (status: MockStatus) =>
-  jsonResponse(errorBody(status.status, status.body), status.status, status.headers)
+  jsonResponse(
+    errorBody(status.status, status.body),
+    status.status,
+    status.headers,
+  )
 
 const wait = (delayMs: number, signal: AbortSignal) =>
   new Promise<void>((resolve, reject) => {
@@ -357,7 +358,8 @@ const fulfill = async (
   }
   if (url.pathname === routes.generation) {
     if (!generationResponse) return jsonResponse(errorBody(404), 404)
-    if (isMockStatus(generationResponse)) return statusResponse(generationResponse)
+    if (isMockStatus(generationResponse))
+      return statusResponse(generationResponse)
     return jsonResponse({ data: generationResponse })
   }
   if (url.pathname === routes.auth) {
@@ -367,7 +369,8 @@ const fulfill = async (
   }
   if (url.pathname === routes.providers) {
     if (!providersResponse) return jsonResponse(errorBody(404), 404)
-    if (isMockStatus(providersResponse)) return statusResponse(providersResponse)
+    if (isMockStatus(providersResponse))
+      return statusResponse(providersResponse)
     return jsonResponse({ data: providersResponse })
   }
   return jsonResponse(errorBody(404), 404)

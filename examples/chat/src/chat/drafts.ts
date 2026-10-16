@@ -38,8 +38,14 @@ export interface ChatDraft {
   clear: () => void
 }
 
-export const reatomDraft = (chatId: ChatId | 'new', name: string): ChatDraft => {
-  const loadState = atom<'idle' | 'loading' | 'done'>('idle', `${name}.loadState`)
+export const reatomDraft = (
+  chatId: ChatId | 'new',
+  name: string,
+): ChatDraft => {
+  const loadState = atom<'idle' | 'loading' | 'done'>(
+    'idle',
+    `${name}.loadState`,
+  )
   const touched = atom(false, `${name}.touched`)
 
   const save = action(async () => {
@@ -74,8 +80,14 @@ export const reatomDraft = (chatId: ChatId | 'new', name: string): ChatDraft => 
     try {
       const own = await wrap(repo.getDraft(chatId, tabId))
       const fallback =
-        own ?? (chatId === 'new' ? undefined : await wrap(repo.latestDraft(chatId)))
-      if (fallback && !touched() && text() === '' && attachments().length === 0) {
+        own ??
+        (chatId === 'new' ? undefined : await wrap(repo.latestDraft(chatId)))
+      if (
+        fallback &&
+        !touched() &&
+        text() === '' &&
+        attachments().length === 0
+      ) {
         text.set(fallback.text)
         attachments.set(fallback.attachments)
       }

@@ -1,4 +1,3 @@
-
 import { action, atom, bind, context } from '@reatom/core'
 import { expect, test } from 'vitest'
 

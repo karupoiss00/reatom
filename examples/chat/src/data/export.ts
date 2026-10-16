@@ -44,7 +44,8 @@ const chatEntry = async (
   const attachmentIds = new Set<string>()
   for (const message of messages) {
     if (message.role !== 'user') continue
-    for (const attachment of message.attachments) attachmentIds.add(attachment.id)
+    for (const attachment of message.attachments)
+      attachmentIds.add(attachment.id)
   }
   const attachments: AttachmentBlob[] = []
   for (const id of attachmentIds) {

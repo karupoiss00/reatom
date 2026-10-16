@@ -36,7 +36,7 @@ test.each(['size', 'timer', 'flush'] as const)(
       }),
     )
     const otel = reatomOpentelemetry({
-    name: 'observationParity',
+      name: 'observationParity',
       endpoint: 'https://collector.invalid',
       serviceName: 'transport-observation',
       maxBatchSize: trigger === 'size' ? 1 : 10,
@@ -116,7 +116,7 @@ test.each(['action', 'async'] as const)(
       }, 'capture-late.lazy'),
     )
     const otel = reatomOpentelemetry({
-    name: 'observationParity',
+      name: 'observationParity',
       endpoint: 'https://collector.invalid',
       serviceName: 'capture-late',
       captureValues: {},
@@ -148,9 +148,9 @@ test.each(['action', 'async'] as const)(
       expect(getterCalls).toBe(0)
       await otel.flush()
       expect(requests).toBe(1)
-      expect(
-        bodies.flatMap(parseSpans)[0]!.attributes['reatom.payload'],
-      ).toBe('{"value":"[Skipped]"}')
+      expect(bodies.flatMap(parseSpans)[0]!.attributes['reatom.payload']).toBe(
+        '{"value":"[Skipped]"}',
+      )
     } finally {
       otel.dispose()
     }
@@ -180,7 +180,7 @@ test.each([false, true])(
     let requests = 0
     const otel = traced
       ? reatomOpentelemetry({
-    name: 'observationParity',
+          name: 'observationParity',
           endpoint: 'https://collector.invalid',
           serviceName: 'capture-parity',
           captureValues: {},

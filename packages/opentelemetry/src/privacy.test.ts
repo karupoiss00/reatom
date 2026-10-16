@@ -45,20 +45,22 @@ const start = (
   })
   cleanups.push(() => context.start(() => otel.dispose()))
   const wire = () => calls.map((call) => call.body).join('\n')
-  const spans = () => calls.flatMap((call) => {
-    try {
-      return parseSpans(call.body)
-    } catch {
-      return []
-    }
-  })
-  const logs = () => calls.flatMap((call) => {
-    try {
-      return parseLogRecords(call.body)
-    } catch {
-      return []
-    }
-  })
+  const spans = () =>
+    calls.flatMap((call) => {
+      try {
+        return parseSpans(call.body)
+      } catch {
+        return []
+      }
+    })
+  const logs = () =>
+    calls.flatMap((call) => {
+      try {
+        return parseLogRecords(call.body)
+      } catch {
+        return []
+      }
+    })
   return { otel, fetchMock, calls, wire, spans, logs, name }
 }
 
@@ -67,10 +69,7 @@ test('sensitive atom and action names redact values captured under wrapper keys'
   try {
     context.start(() => {
       const password = atom('', 'login.password')
-      const setPassword = action(
-        (next: string) => next,
-        'account.setPassword',
-      )
+      const setPassword = action((next: string) => next, 'account.setPassword')
       const updateProfile = action(
         (id: string, password: string) => (password ? id : id),
         'account.updateProfile',
@@ -125,13 +124,12 @@ test('a transforming redact hook still applies name redaction', () => {
     ),
   ).toBe('[redacted]')
   expect(
-    createValueCapture(
-      (_key, value) =>
-        Array.isArray(value)
-          ? value.map((item) =>
-              typeof item === 'string' ? `wrapped:${item}` : item,
-            )
-          : value,
+    createValueCapture((_key, value) =>
+      Array.isArray(value)
+        ? value.map((item) =>
+            typeof item === 'string' ? `wrapped:${item}` : item,
+          )
+        : value,
     ).capture('params', ['ada', 'hunter2'], ['id', 'password']),
   ).toEqual(['wrapped:ada', '[redacted]'])
 })
@@ -166,10 +164,11 @@ test('contact strings are scrubbed and the author key over-match stays on keys o
     ),
   ).toBe('[redacted]')
   expect(
-    createValueCapture().capture('params', ['user-public-id', 'hunter2'], [
-      'id',
-      'password',
-    ]),
+    createValueCapture().capture(
+      'params',
+      ['user-public-id', 'hunter2'],
+      ['id', 'password'],
+    ),
   ).toEqual(['user-public-id', '[redacted]'])
   expect(capture.capture('email', 'ada@example.com')).toBe('[redacted]')
 })
@@ -197,7 +196,9 @@ test('captureValues false omits primitive update bodies and LOG payloads', async
     )
     expect(updates.length).toBeGreaterThan(0)
     for (const update of updates) expect(update.body).toBeUndefined()
-    const reatomLogs = logs().filter((record) => record.eventName === 'reatom.log')
+    const reatomLogs = logs().filter(
+      (record) => record.eventName === 'reatom.log',
+    )
     expect(reatomLogs.length).toBeGreaterThan(0)
     for (const record of reatomLogs) expect(record.body).toBeUndefined()
   } finally {
@@ -233,7 +234,8 @@ test('reatomGDPR leaves the tracer exporting until submit sets diagnostics', asy
       expect(
         attached.calls.some(
           (call) =>
-            call.url.includes('/v1/logs') && call.body.includes('app.page_view'),
+            call.url.includes('/v1/logs') &&
+            call.body.includes('app.page_view'),
         ),
       ).toBe(true)
 
@@ -241,7 +243,9 @@ test('reatomGDPR leaves the tracer exporting until submit sets diagnostics', asy
       expect(attached.otel.options().consent).toBeUndefined()
       expect(attached.otel.options().signals).toBeUndefined()
       await wrap(consent.submit())
-      expect(attached.otel.options().consent).toMatchObject({ diagnostics: true })
+      expect(attached.otel.options().consent).toMatchObject({
+        diagnostics: true,
+      })
       expect(attached.otel.options().signals).toBeUndefined()
       search('after-grant')
       await attached.otel.flush()
@@ -832,7 +836,9 @@ test('another form follows a storage snapshot update', async () => {
       await wrap(consentA.submit())
       notify()
       expect(consentB.snapshot()?.categories.diagnostics).toBe(false)
-      expect(second.otel.options().consent).toMatchObject({ diagnostics: false })
+      expect(second.otel.options().consent).toMatchObject({
+        diagnostics: false,
+      })
       action(() => 'tab-b-secret', 'privacy.tabB')()
       await second.otel.flush()
       expect(second.wire()).not.toContain('tab-b-secret')

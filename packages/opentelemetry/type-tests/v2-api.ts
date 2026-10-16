@@ -1,14 +1,14 @@
 /**
- * v2 public API type tests (F-01, spec test 28).
+ * V2 public API type tests (F-01, spec test 28).
  *
  * Intended for `pnpm test:types` once `type-tests/tsconfig.json` includes this
  * file (`"./*.ts"` or `"./v2-api.ts"`). Do not add it to `compatibility.ts`.
  *
- * Until OT-1 this file fails to compile against the v1 factory: `name` is not
- * a required key, `endpoint` is `string` rather than `string | null`, and
- * `traceVar` / `parseTraceparent` are not on the instance. After OT-1 the
- * three `@ts-expect-error` cases below are the only intended errors, and the
- * guarded `traceVar.set` call type-checks.
+ * Until OT-1 this file fails to compile against the v1 factory: `name` is not a
+ * required key, `endpoint` is `string` rather than `string | null`, and
+ * `traceVar` / `parseTraceparent` are not on the instance. After OT-1 the three
+ * `@ts-expect-error` cases below are the only intended errors, and the guarded
+ * `traceVar.set` call type-checks.
  */
 import { reatomOpentelemetry } from '../src/reatomOpentelemetry.ts'
 

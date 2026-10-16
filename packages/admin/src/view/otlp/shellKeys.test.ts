@@ -58,11 +58,9 @@ test('shortcuts ignore editable targets and tab lists', () => {
   })
   const helpOpen = ADMIN_FRAME.run(() => atom(false, '_test.shell.help.skip'))
   const input = new DomElement()
-  input.closest = (selector) =>
-    selector.includes('input') ? input : null
+  input.closest = (selector) => (selector.includes('input') ? input : null)
   const tab = new DomElement()
-  tab.closest = (selector) =>
-    selector === '[role="tablist"]' ? tab : null
+  tab.closest = (selector) => (selector === '[role="tablist"]' ? tab : null)
 
   ADMIN_FRAME.run(() => {
     handleAdminShellKey(

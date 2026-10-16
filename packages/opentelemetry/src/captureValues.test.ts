@@ -174,9 +174,7 @@ test('preserves primitives and safely normalizes unsupported scalar values', () 
     '-Infinity',
   ])
   expect(session.capture('value', 42n)).toBe(42n)
-  expect(session.capture('value', new Date(0))).toBe(
-    '1970-01-01T00:00:00.000Z',
-  )
+  expect(session.capture('value', new Date(0))).toBe('1970-01-01T00:00:00.000Z')
   expect(session.capture('value', new Set([1]))).toEqual({ '@set': [1] })
 })
 

@@ -1,4 +1,12 @@
-import { action, addCallHook, atom, computed, isAbort, withAsync, wrap } from '@reatom/core'
+import {
+  action,
+  addCallHook,
+  atom,
+  computed,
+  isAbort,
+  withAsync,
+  wrap,
+} from '@reatom/core'
 
 import { streamLifecycle } from '../chat/engine'
 import { library } from '../chat/library'
@@ -9,7 +17,13 @@ import {
   noteStreamsInFlight,
   refreshKeyMeta,
 } from './keyMeta'
-import { apiKey, clearStoredKey, keyStorageFailed, readStoredKey, rememberKey } from './keyStore'
+import {
+  apiKey,
+  clearStoredKey,
+  keyStorageFailed,
+  readStoredKey,
+  rememberKey,
+} from './keyStore'
 import {
   captureOAuthCallback,
   completeOAuthFromUrl,

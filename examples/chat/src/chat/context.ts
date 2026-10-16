@@ -47,7 +47,8 @@ const toolWire = (message: MessageRecord): WireMessage | null => {
   }
   if (rec.role !== 'tool') return null
   const content = typeof rec.content === 'string' ? rec.content : ''
-  const toolCallId = typeof rec.toolCallId === 'string' ? rec.toolCallId : undefined
+  const toolCallId =
+    typeof rec.toolCallId === 'string' ? rec.toolCallId : undefined
   return toolCallId
     ? { role: 'tool', content, toolCallId }
     : { role: 'tool', content }

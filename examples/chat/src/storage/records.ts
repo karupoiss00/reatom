@@ -111,7 +111,11 @@ const sameValue = (left: unknown, right: unknown): boolean => {
     return false
   }
   if (Array.isArray(left) || Array.isArray(right)) {
-    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) {
+    if (
+      !Array.isArray(left) ||
+      !Array.isArray(right) ||
+      left.length !== right.length
+    ) {
       return false
     }
     return left.every((item, index) => sameValue(item, right[index]))
@@ -243,7 +247,9 @@ export const mergeChatFields = (
       continue
     }
     const storedAt = fieldAt(stored, field)
-    if (!laterStampWins(at, writer, storedAt, readWriter(stored.clock, field))) {
+    if (
+      !laterStampWins(at, writer, storedAt, readWriter(stored.clock, field))
+    ) {
       continue
     }
     assignField(merged, field, value)
@@ -275,12 +281,16 @@ const mergeSettingsRecords = (
     if (incomingAt === localAt && !tiePrefersIncoming(local, incoming, key)) {
       continue
     }
-    assignSettingsField(next, field, cloneSettingsValue(incoming.settings[field]))
+    assignSettingsField(
+      next,
+      field,
+      cloneSettingsValue(incoming.settings[field]),
+    )
     const stampAt = Math.max(incomingAt, localAt)
     const stampWriter =
       (incomingAt > localAt
         ? readWriter(incoming.clock, key)
-        : readWriter(incoming.clock, key) ?? readWriter(local.clock, key)) ??
+        : (readWriter(incoming.clock, key) ?? readWriter(local.clock, key))) ??
       liveTabId()
     if (stampAt !== Number.NEGATIVE_INFINITY) {
       writeStamp(clock, key, stampAt, stampWriter)

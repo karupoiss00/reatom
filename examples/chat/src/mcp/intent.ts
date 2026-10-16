@@ -104,10 +104,14 @@ export const parseToolResult = (raw: string | undefined) => {
   try {
     const parsed = JSON.parse(raw) as unknown
     const record = asRecord(parsed)
-    if (record && (typeof record.text === 'string' || Array.isArray(record.images))) {
+    if (
+      record &&
+      (typeof record.text === 'string' || Array.isArray(record.images))
+    ) {
       const images = Array.isArray(record.images)
         ? record.images.filter(
-            (item): item is string => typeof item === 'string' && item.length > 0,
+            (item): item is string =>
+              typeof item === 'string' && item.length > 0,
           )
         : []
       return {

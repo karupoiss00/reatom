@@ -41,9 +41,7 @@ const atelierStoreNames = async () => {
 describe('F-29 Connect Fusion MCP', () => {
   test('Pasting http://127.0.0.1:27182/mcp is enough; the URL is stored in the server list', () => {
     mcpServers.set([fusionServer])
-    expect(mcpServers()).toEqual([
-      expect.objectContaining({ url: fusionUrl }),
-    ])
+    expect(mcpServers()).toEqual([expect.objectContaining({ url: fusionUrl })])
     expect(readMcpServersSnapshot()?.data).toEqual([
       expect.objectContaining({ url: fusionUrl }),
     ])
@@ -52,9 +50,7 @@ describe('F-29 Connect Fusion MCP', () => {
   test('Pasting http://localhost:27182/mcp is rewritten to http://127.0.0.1:27182/mcp before connect', () => {
     expect(rewriteMcpLoopbackUrl(localhostUrl)).toBe(fusionUrl)
     expect(rewriteMcpLoopbackUrl(fusionUrl)).toBe(fusionUrl)
-    mcpServers.set([
-      { id: 'fusion', url: rewriteMcpLoopbackUrl(localhostUrl) },
-    ])
+    mcpServers.set([{ id: 'fusion', url: rewriteMcpLoopbackUrl(localhostUrl) }])
     expect(mcpServers()[0]?.url).toBe(fusionUrl)
   })
 
@@ -73,24 +69,18 @@ describe('F-29 Connect Fusion MCP', () => {
       expect.objectContaining({ url: fusionUrl }),
     ])
     expect(createDefaultChatSettings().mcpEnabled).toBe(false)
-    expect(mcpServers()).toEqual([
-      expect.objectContaining({ url: fusionUrl }),
-    ])
+    expect(mcpServers()).toEqual([expect.objectContaining({ url: fusionUrl })])
 
     await initStorage()
     expect(await atelierStoreNames()).not.toContain('mcpServers')
     context.reset()
-    expect(mcpServers()).toEqual([
-      expect.objectContaining({ url: fusionUrl }),
-    ])
+    expect(mcpServers()).toEqual([expect.objectContaining({ url: fusionUrl })])
   })
 
   test('She can edit or delete a bad saved URL and try again', () => {
     mcpServers.set([{ id: 'fusion', url: 'http://127.0.0.1:9999/mcp' }])
     mcpServers.set([fusionServer])
-    expect(mcpServers()).toEqual([
-      expect.objectContaining({ url: fusionUrl }),
-    ])
+    expect(mcpServers()).toEqual([expect.objectContaining({ url: fusionUrl })])
     expect(readMcpServersSnapshot()?.data).toEqual([
       expect.objectContaining({ url: fusionUrl }),
     ])

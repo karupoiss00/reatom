@@ -67,10 +67,7 @@ let abortControllers = (
 export let withAbort =
   (
     strategy:
-      | 'last-in-win'
-      | 'first-in-win'
-      | 'finally'
-      | 'manual' = 'last-in-win',
+      'last-in-win' | 'first-in-win' | 'finally' | 'manual' = 'last-in-win',
   ): AssignerExt<AbortExt> =>
   (target) => {
     let recomputed = new WeakSet<Frame>()

@@ -41,7 +41,12 @@ export interface SeedChatSpec {
 
 const assistantShell = (
   spec: SeedMessageSpec,
-  identity: { id: MessageId; chatId: ChatId; parentId: MessageId | null; at: number },
+  identity: {
+    id: MessageId
+    chatId: ChatId
+    parentId: MessageId | null
+    at: number
+  },
 ): AssistantMessage => ({
   id: identity.id,
   chatId: identity.chatId,
@@ -73,7 +78,12 @@ const assistantShell = (
 
 const userShell = (
   spec: SeedMessageSpec,
-  identity: { id: MessageId; chatId: ChatId; parentId: MessageId | null; at: number },
+  identity: {
+    id: MessageId
+    chatId: ChatId
+    parentId: MessageId | null
+    at: number
+  },
 ): UserMessage => ({
   id: identity.id,
   chatId: identity.chatId,
@@ -87,9 +97,16 @@ const userShell = (
 
 const messageFromSpec = (
   spec: SeedMessageSpec,
-  identity: { id: MessageId; chatId: ChatId; parentId: MessageId | null; at: number },
+  identity: {
+    id: MessageId
+    chatId: ChatId
+    parentId: MessageId | null
+    at: number
+  },
 ): MessageRecord =>
-  spec.role === 'user' ? userShell(spec, identity) : assistantShell(spec, identity)
+  spec.role === 'user'
+    ? userShell(spec, identity)
+    : assistantShell(spec, identity)
 
 export const seedChats = async (
   spec: readonly SeedChatSpec[],

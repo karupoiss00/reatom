@@ -1,4 +1,3 @@
-
 import { action, atom, bind, context, wrap } from '@reatom/core'
 import { afterEach, expect, test, vi } from 'vitest'
 
@@ -144,7 +143,10 @@ const islandActionSpans = (records: readonly unknown[]): object[] => {
     const attrs = otlpStringAttrs(record)
     if (typeof spanId !== 'string' || typeof name !== 'string') return
     if (!('startTimeUnixNano' in record)) return
-    if (name.startsWith('island.') || attrs['reatom.name']?.startsWith('island.')) {
+    if (
+      name.startsWith('island.') ||
+      attrs['reatom.name']?.startsWith('island.')
+    ) {
       spans.push(record)
     }
   })
@@ -239,9 +241,7 @@ test('F-14: island action spans appear while filter silences vendor names and fe
   const models = run(() => {
     const islandQuery = atom('', 'island.query')
     const searchIsland = action(async () => {
-      const response = await wrap(
-        appFetch('https://api.island.test/search'),
-      )
+      const response = await wrap(appFetch('https://api.island.test/search'))
       const payload = await wrap(response.text())
       islandQuery.set(payload)
       return islandQuery()
@@ -288,7 +288,9 @@ test('F-14: island action spans appear while filter silences vendor names and fe
     islandSpans.some((span) => {
       const name = 'name' in span ? span.name : undefined
       const attrs = otlpStringAttrs(span)
-      return name === 'island.search' || attrs['reatom.name'] === 'island.search'
+      return (
+        name === 'island.search' || attrs['reatom.name'] === 'island.search'
+      )
     }),
   ).toBe(true)
   expect(islandNames).toContain('island.search')

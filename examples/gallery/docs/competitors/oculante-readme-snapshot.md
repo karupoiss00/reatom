@@ -13,84 +13,84 @@ Appearance settings
 
 - Platform
   - AI CODE CREATION  
-     _ GitHub CopilotWrite better code with AI  
-     _ GitHub Copilot appDirect agents from issue to merge  
-     \* MCP RegistryNewIntegrate external tools
+    _ GitHub CopilotWrite better code with AI  
+    _ GitHub Copilot appDirect agents from issue to merge  
+    \* MCP RegistryNewIntegrate external tools
   - DEVELOPER WORKFLOWS  
-     _ ActionsAutomate any workflow  
-     _ CodespacesInstant dev environments  
-     _ IssuesPlan and track work  
-     _ Code ReviewManage code changes
+    _ ActionsAutomate any workflow  
+    _ CodespacesInstant dev environments  
+    _ IssuesPlan and track work  
+    _ Code ReviewManage code changes
   - APPLICATION SECURITY  
-     _ GitHub Advanced SecurityFind and fix vulnerabilities  
-     _ Code securitySecure your code as you build  
-     \* Secret protectionStop leaks before they start
+    _ GitHub Advanced SecurityFind and fix vulnerabilities  
+    _ Code securitySecure your code as you build  
+    \* Secret protectionStop leaks before they start
   - EXPLORE  
-     _ Why GitHub  
-     _ Documentation  
-     _ Blog  
-     _ Changelog  
-     \* Marketplace  
+    _ Why GitHub  
+    _ Documentation  
+    _ Blog  
+    _ Changelog  
+    \* Marketplace  
     View all features
 - Solutions
   - BY COMPANY SIZE  
-     _ Enterprises  
-     _ Small and medium teams  
-     _ Startups  
-     _ Nonprofits
+    _ Enterprises  
+    _ Small and medium teams  
+    _ Startups  
+    _ Nonprofits
   - BY USE CASE  
-     _ App Modernization  
-     _ DevSecOps  
-     _ DevOps  
-     _ CI/CD  
-     \* View all use cases
+    _ App Modernization  
+    _ DevSecOps  
+    _ DevOps  
+    _ CI/CD  
+    \* View all use cases
   - BY INDUSTRY  
-     _ Healthcare  
-     _ Financial services  
-     _ Manufacturing  
-     _ Government  
-     \* View all industries  
+    _ Healthcare  
+    _ Financial services  
+    _ Manufacturing  
+    _ Government  
+    \* View all industries  
     View all solutions
 - Resources
   - EXPLORE BY TOPIC  
-     _ AI  
-     _ Software Development  
-     _ DevOps  
-     _ Security  
-     \* View all topics
+    _ AI  
+    _ Software Development  
+    _ DevOps  
+    _ Security  
+    \* View all topics
   - EXPLORE BY TYPE  
-     _ Customer stories  
-     _ Events & webinars  
-     _ Ebooks & reports  
-     _ Business insights  
-     \* GitHub Skills
+    _ Customer stories  
+    _ Events & webinars  
+    _ Ebooks & reports  
+    _ Business insights  
+    \* GitHub Skills
   - SUPPORT & SERVICES  
-     _ Documentation  
-     _ Customer support  
-     _ Community forum  
-     _ Trust center  
-     \* Partners  
+    _ Documentation  
+    _ Customer support  
+    _ Community forum  
+    _ Trust center  
+    \* Partners  
     View all resources
 - Open Source
   - COMMUNITY  
-     \* GitHub SponsorsFund open source developers
+    \* GitHub SponsorsFund open source developers
   - PROGRAMS  
-     _ Security Lab  
-     _ Maintainer Community  
-     _ Accelerator  
-     _ GitHub Stars  
-     \* Archive Program
+    _ Security Lab  
+    _ Maintainer Community  
+    _ Accelerator  
+    _ GitHub Stars  
+    \* Archive Program
   - REPOSITORIES  
-     _ Topics  
-     _ Trending  
-     \* Collections
+    _ Topics  
+    _ Trending  
+    \* Collections
 - Enterprise
   - ENTERPRISE SOLUTIONS  
-     \* Enterprise platformAI-powered developer platform
+    \* Enterprise platformAI-powered developer platform
   - AVAILABLE ADD-ONS  
-     _ GitHub Advanced SecurityEnterprise-grade security features  
-     _ Copilot for BusinessEnterprise-grade AI features  
-     \* Premium SupportEnterprise-grade 24/7 support
+    _ GitHub Advanced SecurityEnterprise-grade security features  
+    _ Copilot for BusinessEnterprise-grade AI features  
+    \* Premium SupportEnterprise-grade 24/7 support
 - Pricing
 
 Search or jump to...

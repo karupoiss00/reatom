@@ -38,6 +38,9 @@ const documentTheme = computed(
   'layout.theme.document',
 )
 
-/** Keeps the root attribute in sync with the preference and the OS scheme; returns the stop function. */
+/**
+ * Keeps the root attribute in sync with the preference and the OS scheme;
+ * returns the stop function.
+ */
 export const syncThemeToDocument = () =>
   documentTheme.subscribe(() => applyTheme(themePref(), resolvedTheme()))

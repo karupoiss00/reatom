@@ -15,11 +15,11 @@ Which core factories need a distinct `reatom.kind`, which are self-explanatory t
 
 Already on `AtomMeta`, no C3 change:
 
-| Primitive | Test | Default `reatom.kind` |
-| --- | --- | --- |
-| action | `!target.__reatom.reactive` (`isAction`) | `action` |
-| computed | `reactive && !writable` | `computed` |
-| atom | `reactive && writable` | `atom` |
+| Primitive | Test                                     | Default `reatom.kind` |
+| --------- | ---------------------------------------- | --------------------- |
+| action    | `!target.__reatom.reactive` (`isAction`) | `action`              |
+| computed  | `reactive && !writable`                  | `computed`            |
+| atom      | `reactive && writable`                   | `atom`                |
 
 C3 `kind` is only for factories that look like a primitive but must be treated differently (route watershed, mount session, loader duration, skip helper spans, T30 exception for `_`-prefixed render). Do not stamp `action` / `atom` / `computed` on every target.
 
@@ -79,11 +79,11 @@ A computed + `withAbort` + auto-subscribe. Default name `effect` or `{parent}.ef
 
 **Recommendation (same as fallback): records, not spans.**
 
-| Option | Pros | Cons |
-| --- | --- | --- |
-| A. Span `onFulfill` / `onReject` / `onSettle` | Matches "more traces"; hooks are visible | Duplicates the parent outcome; extra waterfall node; `_onSettle` is private anyway |
-| B. One `reatom.async.settle` log on the parent / loader span, helpers unspanned | Outcome in the log pipeline; nested hooks stay on the parent; matches T10 "action spans, update logs" | Slight overlap with span `reatom.outcome` on actions and loaders |
-| C. Neither span nor record | Smallest volume | Computed-async without a loader kind would hide settle; admin/agents lose a stable `eventName` |
+| Option                                                                          | Pros                                                                                                  | Cons                                                                                           |
+| ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| A. Span `onFulfill` / `onReject` / `onSettle`                                   | Matches "more traces"; hooks are visible                                                              | Duplicates the parent outcome; extra waterfall node; `_onSettle` is private anyway             |
+| B. One `reatom.async.settle` log on the parent / loader span, helpers unspanned | Outcome in the log pipeline; nested hooks stay on the parent; matches T10 "action spans, update logs" | Slight overlap with span `reatom.outcome` on actions and loaders                               |
+| C. Neither span nor record                                                      | Smallest volume                                                                                       | Computed-async without a loader kind would hide settle; admin/agents lose a stable `eventName` |
 
 Pick **B**. Emit `reatom.async.settle` from the helper (or the promise `then`) with `reatom.name` of the **async target** (not the helper) and `reatom.outcome` `ok` / `error` / `abort`. Do not create helper spans. Abort still goes through `onSettle` without `onReject` — the record must cover that path.
 
@@ -114,14 +114,14 @@ Rules:
 
 Factories that set it:
 
-| Factory | Target | Meta `kind` |
-| --- | --- | --- |
-| `reatomAbstractRender` | `_${name}` computed | `render` |
-| `reatomAbstractRender` | new `_${name}.mount` action | `mount` |
-| `reatomRoute` | route computed | `route` |
-| `reatomRoute` | `{name}.loader` | `loader` |
-| `effect` | the effect computed | `effect` |
-| `withAsync` | `onFulfill`, `onReject`, `onSettle` | `async.helper` |
+| Factory                | Target                              | Meta `kind`    |
+| ---------------------- | ----------------------------------- | -------------- |
+| `reatomAbstractRender` | `_${name}` computed                 | `render`       |
+| `reatomAbstractRender` | new `_${name}.mount` action         | `mount`        |
+| `reatomRoute`          | route computed                      | `route`        |
+| `reatomRoute`          | `{name}.loader`                     | `loader`       |
+| `effect`               | the effect computed                 | `effect`       |
+| `withAsync`            | `onFulfill`, `onReject`, `onSettle` | `async.helper` |
 
 If C3 is rejected: name-pattern fallback in 01 (`_<adapter>.*`, wrap each `reatomComponent`). Worse, and it fails the minify test for anything whose **user** name is not the pattern. Helpers would still leak as spans unless the tracer special-cases `.onFulfill` by suffix, which C3 forbids.
 
@@ -137,16 +137,16 @@ Delta vs 02's informal list: add `loader`; do not add `log` or `async`.
 
 ## Rejected kinds
 
-| Candidate | Why not |
-| --- | --- |
-| `async` / `query` | `withAsync` is an extension, not an entity class. Span the action or stamp `loader`. |
-| `async.helper` as a public `reatom.kind` | Internal C3 only. Public signal is `eventName: reatom.async.settle`. |
-| `retry` | `reatom.attempt` on the child span. |
-| `suspense` | `reatom.outcome`. |
-| `form` / `field` | Names; field mutations are already `._*`. |
-| `log` | `eventName: reatom.log`; registry hook. |
-| `route.pathless` | Boolean / C4 boundary, not a kind. |
-| `connect` (`withConnectHook`) | Out of R3 scope. Name is `{target}.withConnectHook` (not private). Separate follow-up if it is noisy. |
+| Candidate                                | Why not                                                                                               |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `async` / `query`                        | `withAsync` is an extension, not an entity class. Span the action or stamp `loader`.                  |
+| `async.helper` as a public `reatom.kind` | Internal C3 only. Public signal is `eventName: reatom.async.settle`.                                  |
+| `retry`                                  | `reatom.attempt` on the child span.                                                                   |
+| `suspense`                               | `reatom.outcome`.                                                                                     |
+| `form` / `field`                         | Names; field mutations are already `._*`.                                                             |
+| `log`                                    | `eventName: reatom.log`; registry hook.                                                               |
+| `route.pathless`                         | Boolean / C4 boundary, not a kind.                                                                    |
+| `connect` (`withConnectHook`)            | Out of R3 scope. Name is `{target}.withConnectHook` (not private). Separate follow-up if it is noisy. |
 
 ## Recommendation (copy for implementers)
 

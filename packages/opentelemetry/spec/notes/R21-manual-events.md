@@ -33,20 +33,20 @@ Stable names are a contract with analysts: rename such actions like a public API
 
 Rejected (same reasons as [02](../02-opentelemetry-refactor.md#target-public-api)):
 
-| API | Why not |
-| --- | --- |
+| API                                             | Why not                                                                                                                                                                                                 |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `trackEvent(name, attrs)` / `record(eventName)` | Repeats the name as a string at every call site; a misspelling silently starts a new event; writes a log while business events are spans; is a protocol `take` / `getCalls` / `withCallHook` cannot see |
-| `analytics.withEvent()` (doc 11) | Manual tracking does not belong on the analytics model (А9) |
+| `analytics.withEvent()` (doc 11)                | Manual tracking does not belong on the analytics model (А9)                                                                                                                                             |
 
 ## Facts that cannot be automatic
 
-| Fact | Why automatic collection cannot know | Action name | Attributes |
-| --- | --- | --- | --- |
-| Signup | Account creation is app auth, not a page view or form-submit heuristic | `app.signup` | `app.signup.method` when the app distinguishes email / oauth / invite |
-| Purchase | Checkout success is a domain commit, not a URL | `app.purchase` | `app.order.value` from the payload ([03](../03-connect-web-analytics.md#api)) |
-| Search | The query the user meant, and whether it ran, live in the search action | `app.search` | Counts or facet ids. Do not put the raw query string in attributes by default (query strings often carry personal data; [03](../03-connect-web-analytics.md#page-and-navigation-а6-о9)) |
-| CTA | Which control was the conversion, and that it was the CTA, is product copy | `app.cta` | `app.cta.id` (stable). Avoid free-text labels as the only key |
-| Experiment exposure | Which flag and variant were assigned is app logic. Tier 0 cannot see it; a later `withExperiment` helper still wraps this fact, it does not become `trackEvent` ([03](../03-connect-web-analytics.md#experiments-а13)) | `feature_flag.evaluation` | `feature_flag.key`, `feature_flag.result.variant` ([05](../05-telemetry-schema.md#analytics-events)) |
+| Fact                | Why automatic collection cannot know                                                                                                                                                                                   | Action name               | Attributes                                                                                                                                                                              |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Signup              | Account creation is app auth, not a page view or form-submit heuristic                                                                                                                                                 | `app.signup`              | `app.signup.method` when the app distinguishes email / oauth / invite                                                                                                                   |
+| Purchase            | Checkout success is a domain commit, not a URL                                                                                                                                                                         | `app.purchase`            | `app.order.value` from the payload ([03](../03-connect-web-analytics.md#api))                                                                                                           |
+| Search              | The query the user meant, and whether it ran, live in the search action                                                                                                                                                | `app.search`              | Counts or facet ids. Do not put the raw query string in attributes by default (query strings often carry personal data; [03](../03-connect-web-analytics.md#page-and-navigation-а6-о9)) |
+| CTA                 | Which control was the conversion, and that it was the CTA, is product copy                                                                                                                                             | `app.cta`                 | `app.cta.id` (stable). Avoid free-text labels as the only key                                                                                                                           |
+| Experiment exposure | Which flag and variant were assigned is app logic. Tier 0 cannot see it; a later `withExperiment` helper still wraps this fact, it does not become `trackEvent` ([03](../03-connect-web-analytics.md#experiments-а13)) | `feature_flag.evaluation` | `feature_flag.key`, `feature_flag.result.variant` ([05](../05-telemetry-schema.md#analytics-events))                                                                                    |
 
 Page views, session rotation, UTM, engagement, visibility, network, and unhandled errors are **not** in this list. Those are automatic ([03](../03-connect-web-analytics.md#budget-tiers)). Do not re-declare them as manual actions.
 
@@ -67,15 +67,23 @@ export const signup = action(
   }),
 )
 
-export const purchase = action((order: { total: number }) => order, 'app.purchase').extend(
+export const purchase = action(
+  (order: { total: number }) => order,
+  'app.purchase',
+).extend(
   otel.withOTel({
     attributes: ({ payload }) => ({ 'app.order.value': payload.total }),
   }),
 )
 
-export const search = action((input: { resultCount: number }) => input, 'app.search').extend(
+export const search = action(
+  (input: { resultCount: number }) => input,
+  'app.search',
+).extend(
   otel.withOTel({
-    attributes: ({ payload }) => ({ 'app.search.results': payload.resultCount }),
+    attributes: ({ payload }) => ({
+      'app.search.results': payload.resultCount,
+    }),
   }),
 )
 
@@ -117,7 +125,10 @@ export const analytics = connectWebAnalytics({
   skipGlobalExtension: true,
 })
 
-export const purchase = action((order: { total: number }) => order, 'app.purchase').extend(
+export const purchase = action(
+  (order: { total: number }) => order,
+  'app.purchase',
+).extend(
   analytics.otel.withOTel({
     attributes: ({ payload }) => ({ 'app.order.value': payload.total }),
   }),

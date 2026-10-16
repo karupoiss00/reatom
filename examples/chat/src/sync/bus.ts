@@ -85,7 +85,11 @@ export const createSyncChannel = (
   return {
     supported,
     publish(event) {
-      const envelope: SyncEnvelope = { app: envelopeApp, from: currentTab(), event }
+      const envelope: SyncEnvelope = {
+        app: envelopeApp,
+        from: currentTab(),
+        event,
+      }
       try {
         open()?.postMessage(envelope)
       } catch (error) {

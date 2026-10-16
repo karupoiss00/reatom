@@ -20,10 +20,7 @@ export const widgetAnalytics = connectWebAnalytics(widgetOtel, {
   errors: false,
 })
 
-export const submitReview = action(
-  (stars: number) => stars,
-  'reviews.submit',
-)
+export const submitReview = action((stars: number) => stars, 'reviews.submit')
 
 hostAnalytics.visitorAtom()
 widgetAnalytics.visitorAtom()

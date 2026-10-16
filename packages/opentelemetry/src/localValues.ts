@@ -1,7 +1,7 @@
 /**
  * Live values for one locally kept record. Only the keys that apply to that
- * record are set. Each value is the original reference: not copied, masked,
- * or truncated, and never written into the exported OTLP payload.
+ * record are set. Each value is the original reference: not copied, masked, or
+ * truncated, and never written into the exported OTLP payload.
  */
 export type LocalValues = {
   params?: readonly unknown[]

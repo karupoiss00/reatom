@@ -1,10 +1,7 @@
 import { expect, test } from 'vitest'
 
 import { mcpEmptyToolsSentence, mcpUnreachableSentence } from '../errors/copy'
-import {
-  simulateMcpHtmlFail,
-  simulateMcpRpcError,
-} from '../testing/mcp-mock'
+import { simulateMcpHtmlFail, simulateMcpRpcError } from '../testing/mcp-mock'
 import { connectMcp, mcpError, mcpReady, mcpTools } from './index'
 import { fusionMcpUrl } from './url'
 
@@ -24,7 +21,9 @@ test('HTML 5xx is unreachable, not an empty tool list', async () => {
   expect(result.tools).toEqual([])
   expect(result.error).toBe(mcpUnreachableSentence)
   expect(result.error).not.toBe(mcpEmptyToolsSentence)
-  expect(result.error).not.toMatch(/not ready|html|bad gateway|browser blocked/i)
+  expect(result.error).not.toMatch(
+    /not ready|html|bad gateway|browser blocked/i,
+  )
 })
 
 test('json-rpc error.message is remapped to unreachable copy, not shown in the banner', async () => {

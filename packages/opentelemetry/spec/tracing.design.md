@@ -24,14 +24,14 @@ trace of its own, and the collector filled with roots that answered nothing.
 `createTracing({ tracer, hide, values, maxSpansPerTrace, maxTraceMs })` returns the four pieces;
 the app's instance is exported from `index.ts`.
 
--   **`withTracing`** — the extension that puts an atom under tracing: `addGlobalExtension` for
-    every atom created after, `.extend(withTracing)` for one made before. It traces nothing by
-    itself. A trace begins only where the code says so:
--   **`startTracing(name | { name, attributes }, cb, ...params)`** — an action; runs `cb`
-    and traces everything it causes.
--   **`withTracingStart(options)`** — on an action: every call starts a trace.
--   **`bindTracing(root, span)`** — puts every run in a root under a span the caller made and ends,
-    until the returned function is called: an SSR request's root, the browser's during page load.
+- **`withTracing`** — the extension that puts an atom under tracing: `addGlobalExtension` for
+  every atom created after, `.extend(withTracing)` for one made before. It traces nothing by
+  itself. A trace begins only where the code says so:
+- **`startTracing(name | { name, attributes }, cb, ...params)`** — an action; runs `cb`
+  and traces everything it causes.
+- **`withTracingStart(options)`** — on an action: every call starts a trace.
+- **`bindTracing(root, span)`** — puts every run in a root under a span the caller made and ends,
+  until the returned function is called: an SSR request's root, the browser's during page load.
 
 Inside a trace either of them becomes a child span.
 
@@ -72,19 +72,19 @@ what moved underneath first, then `creation`, then the root as a `read`.
 
 Three details that took tests to find:
 
--   **The `STACK` walk steps over frames it does not know.** `withAsync` calls `onFulfill` through
-    `abortVar.spawn`, an action reatom built before the install; ending the walk there lost every
-    `onFulfill`. The walk stops only at an instrumented frame without a link, or at the root frame.
--   **`dependency` walks dirty copies.** The kernel stops re-reading dependencies at the first one
-    that moved, so a later one can still be the stale copy a write marked dirty (`pubs[0] === null`).
-    `changedCause` goes through it (depth ≤ 8) to what moved underneath.
--   **A dependency the tracing never instrumented is gone through.** `@reatom/core` builds
-    `urlAtom`, `searchParamsAtom`, `is404` and more while it loads, and anything that imports
-    `addGlobalExtension` has loaded it — no import order gets an extension in first. Such a frame
-    has no link, so `causeOf` follows its writer or caller (`pubs[0]`) and then its dependencies,
-    16 frames at most. An instrumented frame without a link ran outside every trace and ends the
-    branch. For an uninstrumented COMPUTED this is a guess: the kernel keeps no record of which of
-    its dependencies moved, so the first one behind a live link is taken.
+- **The `STACK` walk steps over frames it does not know.** `withAsync` calls `onFulfill` through
+  `abortVar.spawn`, an action reatom built before the install; ending the walk there lost every
+  `onFulfill`. The walk stops only at an instrumented frame without a link, or at the root frame.
+- **`dependency` walks dirty copies.** The kernel stops re-reading dependencies at the first one
+  that moved, so a later one can still be the stale copy a write marked dirty (`pubs[0] === null`).
+  `changedCause` goes through it (depth ≤ 8) to what moved underneath.
+- **A dependency the tracing never instrumented is gone through.** `@reatom/core` builds
+  `urlAtom`, `searchParamsAtom`, `is404` and more while it loads, and anything that imports
+  `addGlobalExtension` has loaded it — no import order gets an extension in first. Such a frame
+  has no link, so `causeOf` follows its writer or caller (`pubs[0]`) and then its dependencies,
+  16 frames at most. An instrumented frame without a link ran outside every trace and ends the
+  branch. For an uninstrumented COMPUTED this is a guess: the kernel keeps no record of which of
+  its dependencies moved, so the first one behind a live link is taken.
 
 The outer middleware stashes each reactive run's previous dependencies (`entries`) before the
 kernel replaces them; the body middleware compares against those.
@@ -95,23 +95,23 @@ The link IS a reatom variable (`linkVar`), set on the run's own frame the way `V
 it. What the tracing does not use is the lookup, `get()`/`find()`, and it holds one mutable object
 instead of two ids:
 
--   **`find` walks dependencies, not causes.** On a reactive frame it searches every `pubs` entry,
-    depth first, first hit wins. A feed that reads `user` (computed in trace A, whose loader is
-    still pending, so A is live) and `filter` (just written in trace B) lands in A when `user` is
-    read first. The kernel does not record which dependency triggered a recompute
-    (`_isPubsChanged` returns `true`), so the stash in `entries` and the old-vs-fresh frame
-    comparison are what name it.
--   **When the span opens there is nothing to walk.** A recompute's body runs after the kernel has
-    reset `pubs` to `[null]`; `pubs[0]` is filled after the body. A computed pulled by a traced
-    reader has its reader only on `STACK`.
--   **A variable never expires.** Anything whose cause chain reaches a traced frame — a handler
-    `wrap`ped in it and fired a minute later, an effect re-run an hour later — would join that
-    trace, and no trace would ever end. The link is mutable so it can be sealed (§3); two string
-    variables could not be.
--   **The ids are the span's.** `span.spanContext()` carries both; the `Span` object is needed
-    anyway, to parent children and to end it, and so are the trace's budget counters.
--   **Cost.** With nothing set, `find` walks the whole upstream graph on every run. The walks here
-    are bounded and skipped entirely while `liveLinks` is 0.
+- **`find` walks dependencies, not causes.** On a reactive frame it searches every `pubs` entry,
+  depth first, first hit wins. A feed that reads `user` (computed in trace A, whose loader is
+  still pending, so A is live) and `filter` (just written in trace B) lands in A when `user` is
+  read first. The kernel does not record which dependency triggered a recompute
+  (`_isPubsChanged` returns `true`), so the stash in `entries` and the old-vs-fresh frame
+  comparison are what name it.
+- **When the span opens there is nothing to walk.** A recompute's body runs after the kernel has
+  reset `pubs` to `[null]`; `pubs[0]` is filled after the body. A computed pulled by a traced
+  reader has its reader only on `STACK`.
+- **A variable never expires.** Anything whose cause chain reaches a traced frame — a handler
+  `wrap`ped in it and fired a minute later, an effect re-run an hour later — would join that
+  trace, and no trace would ever end. The link is mutable so it can be sealed (§3); two string
+  variables could not be.
+- **The ids are the span's.** `span.spanContext()` carries both; the `Span` object is needed
+  anyway, to parent children and to end it, and so are the trace's budget counters.
+- **Cost.** With nothing set, `find` walks the whole upstream graph on every run. The walks here
+  are bounded and skipped entirely while `liveLinks` is 0.
 
 ### Where the state lives
 
@@ -142,26 +142,26 @@ An async action keeps its link until its promise settles, so `await wrap(…)` c
 
 ## 4. What gets a span
 
--   **Actions**: a span per call. Its promise is returned as a **derived** one, so an action nobody
-    awaits still reports its unhandled rejection.
--   **Computeds**: a span per run. Its promise is **observed in place** — it is the atom's state,
-    and `withAsync`, the cache and every reader hold that exact object.
--   **Plain atoms**: no body middleware — one in front of the kernel's `identity` turns the atom
-    into a computed. A write gets a post-hoc span, and only when the state changed. A `withComputed`
-    derive is caught the same way (deps read, state moved, no write).
-    The kernel's `identity` is found with a probe atom (`IDENTITY`): the `identity` exported from
-    `@reatom/core` is a different function.
--   **Hidden atoms** (`isHidden`: names `_X`, `x._y`, `var#…`; replaced by `hide(target)`, which
-    gets the atom itself and is asked on every run): no span, but a link of their own over the
-    parent's span, so what they call stays in the trace — even after their parent ended.
--   **Outcomes**: an abort sets `reatom.aborted`, a thrown promise (suspense) `reatom.suspended`,
-    anything else `status: ERROR` plus an exception event.
--   **Values** (`values: true`, default): `reatom.params`, `reatom.payload`, `reatom.state`,
-    `reatom.prev_state` via `serialize` — bounded (depth 3, 20 keys, 10 items, 200 chars, 1000
-    total), secret-looking keys redacted, atoms named and never read, class instances named by
-    constructor, a URL reduced to host + path + query KEYS. A value that is a secret with no key
-    to say so is mapped out on its atom (`withTracingMeta`), not left to the clip: that 200 chars
-    of a JWT end before its signature is luck, not a rule.
+- **Actions**: a span per call. Its promise is returned as a **derived** one, so an action nobody
+  awaits still reports its unhandled rejection.
+- **Computeds**: a span per run. Its promise is **observed in place** — it is the atom's state,
+  and `withAsync`, the cache and every reader hold that exact object.
+- **Plain atoms**: no body middleware — one in front of the kernel's `identity` turns the atom
+  into a computed. A write gets a post-hoc span, and only when the state changed. A `withComputed`
+  derive is caught the same way (deps read, state moved, no write).
+  The kernel's `identity` is found with a probe atom (`IDENTITY`): the `identity` exported from
+  `@reatom/core` is a different function.
+- **Hidden atoms** (`isHidden`: names `_X`, `x._y`, `var#…`; replaced by `hide(target)`, which
+  gets the atom itself and is asked on every run): no span, but a link of their own over the
+  parent's span, so what they call stays in the trace — even after their parent ended.
+- **Outcomes**: an abort sets `reatom.aborted`, a thrown promise (suspense) `reatom.suspended`,
+  anything else `status: ERROR` plus an exception event.
+- **Values** (`values: true`, default): `reatom.params`, `reatom.payload`, `reatom.state`,
+  `reatom.prev_state` via `serialize` — bounded (depth 3, 20 keys, 10 items, 200 chars, 1000
+  total), secret-looking keys redacted, atoms named and never read, class instances named by
+  constructor, a URL reduced to host + path + query KEYS. A value that is a secret with no key
+  to say so is mapped out on its atom (`withTracingMeta`), not left to the clip: that 200 chars
+  of a JWT end before its signature is luck, not a rule.
 
 Every start and end passes an explicit HrTime from `performance.now()`: the SDK's default start is
 `Date.now()`, a whole millisecond, which reorders siblings and lets a span end before it began.
@@ -176,20 +176,20 @@ the start runs `cb` untraced and nothing downstream links.
 
 ## 6. App wiring
 
--   `VITE_OTEL_EXPORTER_OTLP_ENDPOINT` (`src/env.ts`): unset or blank — nothing is installed and
-    the SDK is never downloaded. Spans go to `<endpoint>/v1/traces`, OTLP/HTTP JSON.
--   The instance in `index.ts` uses `trace.getTracer('reatom')` — the OTel proxy, which records
-    once a provider is registered and not before.
--   `src/app/tracing/index.ts`, the first app import of `setup.ts`: `addGlobalExtension(withTracing)`,
-    on both sides. Atoms created before it — `@reatom/core`'s own, and what `root.tsx` imports above
-    `./setup` (`simple-import-sort` puts side-effect imports after packages and aliases) — get no
-    span, and causes pass through them (§2). `entry.client` is no earlier: React Router's inline
-    script imports the route modules statically and `entry.client` with a dynamic `import()` last.
--   `src/app/tracing/provider.ts`, a **dynamic import**: `TracerProvider` + `BatchSpanProcessor`
-    (flushes on `visibilitychange`/`pagehide`) + `OTLPTraceExporter`. Starts before it lands find a
-    non-recording tracer and run untraced.
--   `RouterBridge` (`utils/reatom/navigation.ts`) starts `navigation` (`url.path`) around
-    `urlAtom.syncFromSource`.
+- `VITE_OTEL_EXPORTER_OTLP_ENDPOINT` (`src/env.ts`): unset or blank — nothing is installed and
+  the SDK is never downloaded. Spans go to `<endpoint>/v1/traces`, OTLP/HTTP JSON.
+- The instance in `index.ts` uses `trace.getTracer('reatom')` — the OTel proxy, which records
+  once a provider is registered and not before.
+- `src/app/tracing/index.ts`, the first app import of `setup.ts`: `addGlobalExtension(withTracing)`,
+  on both sides. Atoms created before it — `@reatom/core`'s own, and what `root.tsx` imports above
+  `./setup` (`simple-import-sort` puts side-effect imports after packages and aliases) — get no
+  span, and causes pass through them (§2). `entry.client` is no earlier: React Router's inline
+  script imports the route modules statically and `entry.client` with a dynamic `import()` last.
+- `src/app/tracing/provider.ts`, a **dynamic import**: `TracerProvider` + `BatchSpanProcessor`
+  (flushes on `visibilitychange`/`pagehide`) + `OTLPTraceExporter`. Starts before it lands find a
+  non-recording tracer and run untraced.
+- `RouterBridge` (`utils/reatom/navigation.ts`) starts `navigation` (`url.path`) around
+  `urlAtom.syncFromSource`.
 
 **SSR.** `src/app/tracing/server.ts` registers a provider of its own (`service.name: voice-ssr`,
 the same endpoint) and `requestTracingMiddleware`, second in `root.tsx` after
@@ -239,26 +239,26 @@ hide, retries, sampling and the OTLP encoding we would otherwise own.
 
 ## 8. Not covered
 
--   **A cached document**: the `Server-Timing` header is cached with it, and every visitor would
-    continue one old request's trace (see the Workers Cache note before enabling one).
--   **`.data` requests** are traced on the server, but nothing links them to the client navigation
-    or prefetch that sent them; RR normalizes `request.url`, so a span cannot even tell one from a
-    document request except by its missing `ssr.snapshot.bytes`.
--   **What `setup.ts` starts before the page load is bound** has no span; a run it continues later
-    joins `page load` through the root, without its cause (a bare `api.sessionRefused`).
--   **Server cost**: unmeasured. Every atom is instrumented on the server and nothing is sampled; a
-    poll page is ~600 server spans. In deployed Workers the clock advances only on I/O, so a
-    synchronous render reads as ~0 ms there (local dev measures it).
--   **Atoms created before `addGlobalExtension`** — `urlAtom` among them — have no span: a
-    navigation shows `navigation → route (dependency)` with no `urlAtom (write)` between. Causes
-    pass through them (§2); `.extend(withTracing)` on one gives it a span.
--   **The React boundary**: a component's render is not caused by anything the tracer sees; a
-    computed it pulls joins only as a `dependency` of a write that is still live. So a route
-    loader nothing has read yet — the profile's, on the first visit after loading `/explore` —
-    is first run by the page mounting and is missing from the navigation's trace. Measured the
-    same with `urlAtom` instrumented.
--   **Requests outside `src/api/client.ts`** — the Solana RPC, `fetchImage`, the centrifugo
-    socket — carry no trace context.
--   **The backend continues `sentry-trace`, not `traceparent`** (checked 2026-10-13 on
-    `/healthz`). It exports to the same collector as `voice_api`, but until it reads W3C trace
-    context each request starts a trace of its own instead of joining the caller's.
+- **A cached document**: the `Server-Timing` header is cached with it, and every visitor would
+  continue one old request's trace (see the Workers Cache note before enabling one).
+- **`.data` requests** are traced on the server, but nothing links them to the client navigation
+  or prefetch that sent them; RR normalizes `request.url`, so a span cannot even tell one from a
+  document request except by its missing `ssr.snapshot.bytes`.
+- **What `setup.ts` starts before the page load is bound** has no span; a run it continues later
+  joins `page load` through the root, without its cause (a bare `api.sessionRefused`).
+- **Server cost**: unmeasured. Every atom is instrumented on the server and nothing is sampled; a
+  poll page is ~600 server spans. In deployed Workers the clock advances only on I/O, so a
+  synchronous render reads as ~0 ms there (local dev measures it).
+- **Atoms created before `addGlobalExtension`** — `urlAtom` among them — have no span: a
+  navigation shows `navigation → route (dependency)` with no `urlAtom (write)` between. Causes
+  pass through them (§2); `.extend(withTracing)` on one gives it a span.
+- **The React boundary**: a component's render is not caused by anything the tracer sees; a
+  computed it pulls joins only as a `dependency` of a write that is still live. So a route
+  loader nothing has read yet — the profile's, on the first visit after loading `/explore` —
+  is first run by the page mounting and is missing from the navigation's trace. Measured the
+  same with `urlAtom` instrumented.
+- **Requests outside `src/api/client.ts`** — the Solana RPC, `fetchImage`, the centrifugo
+  socket — carry no trace context.
+- **The backend continues `sentry-trace`, not `traceparent`** (checked 2026-10-13 on
+  `/healthz`). It exports to the same collector as `voice_api`, but until it reads W3C trace
+  context each request starts a trace of its own instead of joining the caller's.

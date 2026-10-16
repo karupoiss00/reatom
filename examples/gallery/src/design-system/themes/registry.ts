@@ -98,8 +98,7 @@ export const THEME_PACKS: ThemePackMeta[] = [
 ]
 
 type ControlThemeOverrideSource =
-  | ControlThemeOverrides
-  | ((mode: ResolvedThemeMode) => ControlThemeOverrides)
+  ControlThemeOverrides | ((mode: ResolvedThemeMode) => ControlThemeOverrides)
 
 const controlOverrides: Record<ThemePack, ControlThemeOverrideSource> = {
   cartoon: cartoonControlOverrides,

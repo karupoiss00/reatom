@@ -34,14 +34,7 @@ export type ModelWire = {
       'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
     > | null
     default_effort?:
-      | 'none'
-      | 'minimal'
-      | 'low'
-      | 'medium'
-      | 'high'
-      | 'xhigh'
-      | 'max'
-      | null
+      'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | null
   }
   links: { details: string }
 }
@@ -180,14 +173,18 @@ export const catalogModels: ModelWire[] = [
     },
     supported_parameters: ['tools', 'temperature', 'reasoning'],
   }),
-  model('mistralai/mistral-7b-instruct-v0.3', 'Mistral: Mistral 7B Instruct v0.3', {
-    context_length: 32768,
-    modality: 'text->text',
-    input_modalities: ['text'],
-    tokenizer: 'Mistral',
-    pricing: { prompt: '0.00000003', completion: '0.00000005' },
-    supported_parameters: [],
-  }),
+  model(
+    'mistralai/mistral-7b-instruct-v0.3',
+    'Mistral: Mistral 7B Instruct v0.3',
+    {
+      context_length: 32768,
+      modality: 'text->text',
+      input_modalities: ['text'],
+      tokenizer: 'Mistral',
+      pricing: { prompt: '0.00000003', completion: '0.00000005' },
+      supported_parameters: [],
+    },
+  ),
 ]
 
 export const freeModelId = 'meta-llama/llama-3.3-8b-instruct:free'

@@ -36,8 +36,8 @@ export function overviewDataTitle(record: AdminRecord): OverviewDataTitle {
 
 /**
  * Value shown first on Overview. State writes use the live state or the
- * recorded body. Other records use the live payload or `reatom.payload`.
- * Params render underneath.
+ * recorded body. Other records use the live payload or `reatom.payload`. Params
+ * render underneath.
  */
 export function overviewDataValue(record: AdminRecord): unknown {
   if (isStateWrite(record)) return stateValue(record)

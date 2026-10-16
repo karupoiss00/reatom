@@ -316,8 +316,7 @@ const initWithIndexedDb = () =>
   isIndexedDbAvailable
     ? reatomPersistIndexedDb(
         'reatom_default',
-        () =>
-          new globalThis.BroadcastChannel('reatom_withIndexedDb_default'),
+        () => new globalThis.BroadcastChannel('reatom_withIndexedDb_default'),
       )
     : (reatomPersist(
         createMemStorage({ name: 'withIndexedDb' }),

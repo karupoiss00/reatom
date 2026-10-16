@@ -88,7 +88,7 @@ export type EventOfTarget<Target extends EventTarget, Type extends string> =
 export const onEvent: {
   <
     Target extends EventTarget,
-    Type extends Target extends Record<`on${infer Type}`, Fn> ? Type : string,
+    Type extends (Target extends Record<`on${infer Type}`, Fn> ? Type : string),
   >(
     target: Target,
     type: Type,
@@ -96,7 +96,7 @@ export const onEvent: {
   <Event>(target: EventTarget, type: string): Promise<Event>
   <
     Target extends EventTarget,
-    Type extends Target extends Record<`on${infer Type}`, Fn> ? Type : string,
+    Type extends (Target extends Record<`on${infer Type}`, Fn> ? Type : string),
   >(
     target: Target,
     type: Type,

@@ -1,4 +1,4 @@
-/** v2 barrel compatibility (spec 02 #28 / F-01 / F-02). */
+/** V2 barrel compatibility (spec 02 #28 / F-01 / F-02). */
 import type { AtomLike, Ext, GenericExt } from '@reatom/core'
 import { action, atom, computed, withParams } from '@reatom/core'
 

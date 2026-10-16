@@ -66,7 +66,11 @@ const collectCitations = (chunk: Rec, delta: Rec | null): Citation[] => {
 }
 
 const toUsage = (usage: Rec): UsageRecord => {
-  const details = field(usage, 'completion_tokens_details', 'completionTokensDetails')
+  const details = field(
+    usage,
+    'completion_tokens_details',
+    'completionTokensDetails',
+  )
   const reasoningTokens = isRec(details)
     ? numberOr(field(details, 'reasoning_tokens', 'reasoningTokens'), 0)
     : 0

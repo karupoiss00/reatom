@@ -46,9 +46,9 @@ export type {
 
 /**
  * Typed admin tools over an OTLP chrome model. An agent calls these functions
- * against `OtlpAdmin`; this is not a WebMCP registry and does not add `withMCP`.
- * Each JSON body is capped at 20 KB. `header.truncated` means more pages exist;
- * `header.valuesTruncated` means a shrink step ran.
+ * against `OtlpAdmin`; this is not a WebMCP registry and does not add
+ * `withMCP`. Each JSON body is capped at 20 KB. `header.truncated` means more
+ * pages exist; `header.valuesTruncated` means a shrink step ran.
  */
 export function reatomOtlpMcp(admin: OtlpAdmin) {
   const run = <T>(read: () => T): T => ADMIN_FRAME.run(read)

@@ -101,7 +101,9 @@ test('AD-7 journey: find the failing trace through tools only, then clear', () =
   const causeSearch = mcp.search({ filter: { query: 'tree.checked' } })
   expect(causeSearch.ok).toBe(true)
   if (!causeSearch.ok) return
-  const checked = causeSearch.data.find((row) => row.atomName === 'tree.checked')
+  const checked = causeSearch.data.find(
+    (row) => row.atomName === 'tree.checked',
+  )
   expect(checked).toBeDefined()
   expect(checked!.attributes['reatom.name']).toBe('tree.checked')
 
@@ -111,7 +113,9 @@ test('AD-7 journey: find the failing trace through tools only, then clear', () =
   expect(checkedRecord.data.causes).toEqual([
     { id: '1', name: 'tree#12.toggle' },
   ])
-  expect(checkedRecord.data.record.attributes['reatom.cause.ids']).toEqual(['1'])
+  expect(checkedRecord.data.record.attributes['reatom.cause.ids']).toEqual([
+    '1',
+  ])
 
   const state = mcp.getState({ path: 'tree.checked' })
   expect(state.ok).toBe(true)

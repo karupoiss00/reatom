@@ -11,7 +11,9 @@ export default mergeConfig(
   viteConfig,
   defineConfig({
     server: { hmr: { overlay: false } },
-    optimizeDeps: { include: ['marked', 'dompurify', 'katex', 'idb', 'axe-core'] },
+    optimizeDeps: {
+      include: ['marked', 'dompurify', 'katex', 'idb', 'axe-core'],
+    },
     test: {
       include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
       fileParallelism: false,

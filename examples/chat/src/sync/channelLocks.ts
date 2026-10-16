@@ -32,9 +32,9 @@ const createClaimTie = () => ++nextClaimTie + Math.random()
 
 /**
  * Web Locks fallback: a tab claims a name, waits for objections, then
- * heartbeats while it holds it. A silent holder expires, which covers a
- * closed or crashed tab. Concurrent claims resolve to the lowest nonce,
- * then the lower tab id, then the lower claim tie.
+ * heartbeats while it holds it. A silent holder expires, which covers a closed
+ * or crashed tab. Concurrent claims resolve to the lowest nonce, then the lower
+ * tab id, then the lower claim tie.
  */
 export const createChannelLockBackend = (options: {
   channelName?: string
@@ -166,7 +166,10 @@ export const createChannelLockBackend = (options: {
         if (pendingClaims.get(name)?.nonce === nonce) pendingClaims.delete(name)
         resolve(won)
       }
-      const timer = setTimeout(() => finish(true), channelLockTimings.claimWaitMs)
+      const timer = setTimeout(
+        () => finish(true),
+        channelLockTimings.claimWaitMs,
+      )
       pendingClaims.set(name, { nonce, tie, lose: () => finish(false) })
       post({ kind: 'claim', name, tabId: options.tabId(), nonce, tie })
     })

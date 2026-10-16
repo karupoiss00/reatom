@@ -417,7 +417,9 @@ test('prevents Escape when the composed path contains the host', () => {
 test('writes localValues on connect, restores it on dispose, and stops attaching when turned off', () => {
   vi.useFakeTimers()
   const live = new Map<unknown, AdminLocalValues>()
-  const previous = createFake({ localValues: 'all' }, (record) => live.get(record))
+  const previous = createFake({ localValues: 'all' }, (record) =>
+    live.get(record),
+  )
   const connection = connect(previous)
   expect(previous.options.localValues).toBe(true)
   expect(ADMIN_FRAME.run(() => connection.localValues())).toBe(true)

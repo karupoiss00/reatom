@@ -1,4 +1,3 @@
-
 import { action, atom, computed, context, getCalls, notify } from '@reatom/core'
 import { afterEach, expect, test, vi } from 'vitest'
 
@@ -162,7 +161,6 @@ test('F-12: atom write inside an action emits reatom.atom.update with the action
   expect(toggleSpan.name).toBe('tree#.toggle')
   expect(toggleSpan.attributes['reatom.name']).toBe('tree#12.toggle')
   expect(toggleSpan.attributes['reatom.instance']).toBe('12')
-
 })
 
 test('F-12: tree#12.toggle is named tree#.toggle with reatom.instance "12"', async () => {
@@ -233,7 +231,10 @@ const computedSpansNamed = (spans: ParsedSpan[], name: string): ParsedSpan[] =>
       (span.name === name || span.attributes['reatom.name'] === name),
   )
 
-const computedUpdatesNamed = (records: ParsedLog[], name: string): ParsedLog[] =>
+const computedUpdatesNamed = (
+  records: ParsedLog[],
+  name: string,
+): ParsedLog[] =>
   records.filter(
     (record) =>
       record.eventName === 'reatom.computed.update' &&

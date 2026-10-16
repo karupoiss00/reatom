@@ -38,8 +38,7 @@ const report = (callback: () => void) => {
 export const createExportWorker = <T>(input: ExportWorkerInput<T>) => {
   let disposed = false
   let current:
-    | { stop(reason: 'timeout' | 'disposed'): void; stopped: boolean }
-    | undefined
+    { stop(reason: 'timeout' | 'disposed'): void; stopped: boolean } | undefined
   return {
     isQuarantined: () => current?.stopped ?? false,
     send(lease: BatchLease<T>, keepalive = false): void {

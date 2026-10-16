@@ -129,13 +129,10 @@ export const createSyncLocks = (options: SyncLocksOptions = {}): SyncLocks => {
     const forget = () => {
       if (watchers.get(chatId) === controller) watchers.delete(chatId)
     }
-    waitForRelease().then(
-      () => {
-        forget()
-        if (!controller.signal.aborted) settleReleased(chatId)
-      },
-      forget,
-    )
+    waitForRelease().then(() => {
+      forget()
+      if (!controller.signal.aborted) settleReleased(chatId)
+    }, forget)
   }
 
   const stopWatching = (chatId: ChatId) => {
@@ -239,7 +236,12 @@ const getSharedLocks = (): SyncLocks => {
   if (!sharedLocks) {
     const locks = createSyncLocks({
       onRemoteReleased: (chatId, holderTab) =>
-        syncReceived({ type: 'stream', chatId, tabId: holderTab, active: false }),
+        syncReceived({
+          type: 'stream',
+          chatId,
+          tabId: holderTab,
+          active: false,
+        }),
     })
     sharedLocks = locks
     onRuntimeReset(() => {

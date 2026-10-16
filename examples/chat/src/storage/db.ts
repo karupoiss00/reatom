@@ -67,7 +67,8 @@ export const configureUpgrade = (upgrade: UpgradeAtelier) => {
   upgradeAtelier = upgrade
 }
 
-export const getConnection = (): IDBPDatabase<AtelierSchema> | null => connection
+export const getConnection = (): IDBPDatabase<AtelierSchema> | null =>
+  connection
 
 export const lostConnectionEpoch = () => lostEpoch
 
@@ -133,7 +134,8 @@ const databaseAcceptsWrites = async (db: IDBPDatabase<AtelierSchema>) => {
 
 const openErrorOutcome = (error: unknown): OpenOutcome => {
   const name = error instanceof DOMException ? error.name : ''
-  if (name === 'VersionError' || name === 'AbortError') return { status: 'blocked' }
+  if (name === 'VersionError' || name === 'AbortError')
+    return { status: 'blocked' }
   return { status: 'memory' }
 }
 
@@ -167,8 +169,12 @@ const openFresh = async (): Promise<OpenOutcome> => {
       () => ({ kind: 'failed' as const }),
     )
     const blockNotice = blockedOpen.then(() => ({ kind: 'blocked' as const }))
-    let winner: { kind: 'db'; db: IDBPDatabase<AtelierSchema> } | { kind: 'failed' | 'blocked' | 'timeout' } =
-      await Promise.race([opened, blockNotice])
+    let winner:
+      | { kind: 'db'; db: IDBPDatabase<AtelierSchema> }
+      | { kind: 'failed' | 'blocked' | 'timeout' } = await Promise.race([
+      opened,
+      blockNotice,
+    ])
     if (winner.kind === 'blocked') {
       const blockClearanceMs = 500
       winner = await Promise.race([
@@ -179,7 +185,9 @@ const openFresh = async (): Promise<OpenOutcome> => {
       ])
     }
     if (winner.kind !== 'db') {
-      void openingDatabase.then((db) => closeDatabase(db)).catch(() => undefined)
+      void openingDatabase
+        .then((db) => closeDatabase(db))
+        .catch(() => undefined)
       return { status: 'blocked' }
     }
     adoptConnection(winner.db)

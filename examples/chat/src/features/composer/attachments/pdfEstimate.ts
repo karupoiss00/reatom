@@ -9,7 +9,9 @@ const billedPages = (ref: AttachmentRef) =>
   ref.pages && ref.pages > 0 ? ref.pages : 1000
 
 export const syncPdfEstimate = (attachments: readonly AttachmentRef[]) => {
-  const ocr = attachments.filter((ref) => ref.kind === 'pdf' && ref.pdfEngine === 'ocr')
+  const ocr = attachments.filter(
+    (ref) => ref.kind === 'pdf' && ref.pdfEngine === 'ocr',
+  )
   extraEstimateLines.set((lines) => {
     const rest = lines.filter((line) => line.key !== pdfParsingKey)
     if (ocr.length === 0) return rest.length === lines.length ? lines : rest

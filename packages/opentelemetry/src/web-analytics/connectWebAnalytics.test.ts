@@ -89,11 +89,13 @@ const installShopWindow = (options?: { navigationApi?: boolean }) => {
     options?.navigationApi === false
       ? undefined
       : {
-          addEventListener: vi.fn((type: string, fn: (event?: Event) => void) => {
-            const set = navigationListeners.get(type) ?? new Set()
-            set.add(fn)
-            navigationListeners.set(type, set)
-          }),
+          addEventListener: vi.fn(
+            (type: string, fn: (event?: Event) => void) => {
+              const set = navigationListeners.get(type) ?? new Set()
+              set.add(fn)
+              navigationListeners.set(type, set)
+            },
+          ),
           removeEventListener: vi.fn(
             (type: string, fn: (event?: Event) => void) => {
               navigationListeners.get(type)?.delete(fn)
@@ -220,9 +222,9 @@ test('spec 03.12 / F-08: connectWebAnalytics without window is a no-op and never
       if (hadDocument) globalObject.document = documentRef
       else delete globalObject.document
     }
-    expect(
-      warn.mock.calls.flat().some((arg) => String(arg).length > 0),
-    ).toBe(true)
+    expect(warn.mock.calls.flat().some((arg) => String(arg).length > 0)).toBe(
+      true,
+    )
   })
 })
 
@@ -318,9 +320,7 @@ test('spec 03.16: navigation-api sees foreign pushState and does not call setupU
   context.start(() => {
     const catchLinksBefore = urlAtom.catchLinks()
     const syncBefore = urlAtom.sync()
-    remember(
-      connectWebAnalytics({ ...OPTIONS, navigation: 'navigation-api' }),
-    )
+    remember(connectWebAnalytics({ ...OPTIONS, navigation: 'navigation-api' }))
     expect(urlAtom.catchLinks()).toBe(catchLinksBefore)
     expect(urlAtom.catchLinks()).toBe(true)
     expect(urlAtom.sync()).toBe(syncBefore)
@@ -587,7 +587,11 @@ const spanNamed = (
     if (found || value === null || typeof value !== 'object') return
     const recordName = 'name' in value ? value.name : undefined
     const spanId = 'spanId' in value ? value.spanId : undefined
-    if (typeof recordName === 'string' && recordName === name && typeof spanId === 'string') {
+    if (
+      typeof recordName === 'string' &&
+      recordName === name &&
+      typeof spanId === 'string'
+    ) {
       found = {
         name: recordName,
         traceId:
@@ -726,12 +730,12 @@ test('WA-4: reatomGDPR analytics submit grants identifiers on the first page vie
     expect(analyticsRecordsOf(analytics.otel)).toEqual([])
     expect(analytics.visitorAtom()).toBeUndefined()
     expect(identityStorageKeys(page.localStorage)).toEqual([])
-    expect(page.localStorage.getItem(visitorStorageKey('wa4-gdpr-submit'))).toBe(
-      null,
-    )
-    expect(page.localStorage.getItem(sessionStorageKey('wa4-gdpr-submit'))).toBe(
-      null,
-    )
+    expect(
+      page.localStorage.getItem(visitorStorageKey('wa4-gdpr-submit')),
+    ).toBe(null)
+    expect(
+      page.localStorage.getItem(sessionStorageKey('wa4-gdpr-submit')),
+    ).toBe(null)
 
     await wrap(consent.submit())
     notify()
@@ -764,9 +768,9 @@ test('WA-4 / R11: diagnostics-only true sends no page view and no visitor id', a
       }),
     )
     notify()
-    expect(collectNamed([...analytics.otel.records()], 'app.page_view')).toEqual(
-      [],
-    )
+    expect(
+      collectNamed([...analytics.otel.records()], 'app.page_view'),
+    ).toEqual([])
     expect(analytics.visitorAtom()).toBeUndefined()
     expect(
       analyticsRecordsOf(analytics.otel).some(
@@ -825,9 +829,9 @@ test('WA-4: re-grant after withdraw does not flush withdrawn-period engagement',
         consent,
       }),
     )
-    expect(collectNamed([...analytics.otel.records()], 'app.page_view')).toHaveLength(
-      1,
-    )
+    expect(
+      collectNamed([...analytics.otel.records()], 'app.page_view'),
+    ).toHaveLength(1)
 
     clock.advance(100)
     consent.set(false)
@@ -844,9 +848,9 @@ test('WA-4: re-grant after withdraw does not flush withdrawn-period engagement',
       'app.page.engagement',
     )
     expect(engagement).toHaveLength(1)
-    expect(asNumber(engagement[0]!.attributes['app.engagement.visible_ms'])).toBe(
-      200,
-    )
+    expect(
+      asNumber(engagement[0]!.attributes['app.engagement.visible_ms']),
+    ).toBe(200)
   })
 })
 
@@ -863,9 +867,9 @@ test('WA-4: withdrawing analytics stops further pageView and hide OTLP', () => {
       }),
     )
     const before = analyticsRecordsOf(analytics.otel)
-    expect(collectNamed([...analytics.otel.records()], 'app.page_view')).toHaveLength(
-      1,
-    )
+    expect(
+      collectNamed([...analytics.otel.records()], 'app.page_view'),
+    ).toHaveLength(1)
 
     consent.set(false)
     notify()
@@ -943,7 +947,6 @@ test('F-10: reatomGDPR withdraw stops pageView OTLP and new events lack visitor 
     expect(viewsAfterRestore[1]!.attributes['app.analytics.consent']).toBe(
       'analytics',
     )
-
   })
 })
 
@@ -963,10 +966,9 @@ test('WA-4: diagnostics category object is not a back door for analytics identif
       }),
     )
     notify()
-    expect(collectNamed([...analytics.otel.records()], 'app.page_view')).toEqual(
-      [],
-    )
+    expect(
+      collectNamed([...analytics.otel.records()], 'app.page_view'),
+    ).toEqual([])
     expect(analytics.visitorAtom()).toBeUndefined()
   })
 })
-

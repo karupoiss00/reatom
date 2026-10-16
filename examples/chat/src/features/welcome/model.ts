@@ -11,14 +11,16 @@ import {
 
 export { rememberKey }
 import { isOnline } from '../../platform/env'
-import { chatIdFromReturnTo, chatRoute, currentChatReturnTo } from '../../routes'
+import {
+  chatIdFromReturnTo,
+  chatRoute,
+  currentChatReturnTo,
+} from '../../routes'
 
 const limitPattern = /^(?:\d+|\d+\.\d+)$/
 
 export type LimitDraft =
-  | { state: 'empty' }
-  | { state: 'invalid' }
-  | { state: 'set'; amount: number }
+  { state: 'empty' } | { state: 'invalid' } | { state: 'set'; amount: number }
 
 const parseLimit = (raw: string): LimitDraft => {
   const text = raw.trim()
@@ -38,7 +40,10 @@ export const connectPending = atom(false, 'welcome.connectPending')
 export const connectOpen = atom(false, 'welcome.connectOpen')
 
 export const pasteKeyOpen = atom(false, 'welcome.pasteKeyOpen')
-export const pasteIntent = atom<'paste' | 'change'>('paste', 'welcome.pasteIntent')
+export const pasteIntent = atom<'paste' | 'change'>(
+  'paste',
+  'welcome.pasteIntent',
+)
 export const pasteDraft = atom('', 'welcome.pasteDraft')
 export const pasteRevealed = atom(false, 'welcome.pasteRevealed')
 export const pastePending = atom(false, 'welcome.pastePending')

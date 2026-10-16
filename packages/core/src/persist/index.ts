@@ -157,9 +157,8 @@ export interface WithPersist<Snapshot = unknown, Options extends Rec = {}> {
 
   <Target extends AtomLike, Decode extends Snapshot>(
     options: AtomState<Target> extends Snapshot
-      ?
-          | ({} extends Options ? string : never)
-          | (Options & WithPersistOptions<AtomState<Target>, Decode>)
+      ? | ({} extends Options ? string : never)
+        | (Options & WithPersistOptions<AtomState<Target>, Decode>)
       : Options & WithRequiredPersistOptions<AtomState<Target>, Decode>,
   ): Ext<Target>
 

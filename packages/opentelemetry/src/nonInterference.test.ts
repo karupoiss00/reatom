@@ -18,7 +18,7 @@ test.each([false, true])(
       if (throwing) throw new Error('diagnostic failure')
     })
     const otel = reatomOpentelemetry({
-    name: 'nonInterference',
+      name: 'nonInterference',
       endpoint: 'http://collector.invalid',
       serviceName: 'test',
       retry: { maxRetries: 0 },

@@ -236,9 +236,7 @@ describe('reatomTimer', () => {
     )
     expect(timer.status()).toBe('idle')
 
-    const rejected = await wrap(
-      timer.start(200).catch((error: Error) => error),
-    )
+    const rejected = await wrap(timer.start(200).catch((error: Error) => error))
     expect(rejected).toBeInstanceOf(Error)
   })
 

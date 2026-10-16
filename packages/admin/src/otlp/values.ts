@@ -18,10 +18,10 @@ function parseJsonAttr(value: unknown): unknown {
 }
 
 /**
- * Params, payload, state, and error for display.
- * `source: 'local'` reads {@link localValuesOf}. Otherwise params and payload
- * are decoded from `reatom.params` and `reatom.payload` (invalid JSON stays a
- * string), state is the log body, and error is `record.error`.
+ * Params, payload, state, and error for display. `source: 'local'` reads
+ * {@link localValuesOf}. Otherwise params and payload are decoded from
+ * `reatom.params` and `reatom.payload` (invalid JSON stays a string), state is
+ * the log body, and error is `record.error`.
  */
 export function recordValues(record: AdminRecord): {
   params: unknown
@@ -50,8 +50,8 @@ export function recordValues(record: AdminRecord): {
 }
 
 /**
- * Search text for local values, capped at 64 KB and cached per record.
- * Cycles, Map, Set, bigint, functions, and symbols are rendered without throwing.
+ * Search text for local values, capped at 64 KB and cached per record. Cycles,
+ * Map, Set, bigint, functions, and symbols are rendered without throwing.
  * Records without local values return an empty string.
  */
 export function recordValuesText(record: AdminRecord): string {

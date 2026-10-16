@@ -26,7 +26,9 @@ test('collapsed object preview keeps the first three keys', () => {
   expect(collapsedPreview({ a: 1, b: 2, c: 3, d: 4 })).toBe(
     'Object {a: 1, b: 2, c: 3, …}',
   )
-  expect(collapsedPreview({ a: 1, b: 2, c: 3 })).toBe('Object {a: 1, b: 2, c: 3}')
+  expect(collapsedPreview({ a: 1, b: 2, c: 3 })).toBe(
+    'Object {a: 1, b: 2, c: 3}',
+  )
 })
 
 test('collapsed array preview quotes cells and marks holes', () => {

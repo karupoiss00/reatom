@@ -15,6 +15,8 @@ export const analytics = connectWebAnalytics(otel, {
 
 export const searchQuery = atom('', 'search.query')
 export const runSearch = action(async () => {
-  const response = await wrap(fetch(`/api/search?q=${encodeURIComponent(searchQuery())}`))
+  const response = await wrap(
+    fetch(`/api/search?q=${encodeURIComponent(searchQuery())}`),
+  )
   return (await wrap(response.json())) as string[]
 }, 'search.run').extend(withAsync())

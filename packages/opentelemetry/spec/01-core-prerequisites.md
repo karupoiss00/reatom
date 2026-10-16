@@ -32,7 +32,10 @@ The owner wants batching, queues and sampling to be Reatom features, "as smart a
 Proposed API:
 
 ```ts
-const flushQueue = action(async (items: Item[]) => send(items), 'otel.flush').extend(
+const flushQueue = action(
+  async (items: Item[]) => send(items),
+  'otel.flush',
+).extend(
   withAsyncQueue({
     interval: 3000,
     maxSize: 100,
@@ -53,7 +56,7 @@ flushQueue.stats()
 - `withQueue` is sync, for accumulating and releasing on a trigger. `withAsyncQueue` adds concurrency, retry hooks, and abort through `withAbort`.
 - `queue` is an atom, so users can `extend` it with persistence (`withIndexedDb`, `withLocalStorage` from `core/persist`). That is the offline buffer from Т43, without shipping it by default.
 - Pausing follows a reactive gate, e.g. `pauseWhile: () => !onLineAtom()`, which gives the online buffer from Т43.
-- Sampling stays a *pattern* on top of `withAbort` + `sleep` + `wrap` as in `docs/handbook/sampling.md`. There is deliberately no `withSample` (Т40).
+- Sampling stays a _pattern_ on top of `withAbort` + `sleep` + `wrap` as in `docs/handbook/sampling.md`. There is deliberately no `withSample` (Т40).
 
 **Acceptance:** the tracer's `createBatchQueue` and `createExportWorker` semantics are reproduced by `withAsyncQueue` in tests: drop-newest on overflow, lease and release, flush waits for the items present at call time, unload take with the newest records first, one request in flight, an export timeout (`exportTimeoutMs`, v1 default 30 s), and retries that honor `Retry-After` (both forms) without shortening it to the local cap. The size of core grows by less than the size removed from the tracer.
 

@@ -1,10 +1,4 @@
-import {
-  action,
-  atom,
-  computed,
-  withConnectHook,
-  wrap,
-} from '@reatom/core'
+import { action, atom, computed, withConnectHook, wrap } from '@reatom/core'
 
 import { tabId } from '../platform/env'
 import { onRuntimeReset } from '../platform/runtime'

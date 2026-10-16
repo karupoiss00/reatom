@@ -123,7 +123,8 @@ const reatomChatModel = (id: ChatId | 'new'): ChatModel => {
     if (!current) return 'missing' as const
     if (current.deletedAt !== null) {
       const notice = deletedElsewhere()
-      if (notice?.chatId === id && notice.expiresAt > now()) return 'ready' as const
+      if (notice?.chatId === id && notice.expiresAt > now())
+        return 'ready' as const
       return 'deleted' as const
     }
     return 'ready' as const
@@ -172,9 +173,7 @@ const reatomChatModel = (id: ChatId | 'new'): ChatModel => {
   )
 
   const presetId = atom<PresetId | null>(null, `${name}.presetId`).extend(
-    withComputed((state) =>
-      isPending ? state : (record()?.presetId ?? null),
-    ),
+    withComputed((state) => (isPending ? state : (record()?.presetId ?? null))),
     withChangeHook((next) => {
       if (isPending) return
       const current = record()
@@ -198,32 +197,32 @@ const reatomChatModel = (id: ChatId | 'new'): ChatModel => {
 
   const draft = reatomDraft(id, `${name}.draft`)
 
-  const streaming = computed((): {
-    messageId: MessageId
-    local: boolean
-  } | null => {
-    const local = localStreams().get(id)
-    if (local) return { messageId: local.messageId, local: true }
-    if (isPending) {
-      const startingId = startingNewChatId()
-      const starting = startingId ? localStreams().get(startingId) : undefined
-      return starting ? { messageId: starting.messageId, local: true } : null
-    }
-    if (!remoteStreams().has(id) && !streamHeldElsewhere(id)()) return null
-    let live: MessageRecord | null = null
-    for (const message of messages().values()) {
-      if (!isLiveStatus(message)) continue
-      if (!live || message.createdAt > live.createdAt) live = message
-    }
-    return live ? { messageId: live.id, local: false } : null
-  }, `${name}.streaming`)
+  const streaming = computed(
+    (): {
+      messageId: MessageId
+      local: boolean
+    } | null => {
+      const local = localStreams().get(id)
+      if (local) return { messageId: local.messageId, local: true }
+      if (isPending) {
+        const startingId = startingNewChatId()
+        const starting = startingId ? localStreams().get(startingId) : undefined
+        return starting ? { messageId: starting.messageId, local: true } : null
+      }
+      if (!remoteStreams().has(id) && !streamHeldElsewhere(id)()) return null
+      let live: MessageRecord | null = null
+      for (const message of messages().values()) {
+        if (!isLiveStatus(message)) continue
+        if (!live || message.createdAt > live.createdAt) live = message
+      }
+      return live ? { messageId: live.id, local: false } : null
+    },
+    `${name}.streaming`,
+  )
 
   const sendBlock = computed((): SendBlock | null => {
     if (!apiKey()) return { code: 'no-key', label: 'Connect to continue' }
-    if (
-      localStreams().has(id) ||
-      (isPending && startingNewChatId() !== null)
-    ) {
+    if (localStreams().has(id) || (isPending && startingNewChatId() !== null)) {
       return { code: 'streaming', label: 'Generating reply' }
     }
     if (!isPending && record()?.deletedAt !== null) {
@@ -372,7 +371,9 @@ addCallHook(reloadFromStorage, () => {
   library.reload().catch(() => {})
   const opened = activeChatId()
   if (opened === 'new') return
-  chatModelInternals(opened).reloadStoredMessages().catch(() => {})
+  chatModelInternals(opened)
+    .reloadStoredMessages()
+    .catch(() => {})
 })
 
 addCallHook(syncReceived, (event) => {

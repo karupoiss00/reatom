@@ -219,31 +219,31 @@ const createIdbRepo = (bound: Database): Repo => {
     }
   }
 
-const write = async <T>(
-  mutate: (db: Database) => Promise<T>,
-  memory: () => Promise<T>,
-  mirrorRejected = true,
-): Promise<T> => {
-  if (episode) {
-    if (mirrorRejected) await memory()
-    throw currentFailure(episode)
+  const write = async <T>(
+    mutate: (db: Database) => Promise<T>,
+    memory: () => Promise<T>,
+    mirrorRejected = true,
+  ): Promise<T> => {
+    if (episode) {
+      if (mirrorRejected) await memory()
+      throw currentFailure(episode)
+    }
+    const db = live()
+    if (!db) {
+      if (mirrorRejected) await memory()
+      throw currentFailure('blocked')
+    }
+    try {
+      const result = await mutate(db)
+      await memory()
+      return result
+    } catch (error) {
+      if (isDataCloneError(error) || !isDatabaseFailure(error)) throw error
+      episode = classifyStorageError(error)
+      if (mirrorRejected) await memory()
+      throw currentFailure(episode)
+    }
   }
-  const db = live()
-  if (!db) {
-    if (mirrorRejected) await memory()
-    throw currentFailure('blocked')
-  }
-  try {
-    const result = await mutate(db)
-    await memory()
-    return result
-  } catch (error) {
-    if (isDataCloneError(error) || !isDatabaseFailure(error)) throw error
-    episode = classifyStorageError(error)
-    if (mirrorRejected) await memory()
-    throw currentFailure(episode)
-  }
-}
 
   const read = async <T, R = T>(
     query: (db: Database) => Promise<T>,
@@ -429,9 +429,12 @@ const write = async <T>(
         },
       ),
     async putDraft(draft) {
-      await write(async (db) => {
-        await db.put(storeNames.drafts, structuredClone(draft))
-      }, () => shadow.putDraft(draft))
+      await write(
+        async (db) => {
+          await db.put(storeNames.drafts, structuredClone(draft))
+        },
+        () => shadow.putDraft(draft),
+      )
     },
     async deleteDraft(chatId, tab) {
       await write(
@@ -440,9 +443,12 @@ const write = async <T>(
       )
     },
     async putAttachment(blob) {
-      await write(async (db) => {
-        await db.put(storeNames.attachments, structuredClone(blob))
-      }, () => shadow.putAttachment(blob))
+      await write(
+        async (db) => {
+          await db.put(storeNames.attachments, structuredClone(blob))
+        },
+        () => shadow.putAttachment(blob),
+      )
     },
     getAttachment: (id) =>
       read(
@@ -454,14 +460,18 @@ const write = async <T>(
         (db) => db.getAll(storeNames.presets),
         async (stored) => {
           const byId = new Map(stored.map((preset) => [preset.id, preset]))
-          for (const preset of await shadow.listPresets()) byId.set(preset.id, preset)
+          for (const preset of await shadow.listPresets())
+            byId.set(preset.id, preset)
           return [...byId.values()]
         },
       ),
     async putPreset(preset) {
-      await write(async (db) => {
-        await db.put(storeNames.presets, structuredClone(preset))
-      }, () => shadow.putPreset(preset))
+      await write(
+        async (db) => {
+          await db.put(storeNames.presets, structuredClone(preset))
+        },
+        () => shadow.putPreset(preset),
+      )
     },
     async purgePreset(id) {
       await write(

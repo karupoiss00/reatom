@@ -13,8 +13,7 @@ import { withFromJson } from '../extensions/withFromJson'
 import { withToJson } from '../extensions/withToJson'
 
 type StateInit<Key, Value> =
-  | Map<Key, Value>
-  | ConstructorParameters<typeof Map<Key, Value>>[0]
+  Map<Key, Value> | ConstructorParameters<typeof Map<Key, Value>>[0]
 const createMap = <Key, Value>(init: StateInit<Key, Value>) =>
   init instanceof Map ? init : new Map(init)
 

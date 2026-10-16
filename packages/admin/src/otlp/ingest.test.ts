@@ -5,11 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { expect, test } from 'test'
 
 import { ADMIN_FRAME } from '../root'
-import {
-  LOCAL_VALUES,
-  localValuesOf,
-  reatomOtlpStore,
-} from './ingest.ts'
+import { LOCAL_VALUES, localValuesOf, reatomOtlpStore } from './ingest.ts'
 import type { AdminRecord } from './ingest.ts'
 import { recordValues } from './values.ts'
 
@@ -651,7 +647,9 @@ test('live error and payload stay on the symbol and out of record.error', () => 
     message: '***',
     stack: '***',
   })
-  const exceptionLog = records.find((record) => record.eventName === 'exception')
+  const exceptionLog = records.find(
+    (record) => record.eventName === 'exception',
+  )
   expect(exceptionLog && recordValues(exceptionLog).error).toBe(live)
   const card = records.find((record) => record.atomName?.endsWith('.title'))
   expect(card?.error).toEqual({ message: '***', type: 'error-card' })

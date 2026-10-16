@@ -15,7 +15,7 @@ test.each([false, true])(
       .mockImplementation(() => monotonic)
     const bodies: string[] = []
     const otel = reatomOpentelemetry({
-    name: 'monotonicTiming',
+      name: 'monotonicTiming',
       endpoint: 'http://collector.invalid',
       serviceName: 'clock-test',
       filter: (target) => target.name === 'clock.execution',

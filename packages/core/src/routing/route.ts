@@ -62,8 +62,7 @@ const validate = (schema: StandardSchemaV1<any>, params: any, name: string) => {
 
 const validateParams = <Input, Output>(
   validator:
-    | StandardSchemaV1<Input, Output>
-    | ((params: Input) => null | Output),
+    StandardSchemaV1<Input, Output> | ((params: Input) => null | Output),
   params: Input,
   name: string,
 ): Output | null => {

@@ -157,7 +157,8 @@ export const deleteAllChats = action(async () => {
 
 export const importStatusText = (status: ImportStatus) => {
   if (status.kind === 'importing') return 'Importing…'
-  if (status.kind === 'success') return `Imported ${chatCountLabel(status.count)}`
+  if (status.kind === 'success')
+    return `Imported ${chatCountLabel(status.count)}`
   if (status.kind === 'error') return importErrorCopy[status.reason]
   return ''
 }

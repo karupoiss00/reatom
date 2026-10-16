@@ -59,11 +59,11 @@ Every entry leaving the open journal moves in full to the archive named in DESIG
 Preserve its source, original expectation, evidence and original date when present.
 Set Status and add Closed date (`YYYY-MM-DD`) with the disposition's basis:
 
-| Status | Required basis |
-| --- | --- |
-| Resolved | Resolution and Verified by: what changed or already fulfils the expectation, with reproducible verification evidence. |
-| Dismissed | Reason: evidence that the record is not a system gap; dismissal does not mean a repair. |
-| Merged | Merged into: a link to the retained entry, and the shared cause justifying the merge. |
+| Status    | Required basis                                                                                                        |
+| --------- | --------------------------------------------------------------------------------------------------------------------- |
+| Resolved  | Resolution and Verified by: what changed or already fulfils the expectation, with reproducible verification evidence. |
+| Dismissed | Reason: evidence that the record is not a system gap; dismissal does not mean a repair.                               |
+| Merged    | Merged into: a link to the retained entry, and the shared cause justifying the merge.                                 |
 
 For a merge, preserve all sources and expectations in the retained open entry before
 archiving the duplicate's original record. Keep entry and evidence links valid when
