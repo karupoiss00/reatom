@@ -84,13 +84,22 @@ export {
 } from './clickhouse.ts'
 export type { ClickHouseCredentials } from './clickhouse.ts'
 export { reatomOtlpStore } from './ingest.ts'
+export { errorGroupKey, stackCulprit } from './ingest.ts'
 export { recordValues, recordValuesText } from './values.ts'
-export { ADMIN_MCP_MAX_BYTES, reatomOtlpMcp } from '../mcp/index.ts'
+export {
+  ADMIN_MCP_MAX_BYTES,
+  ADMIN_MCP_TOOL_NAMES,
+  reatomOtlpMcp,
+  registerMcpBridge,
+} from '../mcp/index.ts'
 export type {
   AdminMcpAnalyticsSummaryData,
   AdminMcpAnalyticsSummaryInput,
   AdminMcpAnalyticsTotals,
   AdminMcpBreakdownRow,
+  AdminMcpBridge,
+  AdminMcpCallEntry,
+  AdminMcpErrorGroup,
   AdminMcpFilter,
   AdminMcpHeader,
   AdminMcpPathNode,

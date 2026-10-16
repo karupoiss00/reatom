@@ -27,6 +27,7 @@ import { ADMIN_FRAME } from '../root'
 const ICONS_KEY = '_Admin.settings.icons.v1'
 const COLORS_KEY = '_Admin.settings.colors.v1'
 const CORNER_KEY = '_Admin.settings.corner.v1'
+const AGENT_CALL_LOG_KEY = '_Admin.settings.agentCallLog.v1'
 
 /** Corner of the viewport where the admin panel docks. */
 export type AdminPanelCorner =
@@ -66,6 +67,8 @@ export interface AdminSettings {
   icons: BooleanAtom
   /** Kind colors on bars, row bands, and chips. Default on. */
   colors: BooleanAtom
+  /** Status popover of in-process MCP tool calls. Default on. */
+  agentCallLog: BooleanAtom
   /**
    * Light, Dark, or the device scheme. Default Dark, so the shell stays on the
    * original violet night until a person chooses otherwise.
@@ -93,6 +96,7 @@ let settingsModel: AdminSettings | null = null
 function createAdminSettings(): AdminSettings {
   const icons = reatomBoolean(true, '_Admin.settings.icons')
   const colors = reatomBoolean(true, '_Admin.settings.colors')
+  const agentCallLog = reatomBoolean(true, '_Admin.settings.agentCallLog')
   const scheme = reatomEnum(['light', 'dark', 'system'] as const, {
     name: '_Admin.settings.scheme',
     initState: 'dark',
@@ -105,6 +109,7 @@ function createAdminSettings(): AdminSettings {
   if (canPersistToLocalStorage()) {
     icons.extend(withLocalStorage(ICONS_KEY))
     colors.extend(withLocalStorage(COLORS_KEY))
+    agentCallLog.extend(withLocalStorage(AGENT_CALL_LOG_KEY))
     scheme.extend(withLocalStorage(SCHEME_KEY))
     accent.extend(withLocalStorage(ACCENT_KEY))
     corner.extend(withLocalStorage(CORNER_KEY))
@@ -146,6 +151,7 @@ function createAdminSettings(): AdminSettings {
   return {
     icons,
     colors,
+    agentCallLog,
     scheme,
     accent,
     resolvedScheme,
@@ -210,6 +216,7 @@ export function resetAdminSettings(): void {
   ADMIN_FRAME.run(() => {
     settings.icons.setTrue()
     settings.colors.setTrue()
+    settings.agentCallLog.setTrue()
     settings.scheme.reset()
     settings.accent.set(DEFAULT_ACCENT)
     settings.corner.set('bottom-right')

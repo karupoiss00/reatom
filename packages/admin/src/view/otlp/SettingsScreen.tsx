@@ -7,6 +7,7 @@ import {
   tokens,
   type,
 } from '../design-system'
+import { McpSettingsCard } from '../../mcp/McpSettingsCard'
 import {
   adminSettings,
   type AdminPanelCorner,
@@ -400,6 +401,12 @@ function settingsSections(settings: AdminSettings): Array<SettingsSection> {
           description: 'Color records by kind: bars, row bands, chips',
           checked: settings.colors,
         },
+        {
+          id: 'agentCallLog',
+          label: 'Agent call log',
+          description: 'Show what in-process MCP tools just called',
+          checked: settings.agentCallLog,
+        },
       ],
     },
     {
@@ -437,6 +444,7 @@ export const SettingsScreen = () => {
       >
         <AppearanceSection settings={settings} />
         <WindowSection settings={settings} />
+        <McpSettingsCard />
         {() =>
           settingsSections(settings).map((section) => (
             <section

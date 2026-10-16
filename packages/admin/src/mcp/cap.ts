@@ -1,3 +1,4 @@
+import { stackCulprit } from '../otlp/ingest.ts'
 import {
   ADMIN_MCP_MAX_BYTES,
   type AdminMcpHeader,
@@ -23,6 +24,36 @@ const IDENTITY_KEYS = new Set([
   'label',
   'rootName',
 ])
+
+export const ERROR_PATH_ATTRIBUTE_KEYS = new Set([
+  'exception.type',
+  'exception.message',
+  'exception.stacktrace',
+  'reatom.outcome',
+  'reatom.params',
+])
+
+const ERROR_PATH_VALUE_KEYS = new Set(['type', 'message', 'stack', 'outcome'])
+
+const ERROR_PATH_MAX_CHARS = 400
+const CULPRIT_MAX_CHARS = 200
+
+function isErrorPathKey(key: string | undefined): boolean {
+  return (
+    key !== undefined &&
+    (ERROR_PATH_ATTRIBUTE_KEYS.has(key) || ERROR_PATH_VALUE_KEYS.has(key))
+  )
+}
+
+function capErrorPathValue(value: unknown, key: string): unknown {
+  if (typeof value !== 'string') return value
+  if (key === 'exception.stacktrace' || key === 'stack') {
+    return stackCulprit(value) ?? `${value.slice(0, CULPRIT_MAX_CHARS)}${value.length > CULPRIT_MAX_CHARS ? '…' : ''}`
+  }
+  return value.length > ERROR_PATH_MAX_CHARS
+    ? `${value.slice(0, ERROR_PATH_MAX_CHARS)}…`
+    : value
+}
 
 export function jsonUtf8Bytes(value: unknown): number {
   return utf8.encode(JSON.stringify(value)).length
@@ -55,6 +86,9 @@ function isIdentityKey(key: string | undefined): boolean {
 
 function mapStrings(value: unknown, maxChars: number, key?: string): unknown {
   if (isIdentityKey(key)) return value
+  if (isErrorPathKey(key) && key !== undefined) {
+    return capErrorPathValue(value, key)
+  }
   if (typeof value === 'string') {
     return value.length > maxChars ? `${value.slice(0, maxChars)}…` : value
   }
@@ -78,9 +112,14 @@ export function truncateUnknown(value: unknown, maxChars: number): unknown {
 export function shrinkAttributes(
   attributes: Record<string, unknown>,
   maxOtherChars: number,
+  protectErrorPath = false,
 ): Record<string, unknown> {
   const next: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(attributes)) {
+    if (protectErrorPath && ERROR_PATH_ATTRIBUTE_KEYS.has(key)) {
+      next[key] = capErrorPathValue(value, key)
+      continue
+    }
     next[key] = truncateUnknown(value, maxOtherChars)
   }
   return next
@@ -103,13 +142,17 @@ function markLargeAttributeValues(value: unknown): unknown {
   if (!isPlainObject(value)) return value
   const next: Record<string, unknown> = {}
   for (const [key, inner] of Object.entries(value)) {
-    if (isIdentityKey(key)) {
+    if (isIdentityKey(key) || isErrorPathKey(key)) {
       next[key] = inner
       continue
     }
     if (key === 'attributes' && isPlainObject(inner)) {
       const marked: Record<string, unknown> = {}
       for (const [attrKey, attrValue] of Object.entries(inner)) {
+        if (ERROR_PATH_ATTRIBUTE_KEYS.has(attrKey) || isIdentityKey(attrKey)) {
+          marked[attrKey] = attrValue
+          continue
+        }
         marked[attrKey] = markerBeatsValue(attrValue)
           ? truncatedMarker(attrValue)
           : attrValue
@@ -136,6 +179,10 @@ function compactAttributesBag(
     keys,
   }
   for (const [key, value] of Object.entries(attrs)) {
+    if (ERROR_PATH_ATTRIBUTE_KEYS.has(key)) {
+      compact[key] = capErrorPathValue(value, key)
+      continue
+    }
     if (!key.startsWith('reatom.')) continue
     if (jsonUtf8Bytes(value) <= 64) compact[key] = value
   }
@@ -189,6 +236,7 @@ function tooLargeMiss(
   return {
     ok: false,
     header: { ...header, truncated: false },
+    headline: 'too large for the 20 KB cap',
     missing: 'too-large',
     ...extra,
   }

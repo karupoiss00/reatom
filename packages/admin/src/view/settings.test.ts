@@ -14,6 +14,7 @@ const COLORS_KEY = '_Admin.settings.colors.v1'
 const SCHEME_KEY = '_Admin.settings.scheme.v1'
 const ACCENT_KEY = '_Admin.settings.accent.v1'
 const CORNER_KEY = '_Admin.settings.corner.v1'
+const AGENT_CALL_LOG_KEY = '_Admin.settings.agentCallLog.v1'
 
 afterEach(() => {
   resetAdminSettings()
@@ -23,6 +24,7 @@ afterEach(() => {
   localStorage.removeItem(SCHEME_KEY)
   localStorage.removeItem(ACCENT_KEY)
   localStorage.removeItem(CORNER_KEY)
+  localStorage.removeItem(AGENT_CALL_LOG_KEY)
 })
 
 test('display settings default to on and toggle', () => {

@@ -19,7 +19,7 @@ import {
   type AnalyticsTotals,
   type AnalyticsTrend,
 } from '../otlp/analytics.ts'
-import { localValuesOf, type AdminRecord } from '../otlp/ingest.ts'
+import { localValuesOf, stackCulprit, type AdminRecord } from '../otlp/ingest.ts'
 import type { OtlpStateNode } from '../otlp/bind.ts'
 import { ADMIN_MCP_MAX_BYTES } from './types.ts'
 import {
@@ -30,6 +30,17 @@ import {
   shrinkAttributes,
   truncateUnknown,
 } from './cap.ts'
+import { collectErrorGroups } from './errorGroups.ts'
+import {
+  countsHeadline,
+  errorCountPhrase,
+  missHeadline,
+  nextCursorHint,
+  searchHeadline,
+  slowestPhrase,
+  tracesHeadline,
+  truncationHints,
+} from './headline.ts'
 import type {
   AdminMcpAnalyticsSummaryData,
   AdminMcpAnalyticsSummaryInput,
@@ -94,12 +105,52 @@ function miss(
   missing: AdminMcpMiss['missing'],
   extra: { id?: string; path?: string; error?: string } = {},
 ): AdminMcpMiss {
-  return {
-    ok: false,
+  const result = {
+    ok: false as const,
     header: { ...header, truncated: false },
     missing,
     ...extra,
   }
+  return {
+    ...result,
+    headline: missHeadline(result),
+  }
+}
+
+function recordDurationMs(record: { start: number; end?: number }): number {
+  return Math.max((record.end ?? record.start) - record.start, 0)
+}
+
+function errorThenSlowest<
+  T extends { hasError: boolean; start: number; end?: number },
+>(left: T, right: T): number {
+  if (left.hasError !== right.hasError) return left.hasError ? -1 : 1
+  const byDuration = recordDurationMs(right) - recordDurationMs(left)
+  if (byDuration !== 0) return byDuration
+  return left.start - right.start
+}
+
+function slowestOf<T extends { name: string; start: number; end?: number }>(
+  items: readonly T[],
+): string | undefined {
+  let slowest: T | undefined
+  for (const item of items) {
+    if (!slowest || recordDurationMs(item) > recordDurationMs(slowest)) {
+      slowest = item
+    }
+  }
+  return slowest
+    ? slowestPhrase(slowest.name, recordDurationMs(slowest))
+    : undefined
+}
+
+function finishOk<T>(
+  tool: string,
+  result: AdminMcpOk<T>,
+  nextCall?: string,
+): AdminMcpOk<T> {
+  const hints = truncationHints(tool, result, nextCall)
+  return hints ? { ...result, hints } : result
 }
 
 function summarizeRecord(
@@ -132,7 +183,11 @@ function shrinkRecordSummary(
 ): AdminMcpRecordSummary {
   return {
     ...summary,
-    attributes: shrinkAttributes(summary.attributes, 120),
+    attributes: shrinkAttributes(
+      summary.attributes,
+      120,
+      summary.hasError || summary.outcome === 'error',
+    ),
   }
 }
 
@@ -346,23 +401,50 @@ export function summaryTool(
         : right.count - left.count,
     )
 
-  return packCappedResponse({
+  const errors = collectErrorGroups(records, (record, causeId) =>
+    resolveCauseName(admin, record, causeId),
+  )
+  const packed = packCappedResponse({
     header,
     items: names,
     offset: 0,
-    wrap: ({ items, header: packedHeader, nextCursor }) => ({
-      ok: true as const,
-      header: packedHeader,
-      data: {
-        sources,
-        names: items,
-        errorCount: header.errorCount,
-        start: header.start,
-        end: header.end,
-      },
-      ...(nextCursor !== undefined ? { nextCursor } : {}),
-    }),
+    wrap: ({ items, header: packedHeader, nextCursor }) => {
+      let keptErrors = errors
+      const build = (errorGroups: typeof errors) =>
+        finishOk(
+          'summary',
+          {
+            ok: true as const,
+            header: {
+              ...packedHeader,
+              truncated:
+                packedHeader.truncated || errorGroups.length < errors.length,
+            },
+            headline: countsHeadline(header),
+            data: {
+              sources,
+              names: items,
+              errors: errorGroups,
+              errorCount: header.errorCount,
+              start: header.start,
+              end: header.end,
+            },
+            ...(nextCursor !== undefined ? { nextCursor } : {}),
+          },
+          nextCursorHint('summary', nextCursor),
+        )
+      let body = build(keptErrors)
+      while (
+        keptErrors.length > 0 &&
+        jsonUtf8Bytes(body) > ADMIN_MCP_MAX_BYTES
+      ) {
+        keptErrors = keptErrors.slice(0, -1)
+        body = build(keptErrors)
+      }
+      return body
+    },
   })
+  return packed
 }
 
 export function listTracesTool(
@@ -401,18 +483,35 @@ export function listTracesTool(
     errorCount: rows.reduce((sum, row) => sum + row.errorCount, 0),
   }
 
-  return packCappedResponse({
+  const slowest = remaining[0]
+    ? [...remaining].sort((left, right) => right.durationMs - left.durationMs)[0]
+    : undefined
+  const packed = packCappedResponse({
     header,
     items: remaining,
     offset,
     limit: pageSize,
-    wrap: ({ items, header: packedHeader, nextCursor }) => ({
-      ok: true as const,
-      header: packedHeader,
-      data: items,
-      ...(nextCursor !== undefined ? { nextCursor } : {}),
-    }),
+    wrap: ({ items, header: packedHeader, nextCursor }) =>
+      finishOk(
+        'listTraces',
+        {
+          ok: true as const,
+          header: packedHeader,
+          headline: tracesHeadline(
+            header,
+            [
+              ...(slowest
+                ? [slowestPhrase(slowest.rootName, slowest.durationMs) ?? '']
+                : []),
+            ].filter((part) => part !== ''),
+          ),
+          data: items,
+          ...(nextCursor !== undefined ? { nextCursor } : {}),
+        },
+        nextCursorHint('listTraces', nextCursor),
+      ),
   })
+  return packed
 }
 
 export function getTraceTool(
@@ -471,37 +570,50 @@ export function getTraceTool(
     }
   })
 
-  const remaining = nodes.slice(offset)
+  const remaining = nodes.sort(errorThenSlowest).slice(offset)
   const row = summarizeTrace(records)
+  const packedHeaderBase = {
+    ...storeHeader,
+    recordCount: records.length,
+    traceCount: 1,
+    errorCount: row.errorCount,
+    start: row.start,
+    end: row.end,
+  }
 
-  return packCappedResponse({
-    header: {
-      ...storeHeader,
-      recordCount: records.length,
-      traceCount: 1,
-      errorCount: row.errorCount,
-      start: row.start,
-      end: row.end,
-    },
+  const packed = packCappedResponse({
+    header: packedHeaderBase,
     items: remaining,
     offset,
     shrinkItem: (node) => ({
       ...node,
-      attributes: shrinkAttributes(node.attributes, 120),
+      attributes: shrinkAttributes(node.attributes, 120, node.hasError),
       events: node.events.map(shrinkRecordSummary),
     }),
     missExtra: { id: traceId },
-    wrap: ({ items, header, nextCursor }) => ({
-      ok: true as const,
-      header,
-      data: {
-        traceId,
-        rootName: row.rootName,
-        nodes: items,
-      },
-      ...(nextCursor !== undefined ? { nextCursor } : {}),
-    }),
+    wrap: ({ items, header, nextCursor }) =>
+      finishOk(
+        'getTrace',
+        {
+          ok: true as const,
+          header,
+          headline: [
+            errorCountPhrase(row.errorCount),
+            slowestPhrase(row.rootName, row.durationMs),
+          ]
+            .filter((part): part is string => part !== undefined)
+            .join(' · '),
+          data: {
+            traceId,
+            rootName: row.rootName,
+            nodes: items,
+          },
+          ...(nextCursor !== undefined ? { nextCursor } : {}),
+        },
+        nextCursorHint('getTrace', nextCursor, `traceId: "${traceId}"`),
+      ),
   })
+  return packed
 }
 
 export function searchTool(
@@ -519,6 +631,7 @@ export function searchTool(
   const offset = decodeCursor(input.cursor)
   const remaining = matches
     .map((record) => summarizeRecord(record, resolvedFilter.highlightedIds))
+    .sort(errorThenSlowest)
     .slice(offset)
   const header = {
     ...headerFromRecords(admin.records()),
@@ -527,19 +640,26 @@ export function searchTool(
     errorCount: matches.filter((record) => recordHasError(record)).length,
   }
 
-  return packCappedResponse({
+  const packed = packCappedResponse({
     header,
     items: remaining,
     offset,
     shrinkItem: shrinkRecordSummary,
     missExtra: remaining[0] ? { id: remaining[0].id } : undefined,
-    wrap: ({ items, header: packedHeader, nextCursor }) => ({
-      ok: true as const,
-      header: packedHeader,
-      data: items,
-      ...(nextCursor !== undefined ? { nextCursor } : {}),
-    }),
+    wrap: ({ items, header: packedHeader, nextCursor }) =>
+      finishOk(
+        'search',
+        {
+          ok: true as const,
+          header: packedHeader,
+          headline: searchHeadline(header, input.filter, slowestOf(items)),
+          data: items,
+          ...(nextCursor !== undefined ? { nextCursor } : {}),
+        },
+        nextCursorHint('search', nextCursor),
+      ),
   })
+  return packed
 }
 
 function toRecordData(
@@ -581,20 +701,33 @@ function toRecordData(
 
 function shrinkRecordData(data: AdminMcpRecordData): AdminMcpRecordData {
   const error = data.record.error
+  const hasError =
+    error !== undefined || data.record.outcome === 'error'
   return {
     causes: data.causes,
     record: {
       ...data.record,
       body: truncateUnknown(data.record.body, 400),
-      attributes: shrinkAttributes(data.record.attributes, 120),
+      attributes: shrinkAttributes(data.record.attributes, 120, hasError),
       ...(error
         ? {
             error: {
               ...error,
-              stack:
-                typeof error.stack === 'string'
-                  ? `${error.stack.slice(0, 400)}${error.stack.length > 400 ? '…' : ''}`
-                  : error.stack,
+              ...(typeof error.message === 'string'
+                ? {
+                    message:
+                      error.message.length > 400
+                        ? `${error.message.slice(0, 400)}…`
+                        : error.message,
+                  }
+                : {}),
+              ...(typeof error.stack === 'string'
+                ? {
+                    stack:
+                      stackCulprit(error.stack) ??
+                      `${error.stack.slice(0, 200)}${error.stack.length > 200 ? '…' : ''}`,
+                  }
+                : {}),
             },
           }
         : {}),
@@ -613,18 +746,26 @@ export function getRecordTool(
   if (!record) return miss(storeHeader, 'record', { id })
 
   const data = toRecordData(admin, record)
-  return packCappedResponse({
+  const packed = packCappedResponse({
     header: storeHeader,
     items: [data],
     offset: 0,
     shrinkItem: shrinkRecordData,
     missExtra: { id },
-    wrap: ({ items, header }) => ({
-      ok: true as const,
-      header: { ...header, truncated: false },
-      data: items[0]!,
-    }),
+    wrap: ({ items, header }) =>
+      finishOk('getRecord', {
+        ok: true as const,
+        header: { ...header, truncated: false },
+        headline: [
+          recordLabel(record),
+          recordHasError(record) ? 'error' : undefined,
+        ]
+          .filter((part): part is string => part !== undefined)
+          .join(' · '),
+        data: items[0]!,
+      }),
   })
+  return packed
 }
 
 export function getStateTool(
@@ -654,22 +795,29 @@ export function getStateTool(
   const offset = decodeCursor(input.cursor)
   const remaining = flat.slice(offset)
 
-  return packCappedResponse({
+  const packed = packCappedResponse({
     header: storeHeader,
     items: remaining,
     offset,
     shrinkItem: shrinkStateNode,
     missExtra: { path },
-    wrap: ({ items, header, nextCursor }) => ({
-      ok: true as const,
-      header,
-      data: {
-        path,
-        nodes: items,
-      },
-      ...(nextCursor !== undefined ? { nextCursor } : {}),
-    }),
+    wrap: ({ items, header, nextCursor }) =>
+      finishOk(
+        'getState',
+        {
+          ok: true as const,
+          header,
+          headline: `${items.length} state nodes${path === '' ? '' : ` · ${path}`}`,
+          data: {
+            path,
+            nodes: items,
+          },
+          ...(nextCursor !== undefined ? { nextCursor } : {}),
+        },
+        nextCursorHint('getState', nextCursor),
+      ),
   })
+  return packed
 }
 
 const ANALYTICS_DIMENSIONS: readonly AnalyticsDimension[] = [
@@ -795,9 +943,10 @@ export function analyticsSummaryTool(
       if (rows.length > rowLimit) truncated = true
       breakdowns[dimension] = rows.slice(0, rowLimit).map(mcpBreakdownRow)
     }
-    return {
+    return finishOk('analyticsSummary', {
       ok: true as const,
       header: { ...headerBase, truncated },
+      headline: `${cohort.length} sessions · ${totals.sessionsWithErrors} with errors`,
       data: {
         sessions: cohort.length,
         totalSessions: admin.analytics.sessions().length,
@@ -805,7 +954,7 @@ export function analyticsSummaryTool(
         trend: trendFor(detail),
         breakdowns,
       },
-    }
+    })
   }
   let cap = clampBreakdownLimit(input.limit)
   let detail: TrendDetail = 'full'
@@ -843,26 +992,33 @@ export function pathsTool(
   const shown = nodes[0]?.sessions ?? 0
   const offset = decodeCursor(input.cursor)
   const header = headerFromRecords(admin.records())
-  return packCappedResponse({
+  const packed = packCappedResponse({
     header,
     items: nodes.slice(offset),
     offset,
-    wrap: ({ items, header: packedHeader, nextCursor }) => ({
-      ok: true as const,
-      header: packedHeader,
-      data: {
-        sessions: shown,
-        leftOut: cohort.length - shown,
-        ...(input.align !== undefined ? { align: input.align } : {}),
-        typicalPathIds: typicalPath.map((node) => node.id),
-        ...(typicalSession !== undefined
-          ? { typicalSessionId: typicalSession.id }
-          : {}),
-        nodes: items.map(mcpPathNode),
-      },
-      ...(nextCursor !== undefined ? { nextCursor } : {}),
-    }),
+    wrap: ({ items, header: packedHeader, nextCursor }) =>
+      finishOk(
+        'paths',
+        {
+          ok: true as const,
+          header: packedHeader,
+          headline: `${shown} path sessions · ${cohort.length - shown} left out`,
+          data: {
+            sessions: shown,
+            leftOut: cohort.length - shown,
+            ...(input.align !== undefined ? { align: input.align } : {}),
+            typicalPathIds: typicalPath.map((node) => node.id),
+            ...(typicalSession !== undefined
+              ? { typicalSessionId: typicalSession.id }
+              : {}),
+            nodes: items.map(mcpPathNode),
+          },
+          ...(nextCursor !== undefined ? { nextCursor } : {}),
+        },
+        nextCursorHint('paths', nextCursor),
+      ),
   })
+  return packed
 }
 
 export function clearTool(admin: OtlpAdmin): AdminMcpOk<{ cleared: true }> {
@@ -870,6 +1026,7 @@ export function clearTool(admin: OtlpAdmin): AdminMcpOk<{ cleared: true }> {
   return {
     ok: true,
     header: emptyHeader(),
+    headline: 'cleared · write with no undo',
     data: { cleared: true },
   }
 }
@@ -897,6 +1054,7 @@ export async function connectRemoteTool(
     return {
       ok: true,
       header: { ...headerFromRecords(records), truncated: false },
+      headline: `${recordCount} records from ClickHouse`,
       data: { recordCount },
     }
   } catch {

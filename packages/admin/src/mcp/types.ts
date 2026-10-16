@@ -40,6 +40,19 @@ export interface AdminMcpHeader {
   valuesTruncated?: boolean
 }
 
+export interface AdminMcpErrorGroup {
+  key: string
+  reatomName: string
+  type: string
+  message: string
+  count: number
+  firstSeen: number
+  lastSeen: number
+  traceIds: string[]
+  culprit?: string
+  causedBy: string[]
+}
+
 export interface AdminMcpListTracesInput {
   filter?: AdminMcpFilter
   page?: number
@@ -122,6 +135,8 @@ export interface AdminMcpTraceNode {
 export interface AdminMcpOk<T> {
   ok: true
   header: AdminMcpHeader
+  headline: string
+  hints?: string[]
   data: T
   nextCursor?: string
 }
@@ -129,6 +144,8 @@ export interface AdminMcpOk<T> {
 export interface AdminMcpMiss {
   ok: false
   header: AdminMcpHeader
+  headline: string
+  hints?: string[]
   missing: 'record' | 'trace' | 'state' | 'too-large' | 'remote' | 'filter'
   id?: string
   path?: string
@@ -146,6 +163,7 @@ export interface AdminMcpTruncatedValue {
 export interface AdminMcpSummaryData {
   sources: Array<{ sourceId: string; recordCount: number }>
   names: Array<{ name: string; count: number }>
+  errors: AdminMcpErrorGroup[]
   errorCount: number
   start: number
   end: number

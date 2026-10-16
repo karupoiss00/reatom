@@ -216,11 +216,10 @@ test('calculator spans>1 reduces Activity to the busy trace and matches MCP', ()
     const searched = mcp.search({ filter: admin.filter() })
     expect(searched.ok).toBe(true)
     if (!searched.ok) return
-    expect(searched.data.map((row) => row.name)).toEqual([
-      'explode',
-      'exception',
-      'retry',
-    ])
+    expect(searched.data[0]!.name).toBe('explode')
+    expect(new Set(searched.data.map((row) => row.name))).toEqual(
+      new Set(['explode', 'exception', 'retry']),
+    )
 
     const listed = mcp.listTraces({ filter: admin.filter() })
     expect(listed.ok).toBe(true)

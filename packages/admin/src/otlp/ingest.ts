@@ -82,6 +82,58 @@ export function localValuesOf(
   return record[LOCAL_VALUES]
 }
 
+export function firstExceptionMessageLine(
+  message: string | undefined,
+): string {
+  if (typeof message !== 'string') return ''
+  return message.split(/\r?\n/, 1)[0]!.trim()
+}
+
+export function stackCulprit(stack: string | undefined): string | undefined {
+  if (typeof stack !== 'string' || stack === '') return undefined
+  for (const line of stack.split(/\r?\n/)) {
+    const trimmed = line.trim()
+    if (trimmed === '') continue
+    if (trimmed.includes('node_modules') || trimmed.startsWith('node:')) {
+      continue
+    }
+    if (/^[\w$]*Error:/.test(trimmed)) continue
+    const frame = trimmed.replace(/^at\s+/, '')
+    if (frame === '') continue
+    return frame.length > 200 ? `${frame.slice(0, 200)}…` : frame
+  }
+  return undefined
+}
+
+export function recordErrorType(record: AdminRecord): string {
+  if (typeof record.error?.type === 'string') return record.error.type
+  const type = record.attributes['exception.type']
+  return typeof type === 'string' ? type : ''
+}
+
+export function recordErrorMessage(record: AdminRecord): string {
+  if (typeof record.error?.message === 'string') return record.error.message
+  const message = record.attributes['exception.message']
+  return typeof message === 'string' ? message : ''
+}
+
+export function recordErrorStack(record: AdminRecord): string | undefined {
+  if (typeof record.error?.stack === 'string') return record.error.stack
+  const stack = record.attributes['exception.stacktrace']
+  return typeof stack === 'string' ? stack : undefined
+}
+
+export function recordReatomName(record: AdminRecord): string {
+  const named = record.attributes['reatom.name']
+  if (typeof named === 'string' && named !== '') return named
+  return record.atomName ?? record.name
+}
+
+export function errorGroupKey(record: AdminRecord): string | undefined {
+  if (record.error == null && record.outcome !== 'error') return undefined
+  return `${recordReatomName(record)}\n${recordErrorType(record)}\n${firstExceptionMessageLine(recordErrorMessage(record))}`
+}
+
 const localValuesTextCache = new WeakMap<AdminRecord, string>()
 
 export function localValuesTextOf(
