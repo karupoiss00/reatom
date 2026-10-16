@@ -1,15 +1,16 @@
+import { urlAtom } from '@reatom/core'
+
 import type { Admin } from '../../index'
 import {
-  buttonGhost,
-  colors,
-  flex,
-  flexWrap,
-  focusVisible,
-  gap,
-  inputLike,
-  px,
-  py,
-} from '../styles'
+  Button,
+  Icon,
+  SearchField,
+  SelectField,
+  size,
+  tokens,
+  type,
+  visuallyHidden,
+} from '../design-system'
 
 export interface FilterBarProps {
   admin: Admin
@@ -19,7 +20,7 @@ const TARGETS: Array<{
   value: 'name' | 'state' | 'params' | 'payload' | 'all'
   label: string
 }> = [
-  { value: 'all', label: 'All' },
+  { value: 'all', label: 'All scopes' },
   { value: 'name', label: 'Name' },
   { value: 'state', label: 'State' },
   { value: 'params', label: 'Params' },
@@ -71,161 +72,231 @@ export const FilterBar = ({ admin }: FilterBarProps) => {
     })
   }
 
+  const errorCount = () => admin.view.summary().errorFrames
+  const savedCount = () => admin.filters.engine.configs().length
+
   return (
     <div
       data-reatom-name="FilterBar"
       css={`
-        display: grid;
-        gap: 0.4rem;
-        ${px(2)}
-        padding-block: 0.5rem;
-
-        @container admin-shell (max-width: 680px) {
-          padding-inline: 0.55rem;
-          padding-block: 0.4rem;
-          gap: 0.35rem;
-        }
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: var(--admin-space-6);
+        row-gap: var(--admin-space-4);
+        min-height: ${size.filter};
+        padding-block: var(--admin-space-4);
+        padding-inline: var(--admin-space-8);
+        border-bottom: 1px solid ${tokens.border1};
+        background: ${tokens.canvas};
+        min-width: 0;
       `}
     >
+      <SearchField
+        value={search.searchQuery}
+        label="Search frames"
+        placeholder="Filter frames"
+        testId="filter-search-input"
+      />
+      <SelectField
+        value={search.searchTarget}
+        label="Search target"
+        options={TARGETS}
+      />
       <div
+        data-filter-quick=""
         css={`
           display: flex;
-          flex-wrap: nowrap;
-          gap: 0.4rem;
           align-items: center;
-          min-width: 0;
-
-          @container admin-shell (max-width: 420px) {
-            flex-wrap: wrap;
+          gap: var(--admin-space-4);
+          flex: 0 0 auto;
+          @container admin-shell (max-width: 520px) {
+            display: none;
           }
         `}
       >
-        <input
-          type="search"
-          placeholder="Search frames, params, payloads, and state..."
-          model:value={search.searchQuery}
-          data-testid="filter-search-input"
+        <span
           css={`
-            flex: 1 1 10rem;
-            min-width: 0;
-            ${px(2)} ${py(1)}
-            ${inputLike}
-            min-height: 1.85rem;
-            font-size: 0.78rem;
-            ${focusVisible}
-
-            @container admin-shell (max-width: 420px) {
-              flex: 1 1 100%;
-            }
+            display: inline-flex;
+            align-items: center;
+            gap: var(--admin-space-4);
           `}
+        >
+          <Button
+            variant="ghost"
+            label="Errors"
+            title={() => `Errors ${errorCount()}`}
+            pressed={() => hasQuickRule('error')}
+            onClick={() => toggleQuickRule('error', 'show')}
+          />
+          <span
+            aria-hidden="true"
+            css={`
+              ${type.meta}
+              min-width: 1.15rem;
+              height: 16px;
+              padding-inline: 5px;
+              border-radius: 999px;
+              background: ${tokens.surface3};
+              color: ${tokens.text2};
+              display: inline-flex;
+              align-items: center;
+              justify-content: center;
+            `}
+          >
+            {errorCount}
+          </span>
+        </span>
+        <Button
+          variant="ghost"
+          label="Actions"
+          pressed={() => hasQuickRule('action')}
+          onClick={() => toggleQuickRule('action', 'show')}
         />
-        <select
-          model:value={search.searchTarget}
+      </div>
+      <details
+        css={`
+          position: relative;
+          flex: 0 0 auto;
+        `}
+      >
+        <summary
+          aria-label="More filters"
+          title="More filters"
           css={`
-            flex: 0 0 auto;
-            width: auto;
-            min-width: 4.5rem;
-            ${px(1)} ${py(1)}
-            ${inputLike}
-            min-height: 1.85rem;
-            font-size: 0.78rem;
-            ${focusVisible}
-
-            @container admin-shell (max-width: 420px) {
-              flex: 1 1 auto;
+            ${type.ui}
+            list-style: none;
+            cursor: pointer;
+            color: ${tokens.text2};
+            width: 28px;
+            min-height: 28px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid ${tokens.border1};
+            background: ${tokens.surface2};
+            border-radius: var(--admin-radius-4);
+            &::-webkit-details-marker {
+              display: none;
             }
           `}
         >
-          {TARGETS.map((t) => (
-            <option value={t.value}>{t.label}</option>
-          ))}
-        </select>
-        <button
-          type="button"
+          <Icon name="more" />
+        </summary>
+        <div
           css={`
-            ${buttonGhost}
-            flex: 0 0 auto;
-            min-height: 1.85rem;
-            padding-inline: 0.55rem;
-            padding-block: 0.25rem;
-            font-size: 0.72rem;
-            white-space: nowrap;
+            position: absolute;
+            inset-inline-end: 0;
+            top: calc(100% + var(--admin-space-4));
+            z-index: 4;
+            display: grid;
+            gap: var(--admin-space-6);
+            padding: var(--admin-space-8);
+            background: ${tokens.surface2};
+            border: 1px solid ${tokens.border1};
+            min-width: 12rem;
+            & > [data-compact-filter] {
+              display: none;
+            }
+            @container admin-shell (max-width: 520px) {
+              & > [data-compact-filter] {
+                display: contents;
+              }
+            }
+            & > [data-compact-rules] {
+              display: none;
+            }
+            @container admin-shell (max-width: 680px) {
+              & > [data-compact-rules] {
+                display: contents;
+              }
+            }
           `}
-          on:click={() => {
-            admin.filters.search.searchQuery.set('')
-            admin.filters.engine.clearConfigs()
-          }}
         >
-          Reset
-        </button>
-      </div>
-
+          <span data-compact-filter="">
+            <Button
+              variant="ghost"
+              label="Errors"
+              pressed={() => hasQuickRule('error')}
+              onClick={() => toggleQuickRule('error', 'show')}
+            />
+          </span>
+          <span data-compact-filter="">
+            <Button
+              variant="ghost"
+              label="Actions"
+              pressed={() => hasQuickRule('action')}
+              onClick={() => toggleQuickRule('action', 'show')}
+            />
+          </span>
+          <span data-compact-rules="">
+            <Button
+              variant="ghost"
+              label="Saved rules"
+              onClick={() => urlAtom.go('/filters')}
+            />
+          </span>
+          <Button
+            variant="ghost"
+            label="State only"
+            pressed={() => hasQuickRule('reactive')}
+            onClick={() => toggleQuickRule('reactive', 'show')}
+          />
+          <Button
+            variant="ghost"
+            label="Reset"
+            onClick={() => {
+              admin.filters.search.searchQuery.set('')
+              admin.filters.search.searchTarget.set('all')
+            }}
+          />
+        </div>
+      </details>
       <div
         css={`
-          display: flex;
-          flex-wrap: wrap;
-          gap: 0.35rem 0.65rem;
+          display: inline-flex;
           align-items: center;
-          justify-content: space-between;
+          gap: var(--admin-space-6);
+          margin-inline-start: auto;
           min-width: 0;
+          @container admin-shell (max-width: 680px) {
+            display: none;
+          }
         `}
       >
-        <div
+        <span
           css={`
-            ${flex}
-            ${gap(1)}
-            ${flexWrap}
-            min-width: 0;
+            display: inline-flex;
+            align-items: center;
+            gap: var(--admin-space-4);
           `}
         >
-          {[
-            { label: 'Errors', tagName: 'error', mode: 'show' as const },
-            { label: 'Actions', tagName: 'action', mode: 'show' as const },
-            { label: 'State only', tagName: 'reactive', mode: 'show' as const },
-          ].map((quickRule) => (
-            <button
-              type="button"
-              aria-pressed={() => hasQuickRule(quickRule.tagName)}
-              css={`
-                ${buttonGhost}
-                min-height: 1.55rem;
-                padding-inline: 0.45rem;
-                padding-block: 0.2rem;
-                font-size: 0.7rem;
-                border-color: ${() =>
-                  hasQuickRule(quickRule.tagName)
-                    ? colors.accent
-                    : colors.borderStrong};
-                background: ${() =>
-                  hasQuickRule(quickRule.tagName)
-                    ? colors.accentSoft
-                    : 'transparent'};
-                color: ${() =>
-                  hasQuickRule(quickRule.tagName)
-                    ? colors.text
-                    : colors.textMuted};
-              `}
-              on:click={() =>
-                toggleQuickRule(quickRule.tagName, quickRule.mode)
-              }
-            >
-              {quickRule.label}
-            </button>
-          ))}
-        </div>
-
-        <div
-          css={`
-            color: ${colors.textSubtle};
-            font-size: 0.68rem;
-            white-space: nowrap;
-            flex-shrink: 0;
-          `}
-        >
-          {() =>
-            `${search.resultCount()} result(s) · ${admin.filters.engine.configs().length} active rule(s)`
-          }
-        </div>
+          <Button
+            variant="secondary"
+            label="Saved rules"
+            onClick={() => urlAtom.go('/filters')}
+          />
+          <span
+            aria-hidden="true"
+            css={`
+              ${type.meta}
+              min-width: 1.15rem;
+              height: 16px;
+              padding-inline: 5px;
+              border-radius: 999px;
+              background: ${tokens.surface3};
+              color: ${tokens.text2};
+              display: inline-flex;
+              align-items: center;
+              justify-content: center;
+            `}
+          >
+            {savedCount}
+          </span>
+        </span>
+        <span css={visuallyHidden}>
+          {() => `${savedCount()} active rule(s)`}
+        </span>
       </div>
     </div>
   )

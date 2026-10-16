@@ -1,18 +1,27 @@
 import { addChangeHook, atom, reatomBoolean } from '@reatom/core'
-import { mount, stylesheet } from '@reatom/jsx'
+import { mount } from '@reatom/jsx'
 
 import type { Admin } from '../../index'
 import type { AdminOptions } from '../../index'
 import { createAdmin } from '../../index'
 import { ADMIN_FRAME } from '../../root'
-import { colors, focusVisible } from '../styles'
+import { adminThemeVars, radius, tokens } from '../design-system'
+import { adminSettings, bindAdminPalette } from '../settings'
+import { bindAdminStylesheet } from '../stylesheet'
+import { focusVisible } from '../design-system/mixins'
+import {
+  capturePointer,
+  resizePointerIsActive,
+  sizeFromResizePointer,
+  type ResizeOrigin,
+} from '../resizeDrag'
 import { AppShell } from './AppShell'
 
 const MAX_Z = 2 ** 32 - 1
 const MIN_PANEL_WIDTH = 360
 const MIN_PANEL_HEIGHT = 320
 const PANEL_MARGIN = 16
-const DEFAULT_WIDTH = '560px'
+const DEFAULT_WIDTH = '700px'
 const DEFAULT_HEIGHT = '760px'
 let devtoolsCounter = 0
 
@@ -70,19 +79,12 @@ export function createAdminDevtools(
   const admin = createAdmin(adminOptions)
 
   return ADMIN_FRAME.run(() => {
-    const previousStylesheet = stylesheet()
     const id = `_ReatomAdminDevtools_${++devtoolsCounter}`
     const container = globalThis.document.createElement('div')
     container.id = id
+    container.dataset['adminHost'] = ''
     const root = container.attachShadow({ mode: 'open' })
-    const sheet = new CSSStyleSheet()
-    root.adoptedStyleSheets = [sheet]
-
-    for (const rule of Array.from(previousStylesheet.cssRules)) {
-      sheet.insertRule(rule.cssText)
-    }
-
-    stylesheet.set(sheet)
+    const adminSheet = bindAdminStylesheet(root)
 
     const visible = reatomBoolean(initVisibility, '_Admin.devtools.visible')
     const minimized = reatomBoolean(false, '_Admin.devtools.minimized')
@@ -116,60 +118,99 @@ export function createAdminDevtools(
       minimized.setFalse()
     }
 
+    const resizeBy = (delta: number) => {
+      const currentWidth = parsePixelSize(width()) ?? MIN_PANEL_WIDTH
+      const currentHeight = parsePixelSize(height()) ?? MIN_PANEL_HEIGHT
+      width.set(clampPanelWidth(`${currentWidth + delta}px`))
+      height.set(clampPanelHeight(`${currentHeight + delta}px`))
+    }
+
+    let drag: (ResizeOrigin & { pointerId: number }) | null = null
+
     const resizeHandle = (
       <div
+        role="separator"
+        aria-orientation="vertical"
         aria-label="Reatom Admin devtools resize handle"
         tabindex={0}
         css={`
           position: absolute;
-          top: 8px;
-          left: 8px;
-          width: 14px;
-          height: 14px;
-          background:
-            linear-gradient(
-              135deg,
-              transparent 35%,
-              ${colors.accent} 35%,
-              ${colors.accent} 55%,
-              transparent 55%
-            ),
-            linear-gradient(
-              135deg,
-              transparent 55%,
-              ${colors.textMuted} 55%,
-              ${colors.textMuted} 70%,
-              transparent 70%
-            );
-          border-radius: 4px;
+          top: 0;
+          left: 0;
+          width: 16px;
+          height: 16px;
+          background: transparent;
           cursor: nwse-resize;
           touch-action: none;
           z-index: ${MAX_Z};
-          opacity: 0.65;
           pointer-events: auto;
+          &::after {
+            content: '';
+            position: absolute;
+            inset: 0 auto auto 0;
+            width: 6px;
+            height: 6px;
+            border-top: 1px solid ${tokens.border2};
+            border-left: 1px solid ${tokens.border2};
+            opacity: 0.7;
+          }
           ${focusVisible}
         `}
         on:pointerdown={(event: Event) => {
           const pointerEvent = getPointerEvent(event)
-          if (!pointerEvent) return
-          if (event.currentTarget instanceof Element) {
-            event.currentTarget.setPointerCapture(pointerEvent.pointerId)
+          if (!pointerEvent || pointerEvent.button !== 0) return
+          if (!(event.currentTarget instanceof Element)) return
+          const panel = event.currentTarget.closest(
+            '[data-reatom-name="DevtoolsPanel"]',
+          )
+          if (!(panel instanceof HTMLElement)) return
+          pointerEvent.preventDefault()
+          const box = panel.getBoundingClientRect()
+          drag = {
+            pointerId: pointerEvent.pointerId,
+            anchorRight: true,
+            anchorBottom: true,
+            left: box.left,
+            top: box.top,
+            right: box.right,
+            bottom: box.bottom,
+            originX: pointerEvent.clientX,
+            originY: pointerEvent.clientY,
           }
+          capturePointer(event.currentTarget, pointerEvent.pointerId)
         }}
         on:pointermove={(event: Event) => {
           const pointerEvent = getPointerEvent(event)
-          if (!(event.currentTarget instanceof Element) || !pointerEvent) return
-
-          if (event.currentTarget.hasPointerCapture(pointerEvent.pointerId)) {
-            width.set(
-              clampPanelWidth(`${window.innerWidth - pointerEvent.clientX}px`),
-            )
-            height.set(
-              clampPanelHeight(
-                `${window.innerHeight - pointerEvent.clientY}px`,
-              ),
-            )
+          if (!drag || !pointerEvent || pointerEvent.pointerId !== drag.pointerId) {
+            return
           }
+          const captured =
+            event.currentTarget instanceof Element &&
+            event.currentTarget.hasPointerCapture(pointerEvent.pointerId)
+          if (!resizePointerIsActive(captured, pointerEvent.buttons)) return
+          const next = sizeFromResizePointer(
+            drag,
+            pointerEvent.clientX,
+            pointerEvent.clientY,
+          )
+          width.set(clampPanelWidth(`${next.width}px`))
+          height.set(clampPanelHeight(`${next.height}px`))
+        }}
+        on:pointerup={(event: Event) => {
+          const pointerEvent = getPointerEvent(event)
+          if (pointerEvent && drag?.pointerId === pointerEvent.pointerId) {
+            drag = null
+          }
+        }}
+        on:pointercancel={() => {
+          drag = null
+        }}
+        on:keydown={(event: KeyboardEvent) => {
+          const grow = event.key === 'ArrowLeft' || event.key === 'ArrowUp'
+          const shrink = event.key === 'ArrowRight' || event.key === 'ArrowDown'
+          if (!grow && !shrink) return
+          event.preventDefault()
+          resizeBy(grow ? 48 : -48)
         }}
       />
     )
@@ -187,20 +228,13 @@ export function createAdminDevtools(
           align-items: center;
           justify-content: center;
           border-radius: 999px;
-          border: 1px solid ${colors.borderStrong};
-          background:
-            radial-gradient(
-              circle at 30% 25%,
-              ${colors.accentSoft},
-              transparent 55%
-            ),
-            ${colors.surfaceRaised};
-          color: ${colors.accent};
-          font-family: ui-sans-serif, system-ui, sans-serif;
+          border: 1px solid ${tokens.border2};
+          background: ${tokens.surface2};
+          color: ${tokens.accent};
+          font-family: ${tokens.fontUi};
           font-size: 1rem;
           font-weight: 750;
           cursor: pointer;
-          box-shadow: 0 12px 28px -16px ${colors.shadow};
           ${focusVisible}
         `}
         on:click={() => expandPanel()}
@@ -209,12 +243,17 @@ export function createAdminDevtools(
       </button>
     )
 
+    const settings = adminSettings()
     const panel = (
       <div
         data-reatom-name="DevtoolsPanel"
+        data-admin-scheme={() => settings.resolvedScheme()}
+        ref={(panel) => bindAdminPalette(panel)}
+        data-minimized={() => (minimized() ? 'true' : 'false')}
         css:width={() => (minimized() ? '44px' : width())}
         css:height={() => (minimized() ? '44px' : height())}
         css={`
+          ${adminThemeVars}
           all: initial;
           position: fixed;
           inset-inline-end: 1rem;
@@ -224,27 +263,33 @@ export function createAdminDevtools(
           max-width: calc(100vw - 2rem);
           max-height: calc(100vh - 2rem);
           z-index: ${MAX_Z};
-          background: ${() => (minimized() ? 'transparent' : colors.bg)};
-          border: ${() =>
-            minimized() ? 'none' : `1px solid ${colors.borderStrong}`};
-          border-radius: ${() => (minimized() ? '999px' : '16px')};
-          box-shadow: ${() =>
-            minimized() ? 'none' : `0 24px 48px -28px ${colors.shadow}`};
-          font-family: system-ui, sans-serif;
+          background: ${tokens.canvas};
+          border: 1px solid ${tokens.border1};
+          border-radius: ${radius[6]};
+          font-family: ${tokens.fontUi};
           font-size: 12px;
           box-sizing: border-box;
           overflow: hidden;
+          &[data-minimized='true'] {
+            background: transparent;
+            border: 0;
+            border-radius: 999px;
+          }
+          &[data-minimized='true'] > [data-panel-content] {
+            display: none;
+          }
         `}
       >
         {() => (minimized() ? expandPill : null)}
         {() => (minimized() ? null : resizeHandle)}
         <div
+          data-panel-content=""
           css={`
             height: 100%;
             min-height: 0;
             overflow: hidden;
             border-radius: inherit;
-            display: ${() => (minimized() ? 'none' : 'block')};
+            display: block;
           `}
         >
           <AppShell admin={admin} onMinimize={minimizePanel} />
@@ -259,27 +304,42 @@ export function createAdminDevtools(
     mount(mountPoint, panel)
 
     let bodyMount: { unmount: () => void } | null = null
-    if (visible()) {
+    const mountContainer = () => {
+      if (container.isConnected) return
       bodyMount = mount(document.body, container)
     }
+    const unmountContainer = () => {
+      if (!container.isConnected) {
+        bodyMount = null
+        return
+      }
+      bodyMount?.unmount()
+      bodyMount = null
+    }
+
+    if (visible()) mountContainer()
 
     addChangeHook(visible, (state) => {
-      if (state) {
-        bodyMount = mount(document.body, container)
-      } else {
-        bodyMount?.unmount()
-        bodyMount = null
-      }
+      if (state) mountContainer()
+      else unmountContainer()
     })
 
     return {
       admin,
       containerId: id,
       show: () => {
-        ADMIN_FRAME.run(() => visible.setTrue())
+        ADMIN_FRAME.run(() => {
+          adminSheet.rebind()
+          minimized.setFalse()
+          visible.setTrue()
+        })
+        container.hidden = false
+        mountContainer()
       },
       hide: () => {
         ADMIN_FRAME.run(() => visible.setFalse())
+        unmountContainer()
+        adminSheet.restore()
       },
     }
   })

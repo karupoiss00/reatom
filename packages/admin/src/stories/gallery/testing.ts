@@ -106,7 +106,11 @@ export function getAdminGraphNodeNames(): Array<string> {
   if (!(graphNodes instanceof HTMLElement)) return []
 
   return Array.from(graphNodes.querySelectorAll('strong, [data-node-name]'))
-    .map((element) => normalizeText(element.textContent ?? ''))
+    .map((element) =>
+      normalizeText(
+        element.getAttribute('data-node-name') ?? element.textContent ?? '',
+      ),
+    )
     .filter((name) => name.length > 0)
 }
 
@@ -118,6 +122,13 @@ export async function clickAdminCauseChainEntry(
   )
   if (!(detail instanceof HTMLElement)) {
     throw new Error('Frame detail is missing')
+  }
+
+  const causeTab = Array.from(detail.querySelectorAll('[role="tab"]')).find(
+    (candidate) => candidate.getAttribute('aria-label') === 'Cause Chain',
+  )
+  if (causeTab instanceof HTMLButtonElement && causeTab.getAttribute('aria-selected') !== 'true') {
+    await userEvent.click(causeTab)
   }
 
   const causeChainSection = Array.from(detail.querySelectorAll('section')).find(

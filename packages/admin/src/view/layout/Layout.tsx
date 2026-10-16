@@ -1,9 +1,12 @@
 import type { Computed, RouteChild } from '@reatom/core'
 
 import type { Admin } from '../../index'
+import { FilterBar } from '../components/FilterBar'
 import { HeaderBar } from '../components/HeaderBar'
-import { colors, p } from '../styles'
-import { Nav } from './Nav'
+import { StatusBar, StatusDot } from '../design-system'
+import { adminThemeVars, tokens } from '../design-system/tokens'
+import { adminSettings, bindAdminPalette } from '../settings'
+import { WorkspaceTabs } from './WorkspaceTabs'
 
 export interface LayoutProps {
   admin: Admin
@@ -12,62 +15,80 @@ export interface LayoutProps {
 }
 
 export const Layout = ({ admin, outlet, onMinimize }: LayoutProps) => {
+  const summary = () => admin.view.summary()
+  const settings = adminSettings()
+
   return (
     <div
+      data-admin-scheme={() => settings.resolvedScheme()}
+      ref={(shell) => bindAdminPalette(shell)}
       css={`
-        display: flex;
-        flex-direction: column;
-        background: ${colors.bg};
-        color: ${colors.text};
+        ${adminThemeVars}
+        display: grid;
+        grid-template-rows: auto auto auto minmax(0, 1fr) auto;
         height: 100%;
         min-height: 0;
         overflow: hidden;
-        font-size: 0.875rem;
+        background: ${tokens.canvas};
+        color: ${tokens.text1};
+        font-family: ${tokens.fontUi};
       `}
     >
-      <div
-        css={`
-          flex-shrink: 0;
-          ${p(2)}
-          padding-bottom: 0.4rem;
-
-          @container admin-shell (max-width: 680px) {
-            padding: 0.55rem;
-            padding-bottom: 0.3rem;
-          }
-        `}
-      >
-        <HeaderBar admin={admin} onMinimize={onMinimize} />
-      </div>
+      <HeaderBar admin={admin} onMinimize={onMinimize} />
+      <WorkspaceTabs />
+      <FilterBar admin={admin} />
       <main
         css={`
-          flex: 1;
           min-height: 0;
+          min-width: 0;
           overflow: hidden;
-          display: flex;
-          flex-direction: column;
-          ${p(2)}
-          padding-top: 0.35rem;
-
-          @container admin-shell (max-width: 680px) {
-            padding: 0.55rem;
-            padding-top: 0.25rem;
-          }
         `}
       >
-        <div
-          css={`
-            flex: 1;
-            min-height: 0;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-          `}
-        >
-          {outlet}
-        </div>
+        {outlet}
       </main>
-      <Nav admin={admin} />
+      <StatusBar>
+        {() => {
+          const current = summary()
+          const paused = admin.reporter.paused()
+          const following = admin.view.followLive()
+          return (
+            <span
+              css={`
+                display: contents;
+              `}
+            >
+              <StatusDot
+                tone={
+                  current.source === 'replay'
+                    ? 'warning'
+                    : paused
+                      ? 'warning'
+                      : 'success'
+                }
+                label={
+                  current.source === 'replay'
+                    ? 'Replay'
+                    : paused
+                      ? 'Paused'
+                      : 'Capturing'
+                }
+              />
+              <span>
+                {current.visibleFrames} / {current.totalFrames} visible
+              </span>
+              <span>{admin.filters.engine.configs().length} rules</span>
+              <span>{following ? 'Follow on' : 'Follow paused'}</span>
+              <span
+                css={`
+                  margin-inline-start: auto;
+                `}
+              >
+                J/K navigate · / find
+              </span>
+            </span>
+          )
+        }}
+      </StatusBar>
     </div>
   )
 }

@@ -1,0 +1,56 @@
+{
+  "traceId": "e81f78cd8e164b580618a24df929cd89",
+  "spanId": "f4cc6608a95edba1",
+  "name": "devtools.ping",
+  "kind": 1,
+  "startTimeUnixNano": "1791352144731000000",
+  "endTimeUnixNano": "1791352144731060547",
+  "attributes": [
+    {
+      "key": "reatom.name",
+      "value": {
+        "stringValue": "devtools.ping"
+      }
+    },
+    {
+      "key": "reatom.kind",
+      "value": {
+        "stringValue": "action"
+      }
+    },
+    {
+      "key": "reatom.outcome",
+      "value": {
+        "stringValue": "ok"
+      }
+    },
+    {
+      "key": "reatom.params",
+      "value": {
+        "stringValue": "[]"
+      }
+    },
+    {
+      "key": "reatom.payload",
+      "value": {
+        "stringValue": "pong"
+      }
+    },
+    {
+      "key": "reatom.frame.id",
+      "value": {
+        "stringValue": "1"
+      }
+    },
+    {
+      "key": "reatom.cause.ids",
+      "value": {
+        "arrayValue": {
+          "values": []
+        }
+      }
+    }
+  ],
+  "events": [],
+  "flags": 1
+}

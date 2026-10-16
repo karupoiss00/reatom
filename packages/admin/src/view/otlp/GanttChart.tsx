@@ -1,0 +1,822 @@
+import { atom, computed, effect, wrap } from '@reatom/core'
+
+import type { Gantt } from '../../gantt'
+import { ADMIN_GANTT_ROW_HEIGHT as ROW_HEIGHT } from '../../gantt'
+import type { GanttRecordSelection } from '../../gantt/selection'
+import type { AdminRecord, OtlpAdmin } from '../../otlp'
+import { recordHasError, recordLabel } from '../../otlp'
+import {
+  Button,
+  EmptyState,
+  Icon,
+  Toolbar,
+  ToolbarGroup,
+  ToolbarSeparator,
+  ToolbarSpacer,
+  focusVisible,
+  kindTokens,
+  scrollable,
+  tokens,
+  truncate,
+  type,
+  visuallyHidden,
+} from '../design-system'
+import { KindMark } from './KindMark'
+import {
+  recordKindIcon,
+  recordRowDescription,
+  recordStatusIcon,
+} from './recordKind'
+
+const LABEL_WIDTH = 220
+const INDENT = 12
+const CHEVRON = 16
+
+const COLUMNS = `${LABEL_WIDTH}px minmax(0, 1fr)`
+let ganttUiCounter = 0
+
+function formatAxisOffset(offsetMs: number): string {
+  const sign = offsetMs < 0 ? '-' : ''
+  const abs = Math.abs(offsetMs)
+  if (abs < 1000) return `${sign}${Math.round(abs)}ms`
+  if (abs < 60_000) {
+    const seconds = abs / 1000
+    return `${sign}${seconds < 10 ? seconds.toFixed(1) : Math.round(seconds)}s`
+  }
+  if (abs < 3_600_000) return `${sign}${Math.round(abs / 60_000)}m`
+  if (abs < 86_400_000) return `${sign}${Math.round(abs / 3_600_000)}h`
+  return `${sign}${Math.round(abs / 86_400_000)}d`
+}
+
+function recordDuration(record: AdminRecord): string {
+  if (record.end === undefined) return ''
+  return formatAxisOffset(Math.max(0, record.end - record.start))
+}
+
+export interface OtlpGanttChartProps {
+  gantt: Gantt<AdminRecord>
+  admin: OtlpAdmin
+  selection: GanttRecordSelection
+  /** Opens the frame card for the row that was just selected. */
+  onInspect?: () => void
+}
+
+const GanttRow = ({
+  gantt,
+  admin,
+  selection,
+  row,
+  rowIndex,
+  onInspect,
+}: {
+  gantt: Gantt<AdminRecord>
+  admin: OtlpAdmin
+  selection: GanttRecordSelection
+  row: AdminRecord
+  rowIndex: () => number
+  onInspect?: () => void
+}) => {
+  const label = recordLabel(row)
+  const duration = recordDuration(row)
+  const depth = computed(() => gantt.depth(row), `_Admin.gantt.row.depth`)
+  const hasChildren = computed(
+    () => gantt.children(row).length > 0,
+    `_Admin.gantt.row.hasChildren`,
+  )
+  const expanded = computed(
+    () => hasChildren() && gantt.isExpanded(row),
+    `_Admin.gantt.row.expanded`,
+  )
+  const spanCount = computed(
+    () =>
+      row.kind === 'span' && depth() === 0
+        ? admin.spanCountByTrace().get(row.traceId)
+        : undefined,
+    `_Admin.gantt.row.spanCount`,
+  )
+  const kindName = computed(
+    () => recordKindIcon(row, admin.mountLogIds()),
+    `_Admin.gantt.row.kind`,
+  )
+  const statusName = recordStatusIcon(row)
+
+  return (
+    <div
+      role="row"
+      tabindex={-1}
+      data-testid="gantt-row"
+      data-record-id={row.id}
+      data-depth={() => String(depth())}
+      data-kind={row.kind}
+      data-outcome={row.outcome ?? ''}
+      data-band={() =>
+        kindName() === 'action' && hasChildren() ? 'true' : 'false'
+      }
+      aria-label={label}
+      aria-description={() =>
+        recordRowDescription(row, {
+          spanCount: spanCount(),
+          duration,
+          mountIds: admin.mountLogIds(),
+        })
+      }
+      aria-level={() => depth() + 1}
+      aria-expanded={() => (hasChildren() ? expanded() : undefined)}
+      aria-rowindex={rowIndex}
+      aria-selected={() => admin.selectedRecordId() === row.id}
+      data-highlighted={() =>
+        admin.highlightedIds().has(row.id) ? 'true' : 'false'
+      }
+      title={label}
+      css={`
+        box-sizing: border-box;
+        display: grid;
+        grid-template-columns: ${COLUMNS};
+        align-items: center;
+        height: ${ROW_HEIGHT}px;
+        border-bottom: 1px solid ${tokens.border1};
+        background: ${tokens.canvas};
+        color: ${tokens.text1};
+        ${type.data}
+        cursor: pointer;
+        &[data-band='true']:not([aria-selected='true']):not(:hover) {
+          background: color-mix(
+            in oklch,
+            ${kindTokens.action} 7%,
+            ${tokens.canvas}
+          );
+        }
+        [data-admin-colors='false']
+          &[data-band='true']:not([aria-selected='true']):not(:hover) {
+          background: ${tokens.canvas};
+        }
+        &:hover {
+          background: ${tokens.surface2};
+        }
+        &[aria-selected='true'] {
+          background: color-mix(
+            in oklch,
+            ${tokens.accent} 24%,
+            ${tokens.canvas}
+          );
+        }
+        &[data-highlighted='true'] {
+          box-shadow: inset 3px 0 0 ${tokens.accent};
+        }
+      `}
+      on:click={(event: MouseEvent) => {
+        selection.select(row)
+        onInspect?.()
+        if (event.currentTarget instanceof HTMLElement) {
+          event.currentTarget
+            .closest<HTMLElement>('[data-testid="otlp-gantt"]')
+            ?.focus()
+        }
+      }}
+    >
+      <div
+        data-gantt-label=""
+        style:padding-left={() => `${depth() * INDENT + 8}px`}
+        css={`
+          display: flex;
+          align-items: center;
+          gap: var(--admin-space-4);
+          min-width: 0;
+          height: 100%;
+          padding-right: var(--admin-space-8);
+        `}
+      >
+        {() =>
+          hasChildren() ? (
+            <button
+              type="button"
+              data-testid="gantt-expand"
+              aria-expanded={expanded}
+              aria-label={() =>
+                expanded() ? `Collapse ${label}` : `Expand ${label}`
+              }
+              css={`
+                ${focusVisible}
+                appearance: none;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                width: ${CHEVRON}px;
+                height: ${CHEVRON}px;
+                padding: 0;
+                border: 0;
+                background: transparent;
+                color: ${tokens.text2};
+                cursor: pointer;
+                flex: 0 0 ${CHEVRON}px;
+              `}
+              on:click={(event: MouseEvent) => {
+                event.stopPropagation()
+                gantt.toggle(row)
+                if (event.currentTarget instanceof HTMLElement) {
+                  event.currentTarget
+                    .closest<HTMLElement>('[data-testid="otlp-gantt"]')
+                    ?.focus()
+                }
+              }}
+            >
+              {() => (
+                <Icon name={expanded() ? 'chevron-down' : 'chevron-right'} />
+              )}
+            </button>
+          ) : (
+            <span
+              aria-hidden="true"
+              css={`
+                width: ${CHEVRON}px;
+                flex: 0 0 ${CHEVRON}px;
+              `}
+            />
+          )
+        }
+        {() => <KindMark kind={kindName()} />}
+        <span
+          data-testid="gantt-row-label"
+          css={`
+            min-width: 0;
+            ${truncate}
+            color: ${recordHasError(row) ? tokens.error : tokens.text1};
+          `}
+        >
+          {label}
+          {row.error?.message ? ` — ${row.error.message}` : ''}
+          {() =>
+            spanCount() !== undefined ? (
+              <span
+                css={`
+                  color: ${tokens.text3};
+                `}
+              >{` ${spanCount()}`}</span>
+            ) : null
+          }
+        </span>
+        {statusName ? (
+          <span
+            data-gantt-status=""
+            css={`
+              display: flex;
+              flex: 0 0 auto;
+              color: ${statusName === 'error' ? tokens.error : tokens.text2};
+            `}
+          >
+            <Icon name={statusName} size={12} />
+          </span>
+        ) : null}
+        {duration !== '' && (
+          <span
+            data-gantt-duration=""
+            css={`
+              flex: 0 0 auto;
+              color: ${tokens.text3};
+              font-variant-numeric: tabular-nums;
+            `}
+          >
+            {duration}
+          </span>
+        )}
+      </div>
+      <div
+        data-gantt-track=""
+        data-gantt-bars=""
+        css={`
+          position: relative;
+          height: 10px;
+          margin-inline: var(--admin-space-8);
+          background: ${tokens.surface3};
+          border-radius: var(--admin-radius-2);
+          overflow: hidden;
+        `}
+      >
+        <div
+          data-testid="gantt-bar"
+          data-record-kind={() => kindName()}
+          data-status={statusName ?? ''}
+          style:left={() => {
+            const geometry = gantt.bar(row)
+            return geometry === null ? '0%' : `${geometry.left * 100}%`
+          }}
+          style:width={() => {
+            const geometry = gantt.bar(row)
+            if (geometry === null || geometry.width <= 0) return '2px'
+            return `${geometry.width * 100}%`
+          }}
+          css={`
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            min-width: 2px;
+            border-radius: var(--admin-radius-2);
+            background: var(--bar-color);
+            --bar-color: ${kindTokens.other};
+            &[data-record-kind='action'] {
+              --bar-color: ${kindTokens.action};
+            }
+            &[data-record-kind='atom'] {
+              --bar-color: ${kindTokens.atom};
+            }
+            &[data-record-kind='computed'] {
+              --bar-color: ${kindTokens.computed};
+            }
+            &[data-record-kind='effect'] {
+              --bar-color: ${kindTokens.effect};
+            }
+            &[data-record-kind='log'] {
+              --bar-color: ${kindTokens.log};
+            }
+            [data-admin-colors='false'] & {
+              --bar-color: ${tokens.text3};
+            }
+            &[data-status='error'] {
+              background: ${tokens.error};
+            }
+            &[data-status='abort'] {
+              background: repeating-linear-gradient(
+                135deg,
+                ${tokens.text3} 0 2px,
+                transparent 2px 5px
+              );
+            }
+            &[data-status='pending'],
+            &[data-status='suspense'] {
+              background: repeating-linear-gradient(
+                135deg,
+                var(--bar-color) 0 4px,
+                color-mix(in oklch, var(--bar-color) 35%, transparent) 4px 8px
+              );
+            }
+            &[data-status='pending'] {
+              mask-image: linear-gradient(90deg, black 70%, transparent);
+            }
+          `}
+        />
+      </div>
+    </div>
+  )
+}
+
+export const OtlpGanttChart = ({
+  gantt,
+  admin,
+  selection,
+  onInspect,
+}: OtlpGanttChartProps) => {
+  const uiId = ++ganttUiCounter
+  const seenCount = atom(0, `_Admin.gantt.seen.${uiId}`)
+  const unseen = atom(0, `_Admin.gantt.unseen.${uiId}`)
+  effect(() => {
+    const count = gantt.rows().length
+    if (admin.followLive()) {
+      seenCount.set(count)
+      unseen.set(0)
+      return
+    }
+    unseen.set(Math.max(0, count - seenCount()))
+  }, `_Admin.gantt.unseen.${uiId}`)
+
+  const isEmpty = computed(
+    () => gantt.rows().length === 0,
+    `_Admin.gantt.isEmpty.${uiId}`,
+  )
+  const rowIndexes = computed(() => {
+    const { offset, items } = gantt.virtual()
+    return new Map(items.map((row, index) => [row, offset + index + 1]))
+  }, `_Admin.gantt.rowIndexes.${uiId}`)
+  const rowElements = gantt.virtual.reatomMap(
+    (row) => (
+      <GanttRow
+        gantt={gantt}
+        admin={admin}
+        selection={selection}
+        row={row}
+        rowIndex={() => rowIndexes().get(row) ?? 0}
+        onInspect={onInspect}
+      />
+    ),
+    `_Admin.gantt.rowElements.${uiId}`,
+  )
+
+  let pan: {
+    pointerId: number
+    x: number
+    start: number
+    end: number
+    width: number
+  } | null = null
+
+  const placeCursor = (event: PointerEvent) => {
+    const host = event.currentTarget
+    if (!(host instanceof HTMLElement)) return
+    const time = gantt.visibleTime()
+    if (time === null || time.end <= time.start) {
+      gantt.cursor.set(null)
+      return
+    }
+    const rect = host.getBoundingClientRect()
+    const trackWidth = rect.width - LABEL_WIDTH
+    if (trackWidth <= 0) return
+    const ratio = (event.clientX - rect.left - LABEL_WIDTH) / trackWidth
+    if (ratio < 0 || ratio > 1) {
+      gantt.cursor.set(null)
+      return
+    }
+    gantt.cursor.set(time.start + (time.end - time.start) * ratio)
+  }
+
+  return (
+    <section
+      data-testid="otlp-gantt"
+      data-reatom-name="OtlpGanttChart"
+      tabindex={0}
+      role="treegrid"
+      aria-label="Timeline"
+      aria-rowcount={() => gantt.rows().length}
+      css={`
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+        height: 100%;
+        min-height: 0;
+        min-width: 0;
+        outline: none;
+        background: ${tokens.canvas};
+        ${focusVisible}
+      `}
+    >
+      <h2 css={visuallyHidden}>Timeline</h2>
+      <div
+        css={`
+          ${scrollable}
+          overflow-y: hidden;
+          background: ${tokens.surface1};
+        `}
+      >
+        <div
+          css={`
+            width: max-content;
+            min-width: 100%;
+          `}
+        >
+          <Toolbar>
+            <ToolbarGroup>
+              <Button
+                variant="secondary"
+                label="Fit time"
+                testId="gantt-fit"
+                disabled={() => gantt.range() === null}
+                onClick={() => gantt.fit()}
+              >
+                Fit
+              </Button>
+              <Button
+                variant="secondary"
+                label="Zoom in"
+                testId="gantt-zoom-in"
+                disabled={() => gantt.visibleTime() === null}
+                onClick={() => gantt.zoom(1.5)}
+              >
+                +
+              </Button>
+              <Button
+                variant="secondary"
+                label="Zoom out"
+                testId="gantt-zoom-out"
+                disabled={() => gantt.visibleTime() === null}
+                onClick={() => gantt.zoom(1 / 1.5)}
+              >
+                −
+              </Button>
+            </ToolbarGroup>
+            <ToolbarSeparator />
+            <ToolbarGroup>
+              <Button
+                variant="secondary"
+                label="Expand all"
+                testId="gantt-expand-all"
+                onClick={() => gantt.expandAll()}
+              >
+                Expand
+              </Button>
+              <Button
+                variant="secondary"
+                label="Collapse all"
+                testId="gantt-collapse-all"
+                onClick={() => gantt.collapseAll()}
+              >
+                Collapse
+              </Button>
+            </ToolbarGroup>
+            <ToolbarSeparator />
+            <ToolbarGroup>
+              <Button
+                variant="ghost"
+                label="Waterfall"
+                testId="gantt-mode-waterfall"
+                pressed={() => gantt.mode() === 'waterfall'}
+                onClick={() => gantt.mode.set('waterfall')}
+              >
+                Waterfall
+              </Button>
+              <Button
+                variant="ghost"
+                label="Log"
+                testId="gantt-mode-log"
+                pressed={() => gantt.mode() === 'log'}
+                onClick={() => gantt.mode.set('log')}
+              >
+                Log
+              </Button>
+            </ToolbarGroup>
+            <ToolbarSpacer />
+            <span>
+              {() =>
+                unseen() > 0 ? (
+                  <Button
+                    variant="ghost"
+                    label="New records"
+                    onClick={() => admin.followLive.setTrue()}
+                  >
+                    {() => `${unseen()} new`}
+                  </Button>
+                ) : null
+              }
+            </span>
+            <Button
+              variant="ghost"
+              label="Follow live"
+              pressed={() => admin.followLive()}
+              onClick={() => {
+                if (admin.followLive()) admin.followLive.setFalse()
+                else admin.followLive.setTrue()
+              }}
+            >
+              {() => (admin.followLive() ? 'Following' : 'Follow live')}
+            </Button>
+            <span
+              data-testid="gantt-summary"
+              css={`
+                ${type.meta}
+                color: ${tokens.text3};
+                font-variant-numeric: tabular-nums;
+                white-space: nowrap;
+              `}
+            >
+              {() => {
+                const rowCount = gantt.rows().length
+                const time = gantt.visibleTime()
+                const span =
+                  time === null ? 0 : Math.max(0, time.end - time.start)
+                const noun = rowCount === 1 ? 'row' : 'rows'
+                return `${rowCount} ${noun} · ${formatAxisOffset(span)}`
+              }}
+            </span>
+          </Toolbar>
+        </div>
+      </div>
+      <div
+        css={`
+          position: relative;
+          min-height: 0;
+          min-width: 0;
+          display: grid;
+          grid-template-rows: auto minmax(0, 1fr);
+        `}
+        on:pointermove={placeCursor}
+        on:pointerleave={() => {
+          if (pan === null) gantt.cursor.set(null)
+        }}
+      >
+        <div
+          css={`
+            display: grid;
+            grid-template-columns: ${COLUMNS};
+            min-height: 22px;
+            border-bottom: 1px solid ${tokens.border1};
+            background: ${tokens.surface1};
+            ${type.meta}
+            color: ${tokens.text3};
+          `}
+        >
+          <div
+            css={`
+              padding-inline: var(--admin-space-8);
+              align-self: center;
+            `}
+          >
+            Span
+          </div>
+          <div
+            data-testid="gantt-axis"
+            css={`
+              position: relative;
+              min-width: 0;
+              cursor: ew-resize;
+              touch-action: none;
+            `}
+            on:pointerdown={(event: PointerEvent) => {
+              if (event.button !== 0) return
+              const time = gantt.visibleTime()
+              const axis = event.currentTarget
+              if (time === null || !(axis instanceof HTMLElement)) return
+              const width = axis.getBoundingClientRect().width
+              pan = {
+                pointerId: event.pointerId,
+                x: event.clientX,
+                start: time.start,
+                end: time.end,
+                width,
+              }
+              axis.setPointerCapture(event.pointerId)
+            }}
+            on:pointermove={(event: PointerEvent) => {
+              if (pan === null || pan.pointerId !== event.pointerId) return
+              const span = pan.end - pan.start
+              const deltaPx = event.clientX - pan.x
+              const delta = pan.width <= 0 ? 0 : (-deltaPx / pan.width) * span
+              gantt.timeWindow.set({
+                start: pan.start + delta,
+                end: pan.end + delta,
+              })
+            }}
+            on:pointerup={(event: PointerEvent) => {
+              pan = null
+              const axis = event.currentTarget
+              if (
+                axis instanceof HTMLElement &&
+                axis.hasPointerCapture(event.pointerId)
+              ) {
+                axis.releasePointerCapture(event.pointerId)
+              }
+            }}
+            on:pointercancel={() => {
+              pan = null
+            }}
+          >
+            {() => {
+              const time = gantt.visibleTime()
+              if (time === null) return null
+              const count = 4
+              const span = time.end - time.start
+              return (
+                <div
+                  css={`
+                    position: absolute;
+                    inset: 0;
+                  `}
+                >
+                  {Array.from({ length: count + 1 }, (_, index) => {
+                    const fraction = index / count
+                    const align =
+                      index === 0 ? '0' : index === count ? '-100%' : '-50%'
+                    return (
+                      <span
+                        style:left={`${fraction * 100}%`}
+                        css={`
+                          position: absolute;
+                          top: 4px;
+                          transform: translateX(${align});
+                          white-space: nowrap;
+                          font-variant-numeric: tabular-nums;
+                        `}
+                      >
+                        {formatAxisOffset(span * fraction)}
+                      </span>
+                    )
+                  })}
+                </div>
+              )
+            }}
+          </div>
+        </div>
+        <div
+          css={`
+            position: relative;
+            min-height: 0;
+            min-width: 0;
+          `}
+        >
+          {() => {
+            const cursor = gantt.cursor()
+            const time = gantt.visibleTime()
+            if (cursor === null || time === null || time.end <= time.start) {
+              return null
+            }
+            const fraction = Math.min(
+              1,
+              Math.max(0, (cursor - time.start) / (time.end - time.start)),
+            )
+            return (
+              <div
+                data-testid="gantt-cursor"
+                style:left={`calc(${LABEL_WIDTH}px + (100% - ${LABEL_WIDTH}px) * ${fraction})`}
+                css={`
+                  position: absolute;
+                  top: 0;
+                  bottom: 0;
+                  width: 1px;
+                  background: ${tokens.text3};
+                  pointer-events: none;
+                  z-index: 1;
+                `}
+              />
+            )
+          }}
+          <div
+            data-testid="gantt-scroller"
+            css={`
+              ${scrollable}
+              overflow-x: hidden;
+              height: 100%;
+            `}
+            ref={(scroller) => {
+              const unbindScroller = gantt.virtual.bindScroller(scroller)
+              const onWheel = wrap((event: WheelEvent) => {
+                if (!event.ctrlKey && !event.metaKey) return
+                event.preventDefault()
+                const time = gantt.visibleTime()
+                if (time === null || !(time.end > time.start)) return
+                const rect = scroller.getBoundingClientRect()
+                const trackWidth = rect.width - LABEL_WIDTH
+                const ratio =
+                  trackWidth <= 0
+                    ? 0.5
+                    : (event.clientX - rect.left - LABEL_WIDTH) / trackWidth
+                const anchor =
+                  time.start +
+                  (time.end - time.start) * Math.min(1, Math.max(0, ratio))
+                gantt.zoom(event.deltaY < 0 ? 1.25 : 0.8, anchor)
+              })
+              scroller.addEventListener('wheel', onWheel, { passive: false })
+
+              return () => {
+                scroller.removeEventListener('wheel', onWheel)
+                unbindScroller()
+              }
+            }}
+          >
+            <div
+              data-testid="gantt-spacer-before"
+              style:height={() => `${gantt.virtual.padding().before}px`}
+            />
+            <div
+              data-testid="gantt-window"
+              style:top={() => `${gantt.virtual.stickyInset()}px`}
+              style:bottom={() => `${gantt.virtual.stickyInset()}px`}
+              css={`
+                position: sticky;
+              `}
+            >
+              {() => {
+                if (isEmpty()) {
+                  const filtered = admin.records().length > 0
+                  return (
+                    <div data-testid="gantt-empty">
+                      <EmptyState
+                        title={
+                          filtered ? 'No matching records' : 'No records yet'
+                        }
+                        description={
+                          filtered
+                            ? 'Reset filters to show the captured records again.'
+                            : 'Nothing has been captured. OpenTelemetry may have been created after the app atoms, skipGlobalExtension may be on, a filter may be dropping every span, or consent and kill switches may be off.'
+                        }
+                        action={
+                          filtered ? (
+                            <Button
+                              label="Reset filters"
+                              onClick={() => admin.resetFilter()}
+                            >
+                              Reset
+                            </Button>
+                          ) : (
+                            <a
+                              href="https://v1001.reatom.dev"
+                              css={`
+                                color: ${tokens.accent};
+                              `}
+                            >
+                              OpenTelemetry setup
+                            </a>
+                          )
+                        }
+                      />
+                    </div>
+                  )
+                }
+                return null
+              }}
+              <div data-testid="gantt-rows">{rowElements}</div>
+            </div>
+            <div
+              data-testid="gantt-spacer-after"
+              style:height={() => `${gantt.virtual.padding().after}px`}
+            />
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}

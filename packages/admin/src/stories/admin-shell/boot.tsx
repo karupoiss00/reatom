@@ -30,7 +30,7 @@ function getPersistentDevtools(
   if (persistentDevtools) return persistentDevtools
 
   persistentDevtools = createAdminDevtools({
-    initialWidth: options.devtoolsWidth ?? '560px',
+    initialWidth: options.devtoolsWidth ?? '700px',
     initialHeight: options.devtoolsHeight ?? '760px',
   })
 

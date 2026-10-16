@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -11,31 +12,72 @@ const storybookIncludeTags = process.env['STORYBOOK_INCLUDE_TAGS']
   .map((tag) => tag.trim())
   .filter(Boolean)
 
+function openRouterKeyFrom(path: string): string {
+  if (!existsSync(path)) return ''
+  const line = readFileSync(path, 'utf8')
+    .split('\n')
+    .find((entry) => entry.startsWith('OPENROUTER_API_KEY='))
+  if (!line) return ''
+  return line
+    .slice('OPENROUTER_API_KEY='.length)
+    .trim()
+    .replace(/^['"]|['"]$/g, '')
+}
+
+function readOpenRouterKey(): string {
+  const fromEnv = process.env['OPENROUTER_API_KEY']?.trim()
+  if (fromEnv) return fromEnv
+  const candidates = [
+    resolve(dir, '../../.env'),
+    resolve(process.cwd(), '.env'),
+    resolve(process.cwd(), '../.env'),
+    resolve(process.cwd(), '../../.env'),
+  ]
+  for (const path of candidates) {
+    const value = openRouterKeyFrom(path)
+    if (value) return value
+  }
+  throw new Error(
+    `OPENROUTER_API_KEY was not found in the environment or ${candidates.join(', ')}`,
+  )
+}
+
+const reatomAliases = {
+  '@reatom/admin': resolve(dir, './src/index.ts'),
+  '@reatom/core': resolve(dir, '../core/src'),
+  '@reatom/jsx': resolve(dir, '../jsx/src'),
+  '@reatom/opentelemetry/gdpr': resolve(
+    dir,
+    '../opentelemetry/src/gdpr/index.ts',
+  ),
+  '@reatom/opentelemetry/web-analytics': resolve(
+    dir,
+    '../opentelemetry/src/web-analytics/index.ts',
+  ),
+  '@reatom/opentelemetry': resolve(dir, '../opentelemetry/src/index.ts'),
+  test: resolve(dir, './src/test.ts'),
+  'chat-app': resolve(dir, '../../examples/chat/src'),
+}
+
 export default defineConfig({
   plugins: [
     {
-      name: 'reatom-admin-gallery-harness',
-      transform(code, id) {
-        if (
-          id.includes('examples/gallery') &&
-          id.includes('GalleryWorkspace')
-        ) {
-          return code.replace(
-            /ref=\{\(\) => bindBackgroundPreviewLoader\(\)\}/g,
-            'ref={() => () => undefined}',
-          )
-        }
-        return null
+      name: 'watch-chat-example',
+      configureServer(server) {
+        server.watcher.add(resolve(dir, '../../examples/chat/src'))
       },
     },
   ],
   resolve: {
-    alias: {
-      '@reatom/core': resolve(dir, '../core/src'),
-      '@reatom/jsx': resolve(dir, '../jsx/src'),
-      test: resolve(dir, './src/test.ts'),
-      'gallery-app': resolve(dir, '../../examples/gallery/src'),
-    },
+    alias: reatomAliases,
+  },
+  optimizeDeps: {
+    entries: [
+      resolve(dir, 'src/stories/chat/chat.stories.ts'),
+      resolve(dir, 'src/stories/chat/live.stories.ts'),
+      resolve(dir, 'src/stories/chat/boot.tsx'),
+      resolve(dir, 'src/stories/chat/live-boot.tsx'),
+    ],
   },
   oxc: {
     jsx: {
@@ -50,10 +92,6 @@ export default defineConfig({
   test: {
     sequence: { groupOrder: 12 },
     testTimeout: 180_000,
-    // Gallery lightbox/filter journeys leave deep abort-parent chains that
-    // reject asynchronously after the story asserts; ignore those so a green
-    // suite is not failed by post-test teardown noise.
-    dangerouslyIgnoreUnhandledErrors: true,
     projects: [
       {
         extends: true,
@@ -71,10 +109,24 @@ export default defineConfig({
           storybookTest({
             configDir: resolve(dir, '.storybook'),
             storybookScript: 'pnpm storybook --no-open',
-            ...(storybookIncludeTags?.length
-              ? { tags: { include: storybookIncludeTags } }
-              : {}),
+            tags: storybookIncludeTags?.length
+              ? { include: storybookIncludeTags }
+              : { exclude: ['@live'] },
           }),
+          {
+            name: 'reatom-openrouter-key-command',
+            configureVitest({ project }) {
+              const browser = project.browser as {
+                registerCommand?: (
+                  name: string,
+                  command: () => Promise<string>,
+                ) => void
+              }
+              browser.registerCommand?.('readOpenRouterKey', async () =>
+                readOpenRouterKey(),
+              )
+            },
+          },
         ],
         test: {
           name: 'storybook',
@@ -83,6 +135,9 @@ export default defineConfig({
             provider: playwright(),
             headless: true,
             instances: [{ browser: 'chromium' }],
+            commands: {
+              readOpenRouterKey: async () => readOpenRouterKey(),
+            },
           },
           setupFiles: [resolve(dir, '.storybook/vitest.setup.ts')],
         },

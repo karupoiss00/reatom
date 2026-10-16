@@ -1,0 +1,165 @@
+{
+  "_comment": "Hand-written exporter-shaped JSON (contrib otel_traces/otel_logs columns), not a captured live ClickHouse export. Trace aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa is synthetic. Mixed nanos: 1761… ~2025 (explode) and 1791… ~2026 (the rest). Several spans reuse reatom.frame.id \"1\" across traces on purpose.",
+  "spans": {
+    "data": [
+      {
+        "startTimeUnixNano": "1791352144731000000",
+        "TraceId": "e81f78cd8e164b580618a24df929cd89",
+        "SpanId": "f4cc6608a95edba1",
+        "ParentSpanId": "",
+        "SpanName": "devtools.ping",
+        "SpanKind": 1,
+        "Duration": 60547,
+        "StatusCode": 0,
+        "StatusMessage": "",
+        "ServiceName": "reatom-admin-story",
+        "SpanAttributes": {
+          "reatom.name": "devtools.ping",
+          "reatom.kind": "action",
+          "reatom.outcome": "ok",
+          "reatom.params": "[]",
+          "reatom.payload": "pong",
+          "reatom.frame.id": "1",
+          "reatom.cause.ids": "[]"
+        },
+        "ResourceAttributes": {
+          "service.name": "reatom-admin-story"
+        }
+      },
+      {
+        "startTimeUnixNano": "1791351231722000000",
+        "TraceId": "cb8d064f62349e625e67d655b9ed1946",
+        "SpanId": "50c144f8a2824d56",
+        "ParentSpanId": "",
+        "SpanName": "tree#.toggle",
+        "SpanKind": 1,
+        "Duration": 396973,
+        "StatusCode": 0,
+        "StatusMessage": "",
+        "ServiceName": "reatom-admin-story",
+        "SpanAttributes": {
+          "reatom.name": "tree#12.toggle",
+          "reatom.kind": "action",
+          "reatom.outcome": "ok",
+          "reatom.params": "[]",
+          "reatom.payload": "true",
+          "reatom.instance": "12",
+          "reatom.frame.id": "1",
+          "reatom.cause.ids": "[]"
+        },
+        "ResourceAttributes": {
+          "service.name": "reatom-admin-story"
+        }
+      },
+      {
+        "startTimeUnixNano": "1791345062720000000",
+        "TraceId": "b87110b55a4743558bad836760edf358",
+        "SpanId": "b5c850b17d034d03",
+        "ParentSpanId": "2c8a5498651e6b28",
+        "SpanName": "cart.total",
+        "SpanKind": 1,
+        "Duration": 0,
+        "StatusCode": 0,
+        "StatusMessage": "",
+        "ServiceName": "reatom-admin-story",
+        "SpanAttributes": {
+          "reatom.name": "cart.total",
+          "reatom.kind": "computed",
+          "reatom.outcome": "ok",
+          "reatom.frame.id": "6",
+          "reatom.cause.ids": "[\"3\",\"5\"]"
+        },
+        "ResourceAttributes": {
+          "service.name": "reatom-admin-story"
+        }
+      },
+      {
+        "startTimeUnixNano": "1761000000123000000",
+        "TraceId": "5b8efff798038103d269b633813fc60c",
+        "SpanId": "eee19b7ec3c1b174",
+        "ParentSpanId": "",
+        "SpanName": "explode",
+        "SpanKind": 1,
+        "Duration": 1000000,
+        "StatusCode": 2,
+        "StatusMessage": "boom",
+        "ServiceName": "reatom-admin-story",
+        "SpanAttributes": {
+          "reatom.name": "explode",
+          "reatom.kind": "action",
+          "reatom.outcome": "error",
+          "reatom.params": "[]",
+          "reatom.frame.id": "1",
+          "reatom.cause.ids": "[]"
+        },
+        "ResourceAttributes": {
+          "service.name": "reatom-admin-story"
+        }
+      },
+      {
+        "startTimeUnixNano": "1791352144731000000",
+        "TraceId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "SpanId": "bbbbbbbbbbbbbbbb",
+        "ParentSpanId": "",
+        "SpanName": "route goods",
+        "SpanKind": 1,
+        "Duration": 0,
+        "StatusCode": 0,
+        "StatusMessage": "",
+        "ServiceName": "reatom-admin-story",
+        "SpanAttributes": {
+          "reatom.kind": "route",
+          "reatom.name": "goods"
+        },
+        "ResourceAttributes": {
+          "service.name": "reatom-admin-story"
+        }
+      }
+    ]
+  },
+  "logs": {
+    "data": [
+      {
+        "timeUnixNano": "1791351231722000000",
+        "TraceId": "cb8d064f62349e625e67d655b9ed1946",
+        "SpanId": "50c144f8a2824d56",
+        "SeverityNumber": 9,
+        "SeverityText": "INFO",
+        "Body": "true",
+        "EventName": "reatom.atom.update",
+        "ServiceName": "reatom-admin-story",
+        "LogAttributes": {
+          "event.name": "reatom.atom.update",
+          "reatom.name": "tree.checked",
+          "reatom.kind": "atom",
+          "reatom.frame.id": "2",
+          "reatom.cause.ids": "[\"1\"]"
+        },
+        "ResourceAttributes": {
+          "service.name": "reatom-admin-story"
+        }
+      },
+      {
+        "timeUnixNano": "1761000000123500000",
+        "TraceId": "5b8efff798038103d269b633813fc60c",
+        "SpanId": "eee19b7ec3c1b174",
+        "SeverityNumber": 17,
+        "SeverityText": "ERROR",
+        "Body": "TypeError: boom",
+        "EventName": "exception",
+        "ServiceName": "reatom-admin-story",
+        "LogAttributes": {
+          "event.name": "exception",
+          "exception.type": "TypeError",
+          "exception.message": "boom",
+          "exception.stacktrace": "TypeError: boom\n    at explode",
+          "reatom.frame.id": "1",
+          "reatom.cause.ids": "[]"
+        },
+        "ResourceAttributes": {
+          "service.name": "reatom-admin-story"
+        }
+      }
+    ]
+  }
+}

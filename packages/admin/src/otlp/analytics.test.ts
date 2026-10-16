@@ -1,0 +1,655 @@
+import { atom, notify, sleep, wrap } from '@reatom/core'
+import { connectWebAnalytics } from '@reatom/opentelemetry/web-analytics'
+import { describe, expect, test, vi } from 'test'
+
+import { reatomGantt } from '../gantt/reatomGantt.ts'
+import { ADMIN_FRAME } from '../root'
+import {
+  ALL_SESSIONS_LABEL,
+  analyticsBreakdown,
+  type AnalyticsPathNode,
+  analyticsPathTree,
+  analyticsSegment,
+  type AnalyticsSession,
+  analyticsSessions,
+  analyticsTotals,
+  cleanAnalyticsPath,
+  NO_SOURCE,
+  typicalAnalyticsPath,
+  typicalAnalyticsSession,
+} from './analytics.ts'
+import { parseCalculator, recordMatchesCalculator } from './calculator.ts'
+import { type AdminRecord, reatomOtlpStore } from './ingest.ts'
+
+const T0 = 1_760_000_000_000
+const SECOND = 1_000
+
+let recordCount = 0
+
+const analyticsLog = (
+  eventName: string,
+  start: number,
+  attributes: Record<string, unknown>,
+  traceId = 'page-trace',
+): AdminRecord => {
+  recordCount += 1
+  return {
+    id: `clickhouse:log:${recordCount}`,
+    sourceId: 'clickhouse',
+    kind: 'log',
+    traceId,
+    spanId: `span-${recordCount}`,
+    name: eventName,
+    start,
+    attributes: {
+      'event.name': eventName,
+      'app.analytics.consent': 'granted',
+      ...attributes,
+    },
+    resource: { 'service.name': 'shop-web' },
+    links: [],
+    causeIds: [],
+    eventName,
+  }
+}
+
+interface ScriptedPage {
+  path: string
+  atSecond: number
+  visibleSeconds?: number
+  errors?: number
+}
+
+const scriptedSession = (
+  sessionId: string,
+  visitorId: string,
+  pages: readonly ScriptedPage[],
+  startAttributes: Record<string, unknown> = {},
+  viewAttributes: Record<string, unknown> = {},
+): AdminRecord[] => {
+  const identity = { 'session.id': sessionId, 'app.visitor.id': visitorId }
+  const records = [
+    analyticsLog('session.start', T0 + pages[0]!.atSecond * SECOND, {
+      ...identity,
+      ...startAttributes,
+    }),
+  ]
+  pages.forEach((page, index) => {
+    const viewAt = T0 + page.atSecond * SECOND
+    const pageTrace = `${sessionId}:${index}`
+    records.push(
+      analyticsLog(
+        'app.page_view',
+        viewAt,
+        { ...identity, ...viewAttributes, 'url.path': page.path },
+        pageTrace,
+      ),
+    )
+    for (let error = 0; error < (page.errors ?? 0); error += 1) {
+      records.push(
+        analyticsLog(
+          'exception',
+          viewAt + 1 + error,
+          { ...identity, 'exception.type': 'TypeError' },
+          pageTrace,
+        ),
+      )
+    }
+    const nextPage = pages[index + 1]
+    const visibleMs = nextPage
+      ? (nextPage.atSecond - page.atSecond) * SECOND
+      : (page.visibleSeconds ?? 0) * SECOND
+    if (visibleMs === 0) return
+    records.push(
+      analyticsLog('app.page.engagement', viewAt + visibleMs, {
+        ...identity,
+        'app.engagement.visible_ms': visibleMs,
+        'app.engagement.active_ms': Math.min(visibleMs, 5 * SECOND),
+      }),
+    )
+  })
+  return records
+}
+
+const shopRecords = () => [
+  ...scriptedSession('s1', 'v1', [
+    { path: '/', atSecond: 0 },
+    { path: '/goods/42', atSecond: 10 },
+    { path: '/cart', atSecond: 30 },
+    { path: '/checkout', atSecond: 40, visibleSeconds: 5 },
+  ]),
+  ...scriptedSession(
+    's2',
+    'v1',
+    [
+      { path: '/', atSecond: 100 },
+      { path: '/goods/7', atSecond: 120 },
+      { path: '/cart', atSecond: 150, visibleSeconds: 10, errors: 1 },
+    ],
+    { 'session.previous_id': 's1' },
+  ),
+  ...scriptedSession('s3', 'v3', [
+    { path: '/', atSecond: 200 },
+    { path: '/goods/42', atSecond: 205, visibleSeconds: 3 },
+  ]),
+  ...scriptedSession('s4', 'v4', [
+    { path: '/', atSecond: 300, visibleSeconds: 3 },
+  ]),
+  ...scriptedSession(
+    's5',
+    'v5',
+    [
+      { path: '/goods/9', atSecond: 400 },
+      { path: '/cart', atSecond: 430 },
+      { path: '/checkout', atSecond: 460, visibleSeconds: 20 },
+    ],
+    {
+      'app.attribution.last.source': 'google',
+      'app.attribution.last.campaign': 'spring',
+    },
+  ),
+  ...scriptedSession(
+    's6',
+    'v6',
+    [
+      { path: '/', atSecond: 500 },
+      { path: '/about', atSecond: 504, visibleSeconds: 2 },
+    ],
+    { 'app.attribution.last.gclid': 'abc' },
+  ),
+  ...scriptedSession('s7', 'v7', [
+    { path: '/', atSecond: 600 },
+    { path: '/goods/42', atSecond: 610 },
+    { path: '/goods/42', atSecond: 615 },
+    { path: '/cart', atSecond: 625, visibleSeconds: 40 },
+  ]),
+  ...scriptedSession(
+    's8',
+    'v8',
+    [
+      { path: '/blog/2f9c1e7a-8d4b-4c2e-9f1a-0b7c3d5e6f70', atSecond: 700 },
+      { path: '/', atSecond: 760, visibleSeconds: 1 },
+    ],
+    {},
+    { 'app.utm.source': 'newsletter' },
+  ),
+]
+
+const ids = (sessions: readonly AnalyticsSession[]) =>
+  sessions.map((session) => session.id)
+
+const childrenOf = (
+  nodes: readonly AnalyticsPathNode[],
+  parent: AnalyticsPathNode,
+) => nodes.filter((node) => node.parentId === parent.id)
+
+const nodeAt = (nodes: readonly AnalyticsPathNode[], id: string) => {
+  const node = nodes.find((candidate) => candidate.id === id)
+  expect(node, id).toBeDefined()
+  return node!
+}
+
+const matching = (records: readonly AdminRecord[], query: string) => {
+  const parsed = parseCalculator(query)
+  expect(parsed.ok).toBe(true)
+  return records.filter((record) => recordMatchesCalculator(record, parsed))
+}
+
+describe('sessions', () => {
+  test('engagement goes to the page it measured, even in the same millisecond as the next page view', () => {
+    const identity = { 'session.id': 'tie', 'app.visitor.id': 'v' }
+    const records = [
+      analyticsLog(
+        'app.page_view',
+        T0 + 5 * SECOND,
+        { ...identity, 'url.path': '/cart' },
+        'cart-trace',
+      ),
+      analyticsLog(
+        'app.page.engagement',
+        T0 + 5 * SECOND,
+        {
+          ...identity,
+          'app.engagement.visible_ms': '3800',
+          'app.engagement.active_ms': '2500',
+        },
+        'cart-trace',
+      ),
+      analyticsLog('app.page.engagement', T0, {
+        ...identity,
+        'app.engagement.visible_ms': '1200',
+        'app.engagement.active_ms': '1200',
+      }),
+      analyticsLog('app.page_view', T0, { ...identity, 'url.path': '/' }),
+      analyticsLog('session.start', T0, identity),
+      analyticsLog(
+        'app.page.engagement',
+        T0 + 9 * SECOND,
+        {
+          ...identity,
+          'app.engagement.visible_ms': '4000',
+          'app.engagement.active_ms': '1000',
+        },
+        'cart-trace',
+      ),
+    ]
+
+    const [session] = analyticsSessions(records)
+
+    expect(
+      session!.visits.map(({ label, durationMs, visibleMs, activeMs }) => ({
+        label,
+        durationMs,
+        visibleMs,
+        activeMs,
+      })),
+    ).toEqual([
+      { label: '/', durationMs: 5000, visibleMs: 5000, activeMs: 3700 },
+      { label: '/cart', durationMs: 4000, visibleMs: 4000, activeMs: 1000 },
+    ])
+    expect(session!.end).toBe(T0 + 9 * SECOND)
+  })
+
+  test('a suppressed summary adds the errors that were not recorded one by one', () => {
+    const identity = { 'session.id': 'errors', 'app.visitor.id': 'v' }
+    const error = (at: number, type: string) =>
+      analyticsLog(
+        'exception',
+        at,
+        { ...identity, 'exception.type': type },
+        'action-trace',
+      )
+    const records = [
+      analyticsLog('app.page_view', T0, { ...identity, 'url.path': '/cart' }),
+      error(T0 + 100, 'TypeError'),
+      error(T0 + 200, 'TypeError'),
+      error(T0 + 300, 'RangeError'),
+      analyticsLog('exception.suppressed', T0 + 10 * SECOND, {
+        ...identity,
+        'exception.type': 'TypeError',
+        'app.exception.count': '12',
+      }),
+      analyticsLog('app.page_view', T0 + 10 * SECOND, {
+        ...identity,
+        'url.path': '/done',
+      }),
+    ]
+
+    const [session] = analyticsSessions(records)
+
+    expect(session!.visits.map((visit) => visit.exceptions)).toEqual([13, 0])
+    expect(session!.exceptions).toBe(13)
+  })
+
+  test('only analytics logs with a session id form sessions, and a session needs a page view', () => {
+    const identity = { 'session.id': 's', 'app.visitor.id': 'v' }
+    const tracerSpan: AdminRecord = {
+      ...analyticsLog('app.page_view', T0, identity),
+      kind: 'span',
+    }
+    const records = [
+      tracerSpan,
+      analyticsLog('reatom.log', T0, { ...identity, 'url.path': '/x' }),
+      analyticsLog('exception', T0, { 'exception.type': 'TypeError' }),
+      analyticsLog('session.start', T0, {
+        'session.id': 'no-views',
+        'app.visitor.id': 'v',
+      }),
+      analyticsLog('app.page_view', T0 + 1, { ...identity, 'url.path': '/' }),
+    ]
+
+    const sessions = analyticsSessions(records)
+
+    expect(ids(sessions)).toEqual(['s'])
+    expect(sessions[0]!.visits.map((visit) => visit.label)).toEqual(['/'])
+    expect(sessions[0]!.source).toBe(NO_SOURCE)
+  })
+
+  test('step labels fold ids in paths unless a custom label is given', () => {
+    expect(cleanAnalyticsPath('/goods/42')).toBe('/goods/:id')
+    expect(
+      cleanAnalyticsPath('/blog/2f9c1e7a-8d4b-4c2e-9f1a-0b7c3d5e6f70/comments'),
+    ).toBe('/blog/:id/comments')
+    expect(cleanAnalyticsPath('/orders/5f2b9c0e1a7d')).toBe('/orders/:id')
+    expect(cleanAnalyticsPath('/docs/getting-started')).toBe(
+      '/docs/getting-started',
+    )
+    expect(cleanAnalyticsPath('/')).toBe('/')
+
+    const raw = analyticsSessions(shopRecords(), { stepLabel: (path) => path })
+    expect(raw[0]!.visits.map((visit) => visit.label)).toEqual([
+      '/',
+      '/goods/42',
+      '/cart',
+      '/checkout',
+    ])
+  })
+
+  test('the connectWebAnalytics stream becomes one session through admin ingest', async () => {
+    let href = 'https://shop.test/?utm_source=newsletter'
+    const location = {
+      get href() {
+        return href
+      },
+      get pathname() {
+        return new URL(href).pathname
+      },
+      get origin() {
+        return new URL(href).origin
+      },
+      get search() {
+        return new URL(href).search
+      },
+      get hash() {
+        return new URL(href).hash
+      },
+    }
+    const navigate = (
+      _state: unknown,
+      _title: string,
+      url?: string | URL | null,
+    ) => {
+      href = new URL(String(url ?? href), href).href
+    }
+    const history = { pushState: navigate, replaceState: navigate }
+    const page = Object.assign(new EventTarget(), {
+      visibilityState: 'visible' as DocumentVisibilityState,
+      hasFocus: () => true,
+      body: new EventTarget(),
+    })
+    const browserWindow = Object.assign(new EventTarget(), {
+      location,
+      history,
+      document: page,
+    })
+    vi.stubGlobal('window', browserWindow)
+    vi.stubGlobal('document', page)
+    vi.stubGlobal('location', location)
+    vi.stubGlobal('history', history)
+    let nowMs = T0
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => nowMs)
+
+    const analytics = connectWebAnalytics({
+      name: 'admin-analytics-round-trip',
+      endpoint: null,
+      serviceName: 'shop-web',
+      skipGlobalExtension: true,
+      consent: true,
+      navigation: 'popstate',
+    })
+    try {
+      nowMs += 4 * SECOND
+      history.pushState({}, '', '/goods/42')
+      analytics.pageView()
+      nowMs += 2 * SECOND
+      browserWindow.dispatchEvent(new Event('keydown'))
+      nowMs += 10 * SECOND
+      page.visibilityState = 'hidden'
+      page.dispatchEvent(new Event('visibilitychange'))
+      notify()
+      await wrap(sleep())
+      await wrap(analytics.otel.flush())
+
+      const exported = [...analytics.otel.records()]
+      const store = ADMIN_FRAME.run(() =>
+        reatomOtlpStore({ sourceId: 'local', resource: {} }),
+      )
+      ADMIN_FRAME.run(() => store.ingest(exported))
+      const records = ADMIN_FRAME.run(() => store.records())
+
+      const navigationFlush = records.find(
+        (record) =>
+          record.eventName === 'app.page.engagement' &&
+          record.attributes['app.engagement.visible_ms'] === 4 * SECOND,
+      )
+      const secondView = records.find(
+        (record) =>
+          record.eventName === 'app.page_view' &&
+          record.attributes['url.path'] === '/goods/42',
+      )
+      expect(navigationFlush).toBeDefined()
+      expect(navigationFlush!.start).toBe(secondView!.start)
+
+      const sessions = analyticsSessions(records)
+      expect(sessions).toHaveLength(1)
+      expect(sessions[0]!.source).toBe('newsletter')
+      expect(sessions[0]!.engaged).toBe(true)
+      expect(
+        sessions[0]!.visits.map(
+          ({ label, durationMs, visibleMs, activeMs }) => ({
+            label,
+            durationMs,
+            visibleMs,
+            activeMs,
+          }),
+        ),
+      ).toEqual([
+        { label: '/', durationMs: 4000, visibleMs: 4000, activeMs: 4000 },
+        {
+          label: '/goods/:id',
+          durationMs: 12000,
+          visibleMs: 12000,
+          activeMs: 6000,
+        },
+      ])
+    } finally {
+      analytics.dispose()
+      clock.mockRestore()
+      vi.unstubAllGlobals()
+      Reflect.deleteProperty(
+        globalThis,
+        Symbol.for('reatom.opentelemetry.analytics.pageViews'),
+      )
+    }
+  })
+})
+
+describe('totals and breakdowns', () => {
+  test('totals count visitors, engagement, bounces, and errors over sessions', () => {
+    const totals = analyticsTotals(analyticsSessions(shopRecords()))
+
+    expect(totals).toMatchObject({
+      visitors: 7,
+      sessions: 8,
+      pageViews: 21,
+      engagedSessions: 7,
+      engagementRate: 0.875,
+      bounceRate: 0.125,
+      sessionsWithErrors: 1,
+    })
+    expect(totals.pageViewsPerSession).toMatchObject({
+      median: 2.5,
+      mean: 2.625,
+    })
+  })
+
+  test('breakdowns rank pages, entries, exits, and sources by sessions', () => {
+    const sessions = analyticsSessions(shopRecords())
+    const rows = (dimension: Parameters<typeof analyticsBreakdown>[1]) =>
+      analyticsBreakdown(sessions, dimension).map(({ key, sessions }) => [
+        key,
+        sessions,
+      ])
+
+    expect(rows('entry')).toEqual([
+      ['/', 6],
+      ['/blog/:id', 1],
+      ['/goods/:id', 1],
+    ])
+    expect(rows('exit')).toEqual([
+      ['/', 2],
+      ['/cart', 2],
+      ['/checkout', 2],
+      ['/about', 1],
+      ['/goods/:id', 1],
+    ])
+    expect(rows('source')).toEqual([
+      [NO_SOURCE, 5],
+      ['gclid', 1],
+      ['google', 1],
+      ['newsletter', 1],
+    ])
+    const goods = analyticsBreakdown(sessions, 'page').find(
+      (row) => row.key === '/goods/:id',
+    )
+    expect(goods).toMatchObject({ sessions: 5, pageViews: 6, visitors: 4 })
+  })
+
+  test('a filter selects whole sessions, and exclusion finds drop-offs', () => {
+    const records = shopRecords()
+    const sessions = analyticsSessions(records)
+    const reachedCart = analyticsSegment(
+      sessions,
+      matching(records, 'attr.url.path=/cart'),
+    )
+    const leftAtCart = analyticsSegment(
+      reachedCart,
+      matching(records, 'attr.url.path=/checkout'),
+      'exclude',
+    )
+
+    expect(ids(reachedCart)).toEqual(['s1', 's2', 's5', 's7'])
+    expect(ids(leftAtCart)).toEqual(['s2', 's7'])
+    expect(reachedCart[0]!.visits.map((visit) => visit.label)).toEqual([
+      '/',
+      '/goods/:id',
+      '/cart',
+      '/checkout',
+    ])
+  })
+})
+
+describe('path tree', () => {
+  test('sessions branch from the entry page with shares, exits, and median timing', () => {
+    const nodes = analyticsPathTree(analyticsSessions(shopRecords()))
+    const root = nodes[0]!
+    const home = nodeAt(nodes, 'paths → /')
+    const goods = nodeAt(nodes, 'paths → / → /goods/:id')
+
+    expect(root).toMatchObject({ label: ALL_SESSIONS_LABEL, sessions: 8 })
+    expect(childrenOf(nodes, root).map((node) => node.label)).toEqual([
+      '/',
+      '/blog/:id',
+      '/goods/:id',
+    ])
+    expect(home).toMatchObject({ sessions: 6, share: 0.75, stops: 1 })
+    expect(childrenOf(nodes, home).map((node) => node.label)).toEqual([
+      '/goods/:id',
+      '/about',
+    ])
+    expect(goods).toMatchObject({ sessions: 4, continuation: 4 / 6, stops: 1 })
+    expect(goods.offsetMs.median).toBe(10 * SECOND)
+    expect(goods.durationMs.median).toBe(17.5 * SECOND)
+    expect(nodeAt(nodes, 'paths → / → /goods/:id → /cart')).toMatchObject({
+      sessions: 3,
+      stops: 2,
+      sessionsWithErrors: 1,
+    })
+  })
+
+  test('repeated views collapse by default and stay separate on request', () => {
+    const sessions = analyticsSessions(shopRecords())
+    const reloadId = 'paths → / → /goods/:id → /goods/:id'
+
+    expect(
+      analyticsPathTree(sessions).some((node) => node.id === reloadId),
+    ).toBe(false)
+    expect(
+      nodeAt(analyticsPathTree(sessions, { collapseRepeats: false }), reloadId)
+        .sessions,
+    ).toBe(1)
+  })
+
+  test('rare siblings fold into one node, a single extra sibling stays', () => {
+    const nodes = analyticsPathTree(analyticsSessions(shopRecords()), {
+      maxChildren: 1,
+    })
+    const root = nodes[0]!
+    const folded = childrenOf(nodes, root)[1]!
+
+    expect(childrenOf(nodes, root).map((node) => node.label)).toEqual([
+      '/',
+      '+2 more',
+    ])
+    expect(folded).toMatchObject({ folded: true, sessions: 2 })
+    expect(childrenOf(nodes, folded)).toEqual([])
+    expect(
+      childrenOf(nodes, nodeAt(nodes, 'paths → /')).map((node) => node.label),
+    ).toEqual(['/goods/:id', '/about'])
+  })
+
+  test('aligning at a page shows the steps before it with negative offsets', () => {
+    const nodes = analyticsPathTree(analyticsSessions(shopRecords()), {
+      align: '/cart',
+    })
+    const root = nodes[0]!
+    const cameFrom = nodeAt(nodes, 'paths:/cart ← /goods/:id')
+
+    expect(root).toMatchObject({ label: '/cart', sessions: 4, stops: 2 })
+    expect(cameFrom).toMatchObject({ step: -1, sessions: 4, stops: 1 })
+    expect(cameFrom.offsetMs.median).toBe(-25 * SECOND)
+    expect(nodeAt(nodes, 'paths:/cart ← /goods/:id ← /').offsetMs.median).toBe(
+      -30 * SECOND,
+    )
+    expect(nodeAt(nodes, 'paths:/cart → /checkout')).toMatchObject({
+      step: 1,
+      sessions: 2,
+    })
+  })
+
+  test('the typical path follows the most common step, and a real session stands for it', () => {
+    const sessions = analyticsSessions(shopRecords())
+    const path = typicalAnalyticsPath(analyticsPathTree(sessions))
+    const aligned = typicalAnalyticsPath(
+      analyticsPathTree(sessions, { align: '/cart' }),
+    )
+
+    expect(path.map((node) => node.label)).toEqual([
+      ALL_SESSIONS_LABEL,
+      '/',
+      '/goods/:id',
+      '/cart',
+      '/checkout',
+    ])
+    expect(aligned.map((node) => [node.label, node.step])).toEqual([
+      ['/', -2],
+      ['/goods/:id', -1],
+      ['/cart', 0],
+      ['/checkout', 1],
+    ])
+    expect(typicalAnalyticsSession(sessions, path)?.id).toBe('s1')
+    expect(typicalAnalyticsSession(sessions, path.slice(0, 4))?.id).toBe('s2')
+  })
+
+  test('reatomGantt draws the path tree on one time axis', () => {
+    const nodes = analyticsPathTree(analyticsSessions(shopRecords()), {
+      align: '/cart',
+    })
+    const gantt = reatomGantt(
+      atom(nodes, 'analytics.paths'),
+      {
+        start: (node: AnalyticsPathNode) => node.offsetMs.median,
+        end: (node: AnalyticsPathNode) =>
+          node.offsetMs.median + node.durationMs.median,
+        id: (node: AnalyticsPathNode) => node.id,
+        parentId: (node: AnalyticsPathNode) => node.parentId,
+      },
+      'analytics.paths.gantt',
+    )
+    const root = nodes[0]!
+    const cameFrom = nodeAt(nodes, 'paths:/cart ← /goods/:id')
+
+    expect(gantt.rows().map((node) => node.label)).toEqual(['/cart'])
+    gantt.expand(root)
+    expect(gantt.rows().map((node) => node.label)).toEqual([
+      '/cart',
+      '/goods/:id',
+      '/checkout',
+    ])
+    expect(gantt.depth(cameFrom)).toBe(1)
+    expect(gantt.bar(cameFrom)!.left).toBeLessThan(gantt.bar(root)!.left)
+    expect(cameFrom.offsetMs.median + cameFrom.durationMs.median).toBe(
+      root.offsetMs.median,
+    )
+  })
+})

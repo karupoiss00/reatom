@@ -1,24 +1,33 @@
+import {
+  hairline,
+  radius,
+  scrollable as dsScrollable,
+  soft,
+  tokens,
+  type,
+} from './design-system'
+
 export const colors = {
-  bg: 'var(--admin-bg, #11131a)',
-  bgElevated: 'var(--admin-bg-elevated, #161925)',
-  surface: 'var(--admin-surface, #1d2130)',
-  surfaceRaised: 'var(--admin-surface-raised, #242b3d)',
-  surfaceInteractive: 'var(--admin-surface-interactive, #2b3550)',
-  text: 'var(--admin-text, #edf2ff)',
-  textMuted: 'var(--admin-text-muted, #9aa8c7)',
-  textSubtle: 'var(--admin-text-subtle, #7081a7)',
-  accent: 'var(--admin-accent, #8bb7ff)',
-  accentSoft: 'var(--admin-accent-soft, rgba(139, 183, 255, 0.18))',
-  error: 'var(--admin-error, #ff8da1)',
-  errorSoft: 'var(--admin-error-soft, rgba(255, 141, 161, 0.18))',
-  success: 'var(--admin-success, #8ce6b1)',
-  successSoft: 'var(--admin-success-soft, rgba(140, 230, 177, 0.16))',
-  warning: 'var(--admin-warning, #f7d774)',
-  warningSoft: 'var(--admin-warning-soft, rgba(247, 215, 116, 0.16))',
-  border: 'var(--admin-border, rgba(142, 157, 196, 0.18))',
-  borderStrong: 'var(--admin-border-strong, rgba(142, 157, 196, 0.36))',
-  highlight: 'var(--admin-highlight, rgba(139, 183, 255, 0.14))',
-  shadow: 'var(--admin-shadow, rgba(3, 8, 24, 0.48))',
+  bg: tokens.canvas,
+  bgElevated: tokens.surface1,
+  surface: tokens.surface2,
+  surfaceRaised: tokens.surface3,
+  surfaceInteractive: tokens.surface3,
+  text: tokens.text1,
+  textMuted: tokens.text2,
+  textSubtle: tokens.text3,
+  accent: tokens.accent,
+  accentSoft: soft(tokens.accent, 16),
+  error: tokens.error,
+  errorSoft: soft(tokens.error, 16),
+  success: tokens.success,
+  successSoft: soft(tokens.success, 16),
+  warning: tokens.warning,
+  warningSoft: soft(tokens.warning, 16),
+  border: tokens.border1,
+  borderStrong: tokens.border2,
+  highlight: soft(tokens.accent, 14),
+  shadow: 'transparent',
 }
 
 export const space = [0, 0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4] as const
@@ -33,9 +42,9 @@ export const my = (n: Size) => `margin-block: ${space[n]}rem;`
 
 export const bg = (color: string) => `background: ${color};`
 export const text = (color: string) => `color: ${color};`
-export const rounded = 'border-radius: 8px;'
-export const roundedSm = 'border-radius: 4px;'
-export const roundedLg = 'border-radius: 16px;'
+export const rounded = `border-radius: ${radius[4]};`
+export const roundedSm = `border-radius: ${radius[2]};`
+export const roundedLg = `border-radius: ${radius[6]};`
 
 export const flex = 'display: flex;'
 export const flexCol = 'flex-direction: column;'
@@ -43,15 +52,14 @@ export const flexCenter = 'justify-content: center; align-items: center;'
 export const flexWrap = 'flex-wrap: wrap;'
 export const gap = (n: Size) => `gap: ${space[n]}rem;`
 
-export const border = `border: 1px solid ${colors.border};`
+export const border = `border: ${hairline};`
 export const borderStrong = `border: 1px solid ${colors.borderStrong};`
 export const card = `${bg(colors.surface)} ${rounded} ${border};`
 export const cardRaised = `${bg(colors.surfaceRaised)} ${rounded} ${borderStrong};`
-export const scrollable = 'overflow-y: auto; -webkit-overflow-scrolling: touch;'
+export const scrollable = dsScrollable
 export const truncate =
   'overflow: hidden; text-overflow: ellipsis; white-space: nowrap;'
-export const mono =
-  'font-family: ui-monospace, SFMono-Regular, SFMono-Regular, Consolas, Liberation Mono, Menlo, monospace;'
+export const mono = type.data
 export const focusRing = `outline: 2px solid ${colors.accent}; outline-offset: 2px;`
 export const focusVisible = `
   &:focus {
@@ -61,12 +69,11 @@ export const focusVisible = `
     ${focusRing}
   }
 `
-export const softShadow = `box-shadow: 0 8px 20px -16px ${colors.shadow};`
+export const softShadow = 'box-shadow: none;'
 
 export const toolbar = `
   ${bg(colors.bgElevated)}
-  ${rounded}
-  ${border}
+  border-bottom: ${hairline};
   ${px(2)}
   ${py(1)}
 `
@@ -80,8 +87,8 @@ export const statChip = `
   ${roundedSm}
   border: 1px solid ${colors.border};
   background: ${colors.bg};
-  font-size: 0.68rem;
-  line-height: 1.2;
+  font-size: 11px;
+  line-height: 16px;
   white-space: nowrap;
 `
 
@@ -91,7 +98,7 @@ export const inputLike = `
   background: ${colors.bgElevated};
   color: ${colors.text};
   box-sizing: border-box;
-  min-height: 2.25rem;
+  min-height: 28px;
   ${focusVisible}
 `
 
@@ -103,9 +110,6 @@ export const buttonBase = `
   background: ${colors.surfaceInteractive};
   color: ${colors.text};
   cursor: pointer;
-  transition:
-    background 120ms ease,
-    border-color 120ms ease;
   ${focusVisible}
 `
 
@@ -139,7 +143,7 @@ export const badge = `
   ${px(1)}
   ${py(1)}
   ${roundedSm}
-  font-size: 0.7rem;
+  font-size: 11px;
   line-height: 1;
   border: 1px solid ${colors.borderStrong};
   cursor: default;
@@ -148,15 +152,13 @@ export const badge = `
 
 export const sectionTitle = `
   margin: 0;
-  font-size: 0.9rem;
-  font-weight: 700;
+  ${type.ui}
   color: ${colors.text};
 `
 
 export const panelTitle = `
   margin: 0;
-  font-size: 1rem;
-  font-weight: 700;
+  ${type.title}
   color: ${colors.text};
 `
 
@@ -166,13 +168,13 @@ export const adminShellContainer = `
 `
 
 export const compactPanelPadding = `
-  @container admin-shell (max-width: 680px) {
-    padding: 0.75rem;
+  @container admin-shell (max-width: 480px) {
+    padding: 0.5rem;
   }
 `
 
 export const hideInCompactShell = `
-  @container admin-shell (max-width: 680px) {
+  @container admin-shell (max-width: 480px) {
     display: none;
   }
 `
@@ -180,7 +182,7 @@ export const hideInCompactShell = `
 export const compactOnlyShell = `
   display: none;
 
-  @container admin-shell (max-width: 680px) {
+  @container admin-shell (max-width: 480px) {
     display: inline-flex;
   }
 `
@@ -191,6 +193,6 @@ export const screenRoot = `
   ${scrollable}
 `
 
-export const shellCompactMax = '680px'
-export const shellMediumMax = '760px'
+export const shellCompactMax = '480px'
+export const shellMediumMax = '680px'
 export const shellWideMax = '880px'

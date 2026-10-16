@@ -1,7 +1,7 @@
 import type { Admin } from '../../index'
 import type { AdminFrame } from '../../types'
+import { tokens, type } from '../design-system'
 import { formatPreview, formatTimestamp } from '../format'
-import { badge, buttonGhost, colors, flex, gap, mono, rounded } from '../styles'
 
 export interface HistoryPanelProps {
   admin: Admin
@@ -16,84 +16,50 @@ export const HistoryPanel = ({ admin, frame }: HistoryPanelProps) => {
       .slice(-8)
       .reverse()
 
-  if (history().length === 0) {
-    return (
-      <div
-        css={`
-          color: ${colors.textSubtle};
-          font-size: 0.8rem;
-        `}
-      >
-        No prior frames for this atom in the current session.
-      </div>
-    )
-  }
-
   return (
     <div
       css={`
         display: grid;
-        gap: 0.65rem;
+        gap: var(--admin-space-8);
       `}
     >
       {() =>
-        history().map((entry) => (
-          <button
-            type="button"
+        history().length === 0 ? (
+          <div
             css={`
-              ${buttonGhost}
-              display: grid;
-              gap: 0.35rem;
-              text-align: left;
+              ${type.body}
+              color: ${tokens.text3};
             `}
-            on:click={() => {
-              admin.store.selectFrame(entry.id)
-              admin.causeGraph.selectedRootId.set(entry.id)
-            }}
           >
-            <div
+            No prior frames for this atom in the current session.
+          </div>
+        ) : (
+          history().map((entry) => (
+            <button
+              type="button"
               css={`
-                ${flex}
-                ${gap(1)}
-                justify-content: space-between;
-                align-items: center;
+                ${type.data}
+                display: grid;
+                gap: var(--admin-space-4);
+                text-align: left;
+                border: 1px solid ${tokens.border1};
+                background: ${tokens.surface2};
+                color: ${tokens.text1};
+                padding: var(--admin-space-8);
+                cursor: pointer;
               `}
+              on:click={() => {
+                admin.store.selectFrame(entry.id)
+                admin.causeGraph.selectedRootId.set(entry.id)
+              }}
             >
-              <span
-                css={`
-                  ${badge}
-                  background: ${colors.bgElevated};
-                  color: ${colors.textMuted};
-                  pointer-events: none;
-                `}
-              >
-                #{entry.id}
+              <span css={`color: ${tokens.text3};`}>
+                #{entry.id} · {formatTimestamp(entry.timestamp)}
               </span>
-              <span
-                css={`
-                  color: ${colors.textSubtle};
-                  font-size: 0.7rem;
-                `}
-              >
-                {formatTimestamp(entry.timestamp)}
-              </span>
-            </div>
-            <div
-              css={`
-                ${mono}
-                ${rounded}
-                padding: 0.45rem 0.55rem;
-                border: 1px solid ${colors.border};
-                background: ${colors.bgElevated};
-                color: ${colors.text};
-                white-space: pre-wrap;
-                word-break: break-word;
-              `}
-            >
-              {formatPreview(entry.state)}
-            </div>
-          </button>
-        ))
+              <span>{formatPreview(entry.state)}</span>
+            </button>
+          ))
+        )
       }
     </div>
   )

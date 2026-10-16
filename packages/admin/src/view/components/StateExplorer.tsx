@@ -1,15 +1,7 @@
 import type { Admin } from '../../index'
 import type { StateTreeNode } from '../../types'
+import { EmptyState, scrollable, tokens, type } from '../design-system'
 import { formatPreview } from '../format'
-import {
-  buttonGhost,
-  colors,
-  flex,
-  gap,
-  mono,
-  panelTitle,
-  rounded,
-} from '../styles'
 
 export interface StateExplorerProps {
   admin: Admin
@@ -21,9 +13,10 @@ function renderNode(node: StateTreeNode, admin: Admin): Element {
       <details open>
         <summary
           css={`
+            ${type.ui}
             cursor: pointer;
-            color: ${colors.text};
-            font-weight: 600;
+            color: ${tokens.text1};
+            padding-block: var(--admin-space-4);
           `}
         >
           {node.label}
@@ -31,11 +24,10 @@ function renderNode(node: StateTreeNode, admin: Admin): Element {
         <div
           css={`
             display: grid;
-            gap: 0.4rem;
-            margin-left: 0.85rem;
-            margin-top: 0.45rem;
-            padding-left: 0.75rem;
-            border-left: 1px solid ${colors.border};
+            gap: var(--admin-space-4);
+            margin-inline-start: var(--admin-space-12);
+            padding-inline-start: var(--admin-space-8);
+            border-left: 1px solid ${tokens.border1};
           `}
         >
           {node.children.map((child) => renderNode(child, admin))}
@@ -48,10 +40,15 @@ function renderNode(node: StateTreeNode, admin: Admin): Element {
     <button
       type="button"
       css={`
-        ${buttonGhost}
+        ${type.data}
         display: grid;
-        gap: 0.35rem;
+        gap: var(--admin-space-4);
         text-align: left;
+        border: 1px solid ${tokens.border1};
+        background: ${tokens.surface2};
+        color: ${tokens.text1};
+        padding: var(--admin-space-8);
+        cursor: pointer;
       `}
       on:click={() => {
         if (node.frameId === undefined) return
@@ -61,45 +58,17 @@ function renderNode(node: StateTreeNode, admin: Admin): Element {
     >
       <div
         css={`
-          ${flex}
-          ${gap(1)}
+          display: flex;
           justify-content: space-between;
-          align-items: center;
+          gap: var(--admin-space-8);
         `}
       >
-        <span
-          css={`
-            color: ${colors.text};
-            font-weight: 600;
-          `}
-        >
-          {node.label}
-        </span>
+        <span css={`${type.ui}`}>{node.label}</span>
         {node.frameId !== undefined && (
-          <span
-            css={`
-              color: ${colors.textSubtle};
-              font-size: 0.68rem;
-            `}
-          >
-            #{node.frameId}
-          </span>
+          <span css={`color: ${tokens.text3};`}>#{node.frameId}</span>
         )}
       </div>
-      <div
-        css={`
-          ${mono}
-          ${rounded}
-          padding: 0.45rem 0.55rem;
-          border: 1px solid ${colors.border};
-          background: ${colors.bgElevated};
-          color: ${colors.textMuted};
-          white-space: pre-wrap;
-          word-break: break-word;
-        `}
-      >
-        {formatPreview(node.value)}
-      </div>
+      <div css={`color: ${tokens.text2};`}>{formatPreview(node.value)}</div>
     </button>
   )
 }
@@ -115,27 +84,34 @@ export const StateExplorer = ({ admin }: StateExplorerProps) => {
     <section
       css={`
         display: grid;
-        gap: 0.75rem;
+        grid-template-rows: auto minmax(0, 1fr);
+        height: 100%;
+        min-height: 0;
+        background: ${tokens.canvas};
       `}
     >
       <div
         css={`
-          ${flex}
+          display: flex;
           justify-content: space-between;
           align-items: center;
+          height: 28px;
+          padding-inline: var(--admin-space-8);
+          border-bottom: 1px solid ${tokens.border1};
         `}
       >
         <h3
           css={`
-            ${panelTitle}
+            ${type.title}
+            margin: 0;
           `}
         >
           State explorer
         </h3>
         <span
           css={`
-            color: ${colors.textSubtle};
-            font-size: 0.72rem;
+            ${type.meta}
+            color: ${tokens.text3};
           `}
         >
           reactive atoms only
@@ -144,19 +120,18 @@ export const StateExplorer = ({ admin }: StateExplorerProps) => {
 
       {() =>
         tree().length === 0 ? (
-          <div
-            css={`
-              color: ${colors.textSubtle};
-              font-size: 0.8rem;
-            `}
-          >
-            State values will appear here as soon as the app emits frames.
-          </div>
+          <EmptyState
+            title="No reactive state yet"
+            description="State values will appear here as soon as the app emits frames."
+          />
         ) : (
           <div
             css={`
+              ${scrollable}
               display: grid;
-              gap: 0.6rem;
+              gap: var(--admin-space-6);
+              align-content: start;
+              padding: var(--admin-space-8);
             `}
           >
             {tree().map((node) => renderNode(node, admin))}

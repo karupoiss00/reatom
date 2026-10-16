@@ -206,7 +206,6 @@ persistent-loading behavior. Override only the handler relevant to the story:
 
 ```ts
 export const GithubStarsFetchFailure: Story = {
-  loaders: [mswLoader],
   parameters: {
     msw: { handlers: { githubStars: githubStars.error } },
   },
@@ -222,8 +221,9 @@ Do not create a mandatory success/error/loading/mobile matrix. Add a state or
 viewport variant only when it proves distinct behavior worth preserving.
 
 For responsive stories, use the viewport names and global shape already defined
-in `.storybook/viewports.ts`. The preview applies the selected viewport to the
-real browser test page. Reuse related story parameters so request and fixture
+in `.storybook/viewports.ts`. The preview registers those sizes as
+`parameters.viewport.options` and applies the selected viewport to the real
+browser test page. Reuse related story parameters so request and fixture
 configuration cannot drift.
 
 ## Keep journeys readable
@@ -297,9 +297,16 @@ than a journey that fails during actor steps.
 ```sh
 pnpm --filter @reatom/admin test:unit
 pnpm --filter @reatom/admin test:stories
+pnpm --filter @reatom/admin test:stories:smoke
+pnpm --filter @reatom/admin test:stories:visual
+pnpm --filter @reatom/admin test:stories:live
 pnpm --filter @reatom/admin test:stories:watch
 pnpm --filter @reatom/admin storybook
 ```
+
+`test:stories` excludes `@live`. `test:stories:live` sets `STORYBOOK_INCLUDE_TAGS=@live` and reads `OPENROUTER_API_KEY` from the repo-root `.env` or the process environment through a Vitest browser command. It does not put the key in a `VITE_` variable.
+
+The Storybook project currently collects the design-system stories, `src/stories/reatom-jsx-xo/gantt.stories.ts`, `src/stories/chat/**/*.stories.ts`, and `src/stories/otlp/clickhouse-gantt.stories.ts`. Legacy admin-shell, gallery, and fixture chrome stories stay on disk for a later deletion and are not collected.
 
 Use Vitest's `-t` option for a local test-name filter. `--grep` is not supported
 by the current Vitest CLI.

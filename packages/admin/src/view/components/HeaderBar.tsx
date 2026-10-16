@@ -1,11 +1,17 @@
 import type { Admin } from '../../index'
-import { formatDateTime } from '../format'
-import { badge, buttonGhost, colors, flex, focusVisible, gap } from '../styles'
+import {
+  Button,
+  Icon,
+  StatusDot,
+  Toolbar,
+  ToolbarGroup,
+  ToolbarSeparator,
+  ToolbarSpacer,
+  radius,
+  tokens,
+  type,
+} from '../design-system'
 import { SessionControls } from './SessionControls'
-import { SummaryCards } from './SummaryCards'
-
-/** Clears the fixed corner resize grip painted over the docked shell. */
-const RESIZE_GRIP_CLEARANCE = '2rem'
 
 export interface HeaderBarProps {
   admin: Admin
@@ -13,132 +19,80 @@ export interface HeaderBarProps {
 }
 
 export const HeaderBar = ({ admin, onMinimize }: HeaderBarProps) => {
-  const session = () => admin.store.currentSession()
   const source = () => admin.store.source()
+  const summary = () => admin.view.summary()
 
   return (
-    <header
-      data-reatom-name="HeaderBar"
-      css={`
-        display: grid;
-        gap: 0.3rem;
-        padding-block: 0.3rem;
-        padding-inline: ${RESIZE_GRIP_CLEARANCE} 0.4rem;
-        background: ${colors.bgElevated};
-        border-radius: 8px;
-        border: 1px solid ${colors.border};
-      `}
-    >
-      <div
-        css={`
-          ${flex}
-          ${gap(1)}
-          align-items: center;
-          justify-content: space-between;
-          min-width: 0;
-        `}
-      >
-        <div
-          css={`
-            ${flex}
-            ${gap(1)}
-            align-items: center;
-            min-width: 0;
-            flex: 1 1 auto;
-            overflow: hidden;
-          `}
-        >
+    <header data-reatom-name="HeaderBar">
+      <Toolbar>
+        <ToolbarGroup>
+          <span
+            aria-hidden="true"
+            css={`
+              ${type.ui}
+              width: 20px;
+              height: 20px;
+              display: inline-flex;
+              align-items: center;
+              justify-content: center;
+              border-radius: ${radius[4]};
+              background: ${tokens.canvas};
+              border: 1px solid ${tokens.border2};
+              color: ${tokens.text1};
+              font-weight: 750;
+            `}
+          >
+            R
+          </span>
           <span
             css={`
-              font-size: 0.74rem;
-              font-weight: 700;
-              letter-spacing: 0.01em;
-              color: ${colors.text};
+              ${type.ui}
+              color: ${tokens.text1};
               white-space: nowrap;
-              flex-shrink: 0;
             `}
           >
             Reatom Admin
           </span>
-
-          {() => {
-            const currentSource = source()
-            const isReplay = currentSource === 'replay'
-            return (
-              <span
-                css={`
-                  ${badge}
-                  flex-shrink: 0;
-                  background: ${isReplay
-                    ? colors.warningSoft
-                    : colors.accentSoft};
-                  border-color: ${isReplay ? colors.warning : colors.accent};
-                  color: ${isReplay ? colors.warning : colors.accent};
-                `}
-              >
-                {isReplay ? 'Replay' : 'Live'}
-              </span>
-            )
-          }}
-
+          <StatusDot
+            tone={() => (source() === 'replay' ? 'warning' : 'success')}
+            label={() => (source() === 'replay' ? 'Replay' : 'Live')}
+          />
           <span
-            data-testid="header-session-meta"
+            data-testid="summary-metrics"
             css={`
-              color: ${colors.textSubtle};
-              font-size: 0.64rem;
+              ${type.meta}
+              color: ${tokens.text2};
+              font-variant-numeric: tabular-nums;
               white-space: nowrap;
-              overflow: hidden;
-              text-overflow: ellipsis;
-              min-width: 0;
-            `}
-          >
-            {() => {
-              const currentSession = session()
-              return `Session ${currentSession.id} · ${formatDateTime(currentSession.startedAt)}`
-            }}
-          </span>
-        </div>
-
-        {onMinimize ? (
-          <button
-            type="button"
-            aria-label="Minimize devtools"
-            css={`
-              ${buttonGhost}
-              width: 1.6rem;
-              height: 1.6rem;
-              min-height: 1.6rem;
-              padding: 0;
               display: inline-flex;
               align-items: center;
-              justify-content: center;
-              flex-shrink: 0;
-              color: ${colors.textMuted};
-              ${focusVisible}
+              gap: var(--admin-space-8);
             `}
-            on:click={() => onMinimize()}
           >
-            <svg:svg
-              width="12"
-              height="12"
-              viewBox="0 0 12 12"
-              fill="none"
-              aria-hidden="true"
+            <span>
+              {() => `${summary().totalFrames.toLocaleString()} frames`}
+            </span>
+            <StatusDot
+              tone={() => (summary().errorFrames > 0 ? 'error' : 'info')}
+              label={() => `${summary().errorFrames} errors`}
+            />
+          </span>
+        </ToolbarGroup>
+        <ToolbarSpacer />
+        <SessionControls admin={admin} />
+        {onMinimize ? (
+          <>
+            <ToolbarSeparator />
+            <Button
+              variant="icon"
+              label="Minimize devtools"
+              onClick={onMinimize}
             >
-              <svg:path
-                d="M2.5 6h7"
-                stroke="currentColor"
-                stroke-width="1.5"
-                stroke-linecap="round"
-              />
-            </svg:svg>
-          </button>
+              <Icon name="minimize" />
+            </Button>
+          </>
         ) : null}
-      </div>
-
-      <SessionControls admin={admin} />
-
-      <SummaryCards admin={admin} />
+      </Toolbar>
     </header>
   )
 }

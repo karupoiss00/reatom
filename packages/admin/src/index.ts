@@ -25,6 +25,15 @@ export { ADMIN_FRAME } from './root'
 export { createSessionManager } from './session'
 export { createStoreManager } from './store'
 export { createTimelineManager } from './timeline'
+export { adminRecordTiming, barGeometry, reatomGantt } from './gantt'
+export type {
+  Gantt,
+  GanttBar,
+  GanttMode,
+  GanttOptions,
+  GanttSource,
+  GanttTime,
+} from './gantt'
 export type {
   AdminAtom,
   AdminFrame,
@@ -36,6 +45,44 @@ export type {
 export type { ExportedSession } from './types'
 export type { AdminDevtools, AdminDevtoolsOptions } from './view'
 export { createAdminApp, createAdminDevtools } from './view'
+export { mountAdminView } from './view/otlp'
+export type { AdminViewOptions } from './view/otlp'
+export { adminSettings, registerLocalWorkOption } from './view/settings'
+export type {
+  AdminLocalWorkOption,
+  AdminPanelCorner,
+  AdminSettings,
+} from './view/settings'
+export {
+  ADMIN_CLEAR_UNDO_MS,
+  connectAdmin,
+  IN_PROGRESS_NAME,
+  isInProgressRecord,
+  LOCAL_VALUES,
+  localValuesOf,
+  reatomOtlpAdmin,
+  reatomOtlpMcp,
+  reatomOtlpStore,
+  recordValues,
+  recordValuesText,
+  toRailNode,
+} from './otlp'
+export type {
+  AdminConnection,
+  AdminLocalValues,
+  AdminMcpFilter,
+  AdminOtelInstance,
+  AdminOtelOptionsSnapshot,
+  AdminOtelStats,
+  AdminRecord,
+  ConnectAdminOptions,
+  OtlpAdmin,
+  OtlpAdminOptions,
+  OtlpAdminSource,
+  OtlpAdminView,
+  OtlpMcp,
+  OtlpStoreOptions,
+} from './otlp'
 
 export interface AdminOptions {
   maxFrames?: number

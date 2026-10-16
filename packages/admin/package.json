@@ -25,6 +25,7 @@
     "test:stories": "vitest run --project=storybook",
     "test:stories:smoke": "STORYBOOK_INCLUDE_TAGS=@smoke vitest run --project=storybook",
     "test:stories:visual": "STORYBOOK_INCLUDE_TAGS=@visual vitest run --project=storybook",
+    "test:stories:live": "STORYBOOK_INCLUDE_TAGS=@live vitest run --project=storybook",
     "test:stories:watch": "vitest --project=storybook",
     "typecheck": "tsc --noEmit",
     "storybook": "storybook dev -p 6006",
@@ -38,7 +39,27 @@
       "esm",
       "cjs"
     ],
-    "fixedExtension": false
+    "fixedExtension": false,
+    "inputOptions": {
+      "transform": {
+        "jsx": {
+          "runtime": "classic",
+          "pragma": "h",
+          "pragmaFrag": "hf",
+          "throwIfNamespace": false
+        },
+        "inject": {
+          "h": [
+            "@reatom/jsx",
+            "h"
+          ],
+          "hf": [
+            "@reatom/jsx",
+            "hf"
+          ]
+        }
+      }
+    }
   },
   "dependencies": {
     "@reatom/core": "workspace:^",
@@ -96,6 +117,7 @@
     "storybook": "^10.6.2",
     "tsdown": "catalog:",
     "vite": "catalog:",
-    "vitest": "catalog:"
+    "vitest": "catalog:",
+    "@reatom/opentelemetry": "workspace:^"
   }
 }

@@ -151,6 +151,36 @@ Useful when you want to drive the product from your own host shell or tests.
 
 Mounts the product shell into a specific DOM element.
 
+### `connectAdmin(otel, options?)`
+
+Feeds an in-page `@reatom/opentelemetry` instance into the OTLP admin. Call it
+in the app frame and mount the view with `mountAdminView`.
+
+- `localValues` (default `true`) is written to `otel.options.localValues` while
+  connected and restored on `dispose()`. Admin records then carry the live
+  params, payload, state and errors (`recordValues(record)`). The Activity
+  preview, Overview, History, the State tree and search use them. The record
+  JSON tab, the records download, JSON exports and MCP stay on the masked OTLP
+  attributes.
+- `connection.localValues` is a writable atom (`boolean | 'all'`) for a
+  settings switch. Register a boolean atom created in `ADMIN_FRAME` with
+  `registerLocalWorkOption` to show it in the Settings tab's Local work section.
+  `examples/chat/src/devtools.ts` shows the wiring.
+- Only the newest 5,000 records keep live values.
+  `connection.localValuesTrimmed` turns `true` once older records fall back to
+  masked attributes.
+- Two Local work switches are registered while connected. "Warn about lost
+  trace context" writes `options.warnContextLoss` (default: the instance value,
+  or on when it is absent). "Split long traces" (default on) writes the
+  connect-time `maxSpansPerTrace` / `maxTraceMs`, or `Infinity` for both when
+  off.
+- Both switches persist per user. A stored value wins over the instance at
+  connect. `dispose()` restores the previous tracing options and unregisters
+  the switches.
+- `connection.warnContextLoss` and `connection.splitLongTraces` are writable
+  boolean atoms. `tracingSettings: false` skips the switches and leaves those
+  otel options untouched.
+
 ### `createAdminDevtools(options?)`
 
 Creates the docked in-page devtools shell with a corner resize grip, minimize

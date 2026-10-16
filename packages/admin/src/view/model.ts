@@ -1,5 +1,6 @@
-import { computed } from '@reatom/core'
+import { atom, computed, reatomBoolean, withLocalStorage } from '@reatom/core'
 
+import { canPersistToLocalStorage } from '../filters/persistence'
 import { ADMIN_FRAME } from '../root'
 import type {
   AdminAtom,
@@ -8,6 +9,7 @@ import type {
   HighlightStyle,
   StateTreeNode,
 } from '../types'
+import type { InspectorTabId } from './design-system'
 
 export interface AdminViewModelDeps {
   frames: () => AdminFrame[]
@@ -195,10 +197,49 @@ export function createAdminViewModel(deps: AdminViewModelDeps) {
     return buildStateTree(deps.visibleFrames(), deps.atoms())
   }, '_Admin.view.visibleStateTree')
 
+  const inspectorTab = atom<InspectorTabId>(
+    'overview',
+    '_Admin.view.inspectorTab',
+  )
+  const workspaceFocus = atom<'logs' | 'details'>(
+    'logs',
+    '_Admin.view.workspaceFocus',
+  )
+  const followLive = reatomBoolean(true, '_Admin.view.followLive')
+  const activitySplitBase = atom(0.42, '_Admin.view.activitySplit')
+  const stateSplitBase = atom(0.42, '_Admin.view.stateSplit')
+  const timelineSplitBase = atom(0.58, '_Admin.view.timelineSplit')
+  const graphSplitBase = atom(0.58, '_Admin.view.graphSplit')
+  const filtersSplitBase = atom(0.34, '_Admin.view.filtersSplit')
+  const persist = canPersistToLocalStorage()
+  const activitySplitRatio = persist
+    ? activitySplitBase.extend(withLocalStorage('_Admin.view.activitySplit.v1'))
+    : activitySplitBase
+  const stateSplitRatio = persist
+    ? stateSplitBase.extend(withLocalStorage('_Admin.view.stateSplit.v1'))
+    : stateSplitBase
+  const timelineSplitRatio = persist
+    ? timelineSplitBase.extend(withLocalStorage('_Admin.view.timelineSplit.v1'))
+    : timelineSplitBase
+  const graphSplitRatio = persist
+    ? graphSplitBase.extend(withLocalStorage('_Admin.view.graphSplit.v1'))
+    : graphSplitBase
+  const filtersSplitRatio = persist
+    ? filtersSplitBase.extend(withLocalStorage('_Admin.view.filtersSplit.v1'))
+    : filtersSplitBase
+
   return {
     summary,
     stateTree,
     visibleStateTree,
+    inspectorTab,
+    workspaceFocus,
+    followLive,
+    activitySplitRatio,
+    stateSplitRatio,
+    timelineSplitRatio,
+    graphSplitRatio,
+    filtersSplitRatio,
   }
 }
 

@@ -34,6 +34,7 @@ export function createStore(deps: StoreDeps) {
   const getSession = () => sessionOverride() ?? deps.session()
 
   const syncFromReporter = action(() => {
+    if (source() === 'replay') return
     const repFrames = deps.frames()
     if (repFrames.length > 0) {
       const max = maxFrames()
@@ -45,6 +46,14 @@ export function createStore(deps: StoreDeps) {
       source.set('live')
     }
   }, `${PREFIX}.syncFromReporter`)
+
+  const returnToLive = action(() => {
+    source.set('live')
+    atomsOverride.set(null)
+    sessionOverride.set(null)
+    selectedFrameId.set(null)
+    syncFromReporter()
+  }, `${PREFIX}.returnToLive`)
 
   const importSession = action(
     (data: {
@@ -188,6 +197,7 @@ export function createStore(deps: StoreDeps) {
     importSession,
     exportSession,
     syncFromReporter,
+    returnToLive,
     clear,
     getAtoms,
     getSession,

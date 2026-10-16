@@ -9,6 +9,5 @@
     "types": ["vitest", "@vitest/browser-playwright", "@storybook/html"],
     "paths": { "test": ["./src/test.ts"] }
   },
-  "include": ["src", ".storybook/**/*"],
-  "exclude": ["src/stories/gallery/src/**"]
+  "include": ["src", ".storybook/**/*"]
 }

@@ -2,26 +2,21 @@ import { atom, urlAtom } from '@reatom/core'
 
 import type { Admin } from '../../index'
 import type { AdminFrame } from '../../types'
+import {
+  Button,
+  Icon,
+  InspectorTabs,
+  RailGraph,
+  type RailInputNode,
+  scrollable,
+  tokens,
+  type,
+  visuallyHidden,
+} from '../design-system'
 import { formatDateTime, formatJson } from '../format'
-import {
-  getFrameExportPayload,
-  getFrameInspectorPayload,
-  isActionFrame,
-} from '../frame-inspector'
-import {
-  badge,
-  buttonBase,
-  buttonGhost,
-  card,
-  colors,
-  flex,
-  flexWrap,
-  gap,
-  mono,
-  p,
-  panelTitle,
-} from '../styles'
-import { JsonInspector } from './JsonInspector'
+import { getFrameExportPayload, isActionFrame } from '../frame-inspector'
+import { Inspector, ParamList } from '../inspector'
+import { HistoryPanel } from './HistoryPanel'
 
 export interface FrameDetailProps {
   admin: Admin
@@ -30,132 +25,155 @@ export interface FrameDetailProps {
   onClose: () => void
 }
 
+function buildRailNodes(admin: Admin, frame: AdminFrame): Array<RailInputNode> {
+  const graph = admin.causeGraph.graph()
+  const atoms = admin.store.getAtoms()
+  const frameIndex = admin.store.frameIndex()
+  if (!graph) {
+    return [
+      {
+        id: frame.id,
+        label: atomNameFor(admin, frame),
+        kind: isActionFrame(frame) ? 'action' : 'state',
+        timestamp: frame.timestamp,
+        parentIds: frame.pubIds,
+        hasError: frame.error !== null,
+      },
+    ]
+  }
+
+  return graph.nodes.map((node) => {
+    const nodeFrame = frameIndex.get(node.frameId)
+    return {
+      id: node.frameId,
+      label: atoms.get(node.atomId)?.name ?? node.atomId,
+      kind: nodeFrame && isActionFrame(nodeFrame) ? 'action' : 'state',
+      timestamp: nodeFrame?.timestamp ?? node.frameId,
+      parentIds: nodeFrame?.pubIds ?? [],
+      hasError: nodeFrame?.error != null,
+    }
+  })
+}
+
+function atomNameFor(admin: Admin, frame: AdminFrame): string {
+  return admin.store.getAtoms().get(frame.atomId)?.name ?? frame.atomId
+}
+
+const expandedValueHooks = {
+  initiallyExpanded: () => true,
+}
+
+let frameDetailSerial = 0
+
 export const FrameDetail = ({
   admin,
   frame,
   atomName,
   onClose,
 }: FrameDetailProps) => {
-  const atoms = admin.store.getAtoms()
-  const frameIndex = admin.store.frameIndex()
+  frameDetailSerial += 1
+  const slot = `_Admin.frameDetail.${frameDetailSerial}`
   const exportPayload = getFrameExportPayload(frame)
-  const inspectorPayload = getFrameInspectorPayload(frame)
+  const exportValue = atom(exportPayload, `${slot}.export`)
   const isAction = isActionFrame(frame)
-  const copyState = atom<'idle' | 'copied'>(
-    'idle',
-    `_Admin.view.frameDetail.copy.${frame.id}`,
-  )
-
-  let copyTimer: ReturnType<typeof setTimeout> | null = null
+  const overviewData = isAction ? frame.payload : frame.state
+  const overviewDataValue = atom(overviewData, `${slot}.data`)
+  const overviewParamsValue = atom(frame.params, `${slot}.params`)
+  const tab = admin.view.inspectorTab
 
   return (
     <div
       data-reatom-name="FrameDetail"
       css={`
-        ${card}
-        ${p(3)}
-        ${gap(2)}
         display: grid;
+        grid-template-rows: auto auto minmax(0, 1fr);
+        height: 100%;
+        min-height: 0;
+        min-width: 0;
+        overflow: hidden;
+        background: ${tokens.surface1};
       `}
     >
       <div
         css={`
-          ${flex}
-          ${gap(2)}
-          ${flexWrap}
-          justify-content: space-between;
+          display: flex;
           align-items: center;
+          justify-content: space-between;
+          gap: var(--admin-space-8);
+          min-height: 36px;
+          width: 100%;
+          min-width: 0;
+          box-sizing: border-box;
+          padding-inline: var(--admin-space-8);
+          border-bottom: 1px solid ${tokens.border1};
+          overflow: hidden;
         `}
       >
         <div
           css={`
-            display: grid;
-            gap: 0.65rem;
+            display: flex;
+            align-items: baseline;
+            gap: var(--admin-space-6);
+            min-width: 0;
+            flex: 1 1 0;
+            overflow: hidden;
           `}
         >
-          <div
+          <span
             css={`
-              ${flex}
-              ${gap(1)}
-              ${flexWrap}
-              align-items: center;
+              ${type.meta}
+              color: ${tokens.text2};
+              white-space: nowrap;
             `}
           >
-            <span
-              css={`
-                ${badge}
-                background: ${frame.error !== null
-                  ? colors.errorSoft
-                  : colors.accentSoft};
-                border-color: ${frame.error !== null
-                  ? colors.error
-                  : colors.accent};
-                color: ${frame.error !== null ? colors.error : colors.accent};
-              `}
-            >
-              {frame.error !== null
-                ? 'Error frame'
-                : isAction
-                  ? 'Action'
-                  : 'State'}
-            </span>
-            <span
-              css={`
-                ${badge}
-                background: ${colors.bgElevated};
-                color: ${colors.textMuted};
-              `}
-            >
-              #{frame.id}
-            </span>
-          </div>
+            {frame.error !== null ? 'Error' : isAction ? 'Action' : 'State'} #
+            {frame.id}
+          </span>
           <h3
             css={`
-              ${panelTitle}
+              ${type.ui}
+              margin: 0;
+              font-weight: 650;
+              white-space: nowrap;
             `}
           >
             {atomName}
           </h3>
-          <div
+          <span
             data-testid="frame-detail-meta"
             css={`
-              color: ${colors.textMuted};
-              font-size: 0.78rem;
-              line-height: 1.5;
+              ${type.meta}
+              color: ${tokens.text3};
+              overflow: hidden;
+              text-overflow: ellipsis;
+              white-space: nowrap;
+              min-width: 0;
             `}
           >
-            <div>{formatDateTime(frame.timestamp)}</div>
-            <div>Session {frame.sessionId}</div>
-          </div>
+            {formatDateTime(frame.timestamp)} · Session {frame.sessionId}
+          </span>
         </div>
-
         <div
           css={`
-            ${flex}
-            ${gap(1)}
-            ${flexWrap}
-            justify-content: flex-end;
+            display: flex;
+            gap: var(--admin-space-4);
+            align-items: start;
+            flex: 0 0 auto;
           `}
         >
-          <button
-            type="button"
-            css={buttonGhost}
-            on:click={() => {
+          <Button
+            variant="icon"
+            label="Copy JSON"
+            onClick={() => {
               void navigator.clipboard.writeText(formatJson(exportPayload))
-              copyState.set('copied')
-              if (copyTimer !== null) clearTimeout(copyTimer)
-              copyTimer = setTimeout(() => {
-                copyState.set('idle')
-                copyTimer = null
-              }, 1500)
             }}
           >
-            {() => (copyState() === 'copied' ? 'Copied' : 'Copy JSON')}
-          </button>
-          <button
-            type="button"
-            css={buttonGhost}
-            on:click={() => {
+            <Icon name="copy" />
+          </Button>
+          <Button
+            variant="icon"
+            label="Download"
+            onClick={() => {
               const blob = new Blob([formatJson(exportPayload)], {
                 type: 'application/json',
               })
@@ -169,113 +187,125 @@ export const FrameDetail = ({
               URL.revokeObjectURL(url)
             }}
           >
-            Download
-          </button>
-          <button type="button" css={buttonGhost} on:click={onClose}>
-            Close
-          </button>
+            <Icon name="download" />
+          </Button>
+          <Button variant="icon" label="Close" onClick={onClose}>
+            <Icon name="close" />
+          </Button>
         </div>
       </div>
-
-      {frame.error !== null && (
-        <div
-          data-testid="frame-error-panel"
-          css={`
-            ${mono}
-            ${badge}
-            display: grid;
-            gap: 0.5rem;
-            padding: 0.85rem 1rem;
-            background: ${colors.errorSoft};
-            border-color: ${colors.error};
-            color: ${colors.error};
-            white-space: pre-wrap;
-            word-break: break-word;
-            pointer-events: auto;
-          `}
-        >
-          <strong>Captured error</strong>
-          <div>{formatJson(frame.error)}</div>
-        </div>
-      )}
-
-      <section
-        css={`
-          display: grid;
-          gap: 0.75rem;
-        `}
-      >
-        <h4
-          css={`
-            ${panelTitle}
-            font-size: 0.9rem;
-          `}
-        >
-          {isAction ? 'Action payload' : 'Current state'}
-        </h4>
-        <JsonInspector value={inspectorPayload} />
-      </section>
-
-      {frame.pubIds.length > 0 && (
-        <section
-          css={`
-            display: grid;
-            gap: 0.75rem;
-          `}
-        >
-          <h4
-            css={`
-              ${panelTitle}
-              font-size: 0.9rem;
-            `}
-          >
-            Cause chain
-          </h4>
-          <div
-            css={`
-              ${flex}
-              ${gap(1)}
-              ${flexWrap}
-            `}
-          >
-            {frame.pubIds.map((pubId) => {
-              const pubFrame = frameIndex.get(pubId)
-              const pubName = pubFrame
-                ? (atoms.get(pubFrame.atomId)?.name ?? pubFrame.atomId)
-                : `#${pubId}`
-              return (
-                <button
-                  type="button"
-                  css={buttonGhost}
-                  on:click={() => {
-                    if (pubFrame) {
-                      admin.store.selectFrame(pubId)
-                      admin.causeGraph.selectedRootId.set(pubId)
-                    }
-                  }}
-                >
-                  {pubName}
-                </button>
-              )
-            })}
-          </div>
-        </section>
-      )}
-
+      <InspectorTabs value={tab} />
       <div
         css={`
-          ${flex}
-          ${gap(1)}
-          ${flexWrap}
+          display: grid;
+          height: 100%;
+          min-height: 0;
+          overflow: hidden;
         `}
       >
-        <button
-          type="button"
-          css={buttonBase}
-          on:click={() => urlAtom.go('/graph')}
+        <div
+          prop:hidden={() => tab() !== 'overview'}
+          css={`
+            ${scrollable}
+            padding: var(--admin-space-8);
+          `}
         >
-          Open in cause graph
-        </button>
+          <div
+            css={`
+              display: grid;
+              gap: var(--admin-space-12);
+            `}
+          >
+            {frame.error !== null && (
+              <div
+                data-testid="frame-error-panel"
+                css={`
+                  ${type.data}
+                  padding: var(--admin-space-8);
+                  border: 1px solid ${tokens.error};
+                  color: ${tokens.error};
+                  white-space: pre-wrap;
+                `}
+              >
+                <strong>Captured error</strong>
+                <div>{formatJson(frame.error)}</div>
+              </div>
+            )}
+            {overviewData !== undefined ? (
+              <Inspector
+                value={overviewDataValue}
+                defaultExpanded
+                hooks={expandedValueHooks}
+              />
+            ) : null}
+            <ParamList value={overviewParamsValue} />
+            <Button
+              variant="secondary"
+              label="Open in cause graph"
+              onClick={() => urlAtom.go('/graph')}
+            />
+          </div>
+        </div>
+        <div
+          prop:hidden={() => tab() !== 'causes'}
+          css={`
+            ${scrollable}
+            padding: var(--admin-space-8);
+            height: 100%;
+            box-sizing: border-box;
+            display: grid;
+            grid-template-rows: minmax(0, 1fr) auto;
+            gap: var(--admin-space-8);
+          `}
+        >
+          <section
+            css={`
+              display: grid;
+              min-height: 0;
+              height: 100%;
+            `}
+          >
+            <h4 css={visuallyHidden}>Cause chain</h4>
+            {() => (
+              <RailGraph
+                nodes={buildRailNodes(admin, frame)}
+                selectedId={frame.id}
+                pathIds={admin.causeGraph.path() ?? undefined}
+                onSelect={(frameId) => {
+                  admin.store.selectFrame(frameId)
+                  admin.causeGraph.selectedRootId.set(frameId)
+                }}
+                onReroot={(frameId) => {
+                  admin.store.selectFrame(frameId)
+                  admin.causeGraph.selectedRootId.set(frameId)
+                }}
+              />
+            )}
+          </section>
+          <Button
+            variant="secondary"
+            label="Open in cause graph"
+            onClick={() => urlAtom.go('/graph')}
+          />
+        </div>
+        <div
+          prop:hidden={() => tab() !== 'history'}
+          css={`
+            ${scrollable}
+            padding: var(--admin-space-8);
+          `}
+        >
+          <HistoryPanel admin={admin} frame={frame} />
+        </div>
+        <div
+          prop:hidden={() => tab() !== 'json'}
+          css={`
+            ${scrollable}
+            padding: var(--admin-space-8);
+          `}
+        >
+          <Inspector value={exportValue} defaultExpanded />
+        </div>
       </div>
     </div>
   )

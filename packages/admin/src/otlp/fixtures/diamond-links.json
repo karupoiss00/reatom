@@ -1,0 +1,39 @@
+{
+  "assumptions": {
+    "primaryCause": "last markChanged among changed pubs in the batch (last write wins)",
+    "batchedWrites": "qty then price; cart.total is parented to cart.setPrice with a computed.dependency link to cart.setQty"
+  },
+  "primary": {
+    "name": "cart.setPrice",
+    "traceId": "b87110b55a4743558bad836760edf358",
+    "spanId": "2c8a5498651e6b28"
+  },
+  "other": {
+    "name": "cart.setQty",
+    "traceId": "e3f80e40aa791584b0cf76de190c5860",
+    "spanId": "2ee337375cfd8185"
+  },
+  "diamond": {
+    "name": "cart.total",
+    "traceId": "b87110b55a4743558bad836760edf358",
+    "spanId": "b5c850b17d034d03",
+    "parentSpanId": "2c8a5498651e6b28",
+    "endTimeUnixNano": "1791345062720000000",
+    "attributes": {
+      "reatom.name": "cart.total",
+      "reatom.kind": "computed",
+      "reatom.outcome": "ok",
+      "reatom.frame.id": "6",
+      "reatom.cause.ids": ["3", "5"]
+    }
+  },
+  "links": [
+    {
+      "traceId": "e3f80e40aa791584b0cf76de190c5860",
+      "spanId": "2ee337375cfd8185",
+      "reason": {
+        "reatom.link.reason": "computed.dependency"
+      }
+    }
+  ]
+}

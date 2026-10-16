@@ -2,11 +2,14 @@ import type { FilterMode } from '../types'
 
 export function formatTimestamp(timestamp: number): string {
   const date = new Date(timestamp)
-  return date.toLocaleTimeString([], {
+  const clock = date.toLocaleTimeString([], {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
+    hour12: false,
   })
+  const millis = String(date.getMilliseconds()).padStart(3, '0')
+  return `${clock}.${millis}`
 }
 
 export function formatDateTime(timestamp: number): string {
@@ -29,8 +32,25 @@ export function formatJson(value: unknown): string {
   }
 }
 
+function isCompactPreview(value: unknown): boolean {
+  if (value === null || typeof value !== 'object') return false
+  return !(value instanceof Error) && !(value instanceof URL)
+}
+
+function compactJson(value: unknown): string {
+  try {
+    return JSON.stringify(value, null, 1)
+      .replace(/[[{]\n\s*/g, (segment) => segment.charAt(0))
+      .replace(/\n\s*[\]}]/g, (segment) => segment.slice(-1))
+      .replace(/\n\s*/g, ' ')
+  } catch {
+    return String(value)
+  }
+}
+
 export function formatPreview(value: unknown, maxLength: number = 88): string {
-  const resolved = formatJson(value).replace(/\s+/g, ' ').trim()
+  const raw = isCompactPreview(value) ? compactJson(value) : formatJson(value)
+  const resolved = raw.replace(/\s+/g, ' ').trim()
   if (resolved.length <= maxLength) return resolved
   return `${resolved.slice(0, maxLength - 1)}…`
 }

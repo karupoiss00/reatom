@@ -19,6 +19,7 @@ import {
   p,
   panelTitle,
 } from '../styles'
+import { tokens } from '../design-system'
 
 export interface PredicateBuilderProps {
   admin: Admin
@@ -190,10 +191,11 @@ export const PredicateBuilder = ({ admin }: PredicateBuilderProps) => {
     <section
       data-reatom-name="PredicateBuilder"
       css={`
-        ${card}
-        ${p(3)}
         display: grid;
-        gap: 1rem;
+        gap: var(--admin-space-12);
+        padding: var(--admin-space-8);
+        border: 1px solid ${tokens.border1};
+        background: ${tokens.surface1};
       `}
     >
       <div

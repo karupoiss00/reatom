@@ -6,11 +6,13 @@ import { Layout } from './layout/Layout'
 import { CauseGraphScreen } from './screens/CauseGraphScreen'
 import { FiltersScreen } from './screens/FiltersScreen'
 import { LogScreen } from './screens/LogScreen'
+import { StateScreen } from './screens/StateScreen'
 import { TimelineScreen } from './screens/TimelineScreen'
 
 export interface AdminRoutes {
   layoutRoute: RouteAtom
   logRoute: RouteAtom
+  stateRoute: RouteAtom
   timelineRoute: RouteAtom
   graphRoute: RouteAtom
   filtersRoute: RouteAtom
@@ -46,6 +48,16 @@ export function createAdminRoutes(
     '_Admin.logRoute',
   )
 
+  const stateRoute = layoutRoute.reatomRoute(
+    {
+      path: 'state',
+      render() {
+        return <StateScreen admin={admin} />
+      },
+    },
+    '_Admin.stateRoute',
+  )
+
   const timelineRoute = layoutRoute.reatomRoute(
     {
       path: 'timeline',
@@ -79,6 +91,7 @@ export function createAdminRoutes(
   return {
     layoutRoute,
     logRoute,
+    stateRoute,
     timelineRoute,
     graphRoute,
     filtersRoute,

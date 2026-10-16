@@ -162,6 +162,7 @@ export const Nav = ({ admin }: NavProps) => {
             <button
               type="button"
               aria-label={tab.label}
+              aria-current={() => (isActive() ? 'page' : undefined)}
               css={`
                 ${buttonGhost}
                 ${flex}
@@ -174,11 +175,14 @@ export const Nav = ({ admin }: NavProps) => {
                 padding-inline: 0.55rem;
                 padding-block: 0.3rem;
                 font-size: 0.72rem;
-                background: ${() =>
-                  isActive() ? colors.highlight : 'transparent'};
-                color: ${() => (isActive() ? colors.text : colors.textMuted)};
-                border-color: ${() =>
-                  isActive() ? colors.accent : colors.borderStrong};
+                background: transparent;
+                color: ${colors.textMuted};
+                border-color: ${colors.borderStrong};
+                &[aria-current='page'] {
+                  background: ${colors.highlight};
+                  color: ${colors.text};
+                  border-color: ${colors.accent};
+                }
 
                 @container admin-shell (max-width: 680px) {
                   flex-direction: column;

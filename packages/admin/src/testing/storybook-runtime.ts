@@ -1,9 +1,16 @@
+import type { AdminConnection } from '../otlp'
 import type { createAdminDevtools } from '../view'
+import { resetAdminSettings } from '../view/settings'
 
 export type AdminDevtoolsInstance = ReturnType<typeof createAdminDevtools>
 
 export let currentDevtools: AdminDevtoolsInstance | null = null
+export let currentConnection: AdminConnection | null = null
 let storyCleanups: Array<() => void> = []
+
+export function setCurrentConnection(connection: AdminConnection | null): void {
+  currentConnection = connection
+}
 
 export function setCurrentDevtools(
   devtools: AdminDevtoolsInstance | null,
@@ -33,6 +40,16 @@ export function clearAdminStorage(): void {
   )
 
   for (const key of adminKeys) {
+    const oldValue = localStorage.getItem(key)
     localStorage.removeItem(key)
+    window.dispatchEvent(
+      new StorageEvent('storage', {
+        key,
+        oldValue,
+        newValue: null,
+        storageArea: localStorage,
+      }),
+    )
   }
+  resetAdminSettings()
 }

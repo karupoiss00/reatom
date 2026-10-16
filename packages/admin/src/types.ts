@@ -27,7 +27,16 @@ export type FilterKind = 'reactive' | 'action' | 'async' | 'reject' | 'fulfill'
 
 export interface FilterPredicate {
   id: string
-  type: 'text' | 'timeRange' | 'error' | 'cause' | 'session' | 'regex' | 'kind'
+  type:
+    | 'text'
+    | 'timeRange'
+    | 'error'
+    | 'cause'
+    | 'session'
+    | 'regex'
+    | 'kind'
+    | 'compare'
+    | 'attr'
   target?: FilterTarget
   value: unknown
 }

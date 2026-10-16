@@ -31,15 +31,23 @@ export function parseLogItem(element: Element): ParsedLogItem {
     element.querySelector('[data-testid="log-item-timestamp"]')?.textContent ??
     ''
   const name =
+    element.querySelector('[data-testid="log-item-name"]')?.textContent ??
     element.querySelector(':scope > div strong, :scope > div > span')
-      ?.textContent ?? ''
-  const badges = Array.from(element.querySelectorAll(':scope > div div span'))
+      ?.textContent ??
+    ''
+  const badges = Array.from(
+    element.querySelectorAll('[data-testid="log-item-badge"]'),
+  )
     .map((badge) => normalizePreviewText(badge.textContent ?? ''))
     .filter((badge) => badge.length > 0)
+  const preview =
+    element.querySelector('[data-testid="log-item-preview"]')?.textContent ?? ''
   const content =
+    preview ||
     Array.from(element.querySelectorAll(':scope > span'))
       .map((span) => span.textContent ?? '')
-      .find((text) => text !== timestamp && !text.startsWith('#')) ?? ''
+      .find((text) => text !== timestamp && !text.startsWith('#')) ||
+    ''
 
   return {
     timestamp,
@@ -84,8 +92,11 @@ export function parseFrameDetail(root: ParentNode): ParsedFrameDetail | null {
     (section) => section.textContent?.includes('Cause chain'),
   )
   const causeChainNames = Array.from(
-    causeChainSection?.querySelectorAll('button') ?? [],
-  ).map((button) => button.textContent?.trim() ?? '')
+    causeChainSection?.querySelectorAll('[data-node-name]') ?? [],
+  ).map(
+    (node) =>
+      node.getAttribute('data-node-name') ?? node.textContent?.trim() ?? '',
+  )
 
   return {
     atomName,

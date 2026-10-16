@@ -38,12 +38,19 @@ function matchesText(value: string, matcher: RegExp | string): boolean {
 export function getAdminButton(
   matcher: RegExp | string,
 ): HTMLButtonElement | null {
+  const candidates = Array.from(
+    getAdminShadowRoot().querySelectorAll('button'),
+  ).filter(
+    (candidate): candidate is HTMLButtonElement =>
+      candidate instanceof HTMLButtonElement &&
+      (matchesText(candidate.textContent ?? '', matcher) ||
+        matchesText(candidate.getAttribute('aria-label') ?? '', matcher)),
+  )
   return (
-    Array.from(getAdminShadowRoot().querySelectorAll('button')).find(
-      (candidate): candidate is HTMLButtonElement =>
-        candidate instanceof HTMLButtonElement &&
-        matchesText(candidate.textContent ?? '', matcher),
-    ) ?? null
+    candidates.find((candidate) => candidate.getClientRects().length > 0) ??
+    candidates.find((candidate) => candidate.closest('details')) ??
+    candidates[0] ??
+    null
   )
 }
 
@@ -77,7 +84,17 @@ export async function clickAdminButton(
     throw new Error(`Missing admin button ${String(matcher)}`)
   }
 
+  const menu = targetButton.closest('details')
+  const summary = menu?.querySelector(':scope > summary')
+  const openedMenu = menu !== null && !menu.open
+  if (openedMenu && summary instanceof HTMLElement) {
+    await userEvent.click(summary)
+  }
+
   await userEvent.click(targetButton)
+  if (openedMenu && menu?.open && summary instanceof HTMLElement) {
+    await userEvent.click(summary)
+  }
 }
 
 export async function searchAdminLogs(query: string): Promise<void> {
@@ -98,7 +115,7 @@ export async function openLatestAdminLogByName(name: string): Promise<void> {
     throw new Error(`Missing admin log item ${name}`)
   }
 
-  await userEvent.click(logItem)
+  logItem.click()
 }
 
 export async function openLatestAdminLogMatching(
@@ -115,7 +132,7 @@ export async function openLatestAdminLogMatching(
     throw new Error('Missing admin log item for predicate')
   }
 
-  await userEvent.click(logItem)
+  logItem.click()
 }
 
 export function getAdminFrameDetail(): ParsedFrameDetail | null {

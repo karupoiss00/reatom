@@ -134,7 +134,7 @@ export const WinningDebuggingJourney: Story = {
       const detail = getAdminFrameDetail()
       expect(detail).not.toBeNull()
       expect(detail?.atomName).toBe('winner')
-      expect(detail?.bodyText).toContain('stateX')
+      expect(detail?.bodyText).toContain('"X"')
       expect(detail?.causeChainNames.length ?? 0).toBeGreaterThan(0)
       expect(detail?.hasError).toBe(false)
     })

@@ -1,6 +1,8 @@
 import type { Admin } from '../../index'
+import { adminThemeVars, tokens } from '../design-system'
 import { createAdminRoutes } from '../routes'
-import { adminShellContainer, colors } from '../styles'
+import { adminSettings, bindAdminPalette } from '../settings'
+import { adminShellContainer } from '../styles'
 
 export interface AppShellProps {
   admin: Admin
@@ -9,36 +11,23 @@ export interface AppShellProps {
 
 export const AppShell = ({ admin, onMinimize }: AppShellProps) => {
   const routes = createAdminRoutes(admin, { onMinimize })
+  const settings = adminSettings()
 
   return (
     <div
       data-reatom-name="AppShell"
       data-testid="admin-visual-snapshot"
+      data-admin-scheme={() => settings.resolvedScheme()}
+      ref={(shell) => bindAdminPalette(shell)}
       css={`
+        ${adminThemeVars}
         ${adminShellContainer}
         height: 100%;
         min-height: 0;
         overflow: hidden;
-        background:
-          radial-gradient(
-            circle at top,
-            rgba(139, 183, 255, 0.12),
-            transparent 32%
-          ),
-          linear-gradient(
-            180deg,
-            ${colors.bgElevated} 0%,
-            ${colors.bg} 28%,
-            ${colors.bg} 100%
-          );
-        font-family:
-          Inter,
-          ui-sans-serif,
-          system-ui,
-          -apple-system,
-          BlinkMacSystemFont,
-          'Segoe UI',
-          sans-serif;
+        background: ${tokens.canvas};
+        color: ${tokens.text1};
+        font-family: ${tokens.fontUi};
       `}
     >
       {routes.layoutRoute.render}

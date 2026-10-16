@@ -1,0 +1,106 @@
+{
+  "span": {
+    "traceId": "5b8efff798038103d269b633813fc60c",
+    "spanId": "eee19b7ec3c1b174",
+    "name": "explode",
+    "kind": 1,
+    "startTimeUnixNano": "1761000000123000000",
+    "endTimeUnixNano": "1761000000124000000",
+    "status": {
+      "code": 2,
+      "message": "boom"
+    },
+    "attributes": [
+      {
+        "key": "reatom.name",
+        "value": {
+          "stringValue": "explode"
+        }
+      },
+      {
+        "key": "reatom.kind",
+        "value": {
+          "stringValue": "action"
+        }
+      },
+      {
+        "key": "reatom.outcome",
+        "value": {
+          "stringValue": "error"
+        }
+      },
+      {
+        "key": "reatom.params",
+        "value": {
+          "stringValue": "[]"
+        }
+      },
+      {
+        "key": "reatom.frame.id",
+        "value": {
+          "stringValue": "1"
+        }
+      },
+      {
+        "key": "reatom.cause.ids",
+        "value": {
+          "arrayValue": {
+            "values": []
+          }
+        }
+      }
+    ],
+    "events": [],
+    "flags": 1
+  },
+  "log": {
+    "eventName": "exception",
+    "traceId": "5b8efff798038103d269b633813fc60c",
+    "spanId": "eee19b7ec3c1b174",
+    "timeUnixNano": "1761000000123500000",
+    "severityNumber": 17,
+    "body": {
+      "stringValue": "TypeError: boom"
+    },
+    "attributes": [
+      {
+        "key": "event.name",
+        "value": {
+          "stringValue": "exception"
+        }
+      },
+      {
+        "key": "exception.type",
+        "value": {
+          "stringValue": "TypeError"
+        }
+      },
+      {
+        "key": "exception.message",
+        "value": {
+          "stringValue": "boom"
+        }
+      },
+      {
+        "key": "exception.stacktrace",
+        "value": {
+          "stringValue": "TypeError: boom\n    at explode"
+        }
+      },
+      {
+        "key": "reatom.frame.id",
+        "value": {
+          "stringValue": "1"
+        }
+      },
+      {
+        "key": "reatom.cause.ids",
+        "value": {
+          "arrayValue": {
+            "values": []
+          }
+        }
+      }
+    ]
+  }
+}

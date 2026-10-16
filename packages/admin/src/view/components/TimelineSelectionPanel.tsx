@@ -62,7 +62,9 @@ export const TimelineSelectionPanel = ({
         `}
       >
         {timeLabel && <div>{timeLabel}</div>}
-        <div>{frames.length} frame(s) captured</div>
+        <div>
+          {frames.length} frame{frames.length === 1 ? '' : 's'} captured
+        </div>
       </div>
 
       <div
@@ -70,9 +72,7 @@ export const TimelineSelectionPanel = ({
           ${scrollable}
           display: grid;
           gap: 0.55rem;
-          max-height: min(18rem, 42vh);
           overscroll-behavior: contain;
-          padding-right: 0.15rem;
         `}
       >
         {frames.map((frame) => {
@@ -82,7 +82,12 @@ export const TimelineSelectionPanel = ({
           return (
             <button
               type="button"
-              css={buttonGhost}
+              css={`
+                ${buttonGhost}
+                min-width: 0;
+                text-align: left;
+                padding-inline: 0;
+              `}
               on:click={() => {
                 admin.store.selectFrame(frame.id)
                 admin.causeGraph.selectedRootId.set(frame.id)
@@ -94,13 +99,24 @@ export const TimelineSelectionPanel = ({
                   ${gap(1)}
                   justify-content: space-between;
                   align-items: center;
+                  padding-inline: 0.5rem;
                 `}
               >
-                <strong>{atomName}</strong>
+                <strong
+                  css={`
+                    min-width: 0;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                  `}
+                >
+                  {atomName}
+                </strong>
                 <span
                   css={`
                     color: ${colors.textSubtle};
                     font-size: 0.7rem;
+                    flex-shrink: 0;
                   `}
                 >
                   #{frame.id}
@@ -113,10 +129,9 @@ export const TimelineSelectionPanel = ({
                   margin-top: 0.45rem;
                   padding: 0.4rem 0.5rem;
                   background: ${colors.bgElevated};
-                  border: 1px solid ${colors.border};
                   color: ${colors.textMuted};
                   white-space: pre-wrap;
-                  word-break: break-word;
+                  overflow-wrap: anywhere;
                 `}
               >
                 {formatPreview(

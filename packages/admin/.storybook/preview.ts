@@ -1,4 +1,5 @@
 /// <reference path="../src/global.d.ts" />
+import '../src/stories/harness/otel'
 import { noop, urlAtom } from '@reatom/core'
 import kahramanPreview, { type KahramanParameters } from 'kahraman/preview'
 import { setupWorker } from 'msw/browser'
@@ -9,10 +10,16 @@ import { reatomJsxXoHandlers } from '../src/stories/reatom-jsx-xo/mocks/handlers
 import {
   clearAdminStorage,
   clearCurrentDevtools,
+  currentConnection,
   currentDevtools,
   runStoryCleanups,
+  setCurrentConnection,
 } from '../src/testing/storybook-runtime'
-import { FALLBACK_VIEWPORT, getViewportSize } from './viewports'
+import {
+  FALLBACK_VIEWPORT,
+  getViewportSize,
+  storybookViewports,
+} from './viewports'
 
 type ViewportGlobal = { value?: string } | string | undefined
 type PreviewGlobals = Record<string, ViewportGlobal>
@@ -44,6 +51,9 @@ const preview = {
     msw: {
       handlers: reatomJsxXoHandlers,
     },
+    viewport: {
+      options: storybookViewports,
+    },
   },
   loaders: [mswLoader(startMswWorker)],
   async beforeEach(context: PreviewContext) {
@@ -70,6 +80,10 @@ const preview = {
 
     return () => {
       runStoryCleanups()
+      if (currentConnection) {
+        currentConnection.dispose()
+        setCurrentConnection(null)
+      }
       if (currentDevtools) {
         currentDevtools.hide()
         currentDevtools.admin.dispose()

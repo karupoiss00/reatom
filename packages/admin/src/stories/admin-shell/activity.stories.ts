@@ -5,9 +5,11 @@ import { button, createActor, heading, text } from '../../../.storybook/helpers'
 import { renderAdminHarness, waitForAdminHarnessReady } from './boot'
 import { mountCounterApplication } from './counter-ui'
 import {
+  clickAdminButton,
   getAdminText,
   getVisibleLogs,
   matchAdminScreenshot,
+  openLatestAdminLogByName,
   searchAdminLogs,
   startFreshAdminSession,
 } from './testing'
@@ -86,6 +88,8 @@ export const ActivityVisualReference: Story = {
       )
     })
 
+    await openLatestAdminLogByName('count')
+    await clickAdminButton(/^Cause Chain$/)
     await matchAdminScreenshot('counter-activity-reference')
   },
 }

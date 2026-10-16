@@ -49,6 +49,64 @@ test('syncFromReporter loads frames from deps', () => {
   })
 })
 
+test('syncFromReporter does not overwrite an imported replay', () => {
+  const liveFrame: AdminFrame = {
+    id: 9,
+    timestamp: 300,
+    sessionId: 'live',
+    atomId: 'a9',
+    state: 'live',
+    error: null,
+    params: undefined,
+    payload: undefined,
+    pubIds: [],
+  }
+  const replayFrame: AdminFrame = {
+    id: 1,
+    timestamp: 200,
+    sessionId: 's2',
+    atomId: 'a1',
+    state: 'replay',
+    error: null,
+    params: undefined,
+    payload: undefined,
+    pubIds: [],
+  }
+  const session: AdminSession = {
+    id: 's2',
+    startedAt: 200,
+    metadata: {},
+  }
+  const framesAtom = atom<AdminFrame[]>([liveFrame])
+  const store = ADMIN_FRAME.run(() =>
+    createStoreManager({
+      frames: () => framesAtom(),
+      atoms: () => new Map(),
+      session: () => session,
+    }),
+  )
+
+  ADMIN_FRAME.run(() =>
+    store.importSession({
+      session,
+      atoms: { a1: { id: 'a1', name: 'foo', isReactive: true } },
+      frames: [replayFrame],
+    }),
+  )
+  ADMIN_FRAME.run(() => store.syncFromReporter())
+
+  ADMIN_FRAME.run(() => {
+    expect(store.source()).toBe('replay')
+    expect(store.frames()[0]?.state).toBe('replay')
+  })
+
+  ADMIN_FRAME.run(() => store.returnToLive())
+  ADMIN_FRAME.run(() => {
+    expect(store.source()).toBe('live')
+    expect(store.frames()[0]?.state).toBe('live')
+  })
+})
+
 test('importSession loads data and switches to replay', () => {
   const session: AdminSession = {
     id: 's2',

@@ -2,7 +2,8 @@ import { atom } from '@reatom/core'
 
 import type { Admin } from '../../index'
 import type { AdminAtom, AdminFrame, AdminSession } from '../../types'
-import { buttonBase, buttonGhost, colors, flex, flexWrap } from '../styles'
+import { Icon } from '../design-system'
+import { buttonGhost, colors, flex } from '../styles'
 
 export interface SessionControlsProps {
   admin: Admin
@@ -16,24 +17,24 @@ interface ImportedSessionPayload {
 
 type ConfirmAction = 'clear' | 'fresh' | null
 
-let importInputCounter = 0
-
-const primaryControlButton = `
-  ${buttonBase}
-  font-size: 0.66rem;
-  white-space: nowrap;
-  min-height: 1.55rem;
-  padding-inline: 0.45rem;
-  padding-block: 0.18rem;
-`
-
 const secondaryControlButton = `
   ${buttonGhost}
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
   font-size: 0.64rem;
   white-space: nowrap;
   min-height: 1.55rem;
   padding-inline: 0.35rem;
   padding-block: 0.16rem;
+`
+
+const menuControlButton = `
+  ${secondaryControlButton}
+  width: 100%;
+  justify-content: flex-start;
+  min-height: 1.75rem;
+  border-color: transparent;
 `
 
 function downloadJson(filename: string, data: unknown): void {
@@ -76,7 +77,6 @@ function isImportedSessionPayload(
 }
 
 export const SessionControls = ({ admin }: SessionControlsProps) => {
-  const inputId = `admin-import-session-${++importInputCounter}`
   const confirmAction = atom<ConfirmAction>(
     null,
     '_Admin.view.sessionControls.confirm',
@@ -92,6 +92,7 @@ export const SessionControls = ({ admin }: SessionControlsProps) => {
 
   let confirmTimer: ReturnType<typeof setTimeout> | null = null
   let feedbackTimer: ReturnType<typeof setTimeout> | null = null
+  let importInput: HTMLInputElement | null = null
 
   const clearConfirmTimer = () => {
     if (confirmTimer !== null) {
@@ -138,226 +139,279 @@ export const SessionControls = ({ admin }: SessionControlsProps) => {
     <div
       css={`
         ${flex}
-        gap: 0.25rem;
-        ${flexWrap}
+        gap: var(--admin-space-4);
+        flex-wrap: nowrap;
         align-items: center;
-        min-width: 0;
         position: relative;
       `}
     >
       <button
         type="button"
-        css={`
-          ${primaryControlButton}
-          border-color: ${() =>
-            admin.reporter.paused() ? colors.warning : colors.success};
-          background: ${() =>
-            admin.reporter.paused() ? colors.warningSoft : colors.successSoft};
-          color: ${() =>
-            admin.reporter.paused() ? colors.warning : colors.success};
-        `}
+        title="Export session"
+        css={secondaryControlButton}
         on:click={() => {
           confirmAction.set(null)
           clearConfirmTimer()
           importFeedback.set(null)
-          if (admin.reporter.paused()) {
-            admin.reporter.paused.setFalse()
-            return
-          }
-          admin.reporter.paused.setTrue()
+          const session = admin.store.exportSession()
+          downloadJson(
+            `reatom-admin-session-${session.session.id}.json`,
+            session,
+          )
         }}
       >
-        {() => (admin.reporter.paused() ? 'Resume capture' : 'Pause capture')}
+        <Icon name="export" />
+        Export
       </button>
-      {() =>
-        admin.reporter.paused() ? (
-          <span
-            aria-live="polite"
-            css={`
-              position: absolute;
-              width: 1px;
-              height: 1px;
-              padding: 0;
-              margin: -1px;
-              overflow: hidden;
-              clip: rect(0, 0, 0, 0);
-              white-space: nowrap;
-              border: 0;
-            `}
-          >
-            Recording paused
-          </span>
-        ) : null
-      }
-
-      <div
+      <details
+        data-session-menu=""
         css={`
-          ${flex}
-          gap: 0.25rem;
-          flex-wrap: nowrap;
-          align-items: center;
-          min-width: 0;
-          flex: 1 1 auto;
-
-          @container admin-shell (max-width: 360px) {
-            flex-wrap: wrap;
+          position: relative;
+          & > summary {
+            ${buttonGhost}
+            width: 1.75rem;
+            height: 1.75rem;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            list-style: none;
+          }
+          & > summary::-webkit-details-marker {
+            display: none;
+          }
+          &[open] > summary {
+            border-color: ${colors.accent};
+            color: ${colors.text};
           }
         `}
       >
-        <button
-          type="button"
-          title="Export session"
-          css={secondaryControlButton}
-          on:click={() => {
-            confirmAction.set(null)
-            clearConfirmTimer()
-            importFeedback.set(null)
-            const session = admin.store.exportSession()
-            downloadJson(
-              `reatom-admin-session-${session.session.id}.json`,
-              session,
-            )
-          }}
-        >
-          Export
-        </button>
-
-        <button
-          type="button"
-          title="Import replay"
-          css={secondaryControlButton}
-          on:click={() => {
-            confirmAction.set(null)
-            clearConfirmTimer()
-            const fileInput = document.getElementById(inputId)
-            if (fileInput instanceof HTMLInputElement) {
-              fileInput.click()
-            }
-          }}
-        >
-          Import
-        </button>
-        <input
-          id={inputId}
-          type="file"
-          accept="application/json"
+        <summary aria-label="Session actions" title="Session actions">
+          <Icon name="more" />
+        </summary>
+        <div
           css={`
             position: absolute;
-            width: 1px;
-            height: 1px;
-            padding: 0;
-            margin: -1px;
-            overflow: hidden;
-            clip: rect(0, 0, 0, 0);
-            white-space: nowrap;
-            border: 0;
+            z-index: 10;
+            inset-inline-end: 0;
+            top: calc(100% + var(--admin-space-4));
+            width: 11rem;
+            display: grid;
+            gap: var(--admin-space-2);
+            padding: var(--admin-space-6);
+            border: 1px solid ${colors.borderStrong};
+            border-radius: var(--admin-radius-4);
+            background: ${colors.surface};
           `}
-          on:change={(event: Event) => {
-            const target = event.currentTarget
-            if (!(target instanceof HTMLInputElement)) return
-            const file = target.files?.[0]
-            if (!file) return
-
-            const reader = new FileReader()
-            reader.onload = () => {
-              try {
-                if (typeof reader.result !== 'string') {
-                  showFeedback('Import failed: empty file', 'error')
-                  return
-                }
-                const parsed: unknown = JSON.parse(reader.result)
-                if (!isImportedSessionPayload(parsed)) {
-                  showFeedback(
-                    'Import failed: invalid session payload',
-                    'error',
-                  )
-                  return
-                }
-                admin.store.importSession(parsed)
-                showFeedback('Replay loaded', 'success')
-              } catch {
-                showFeedback('Import failed: could not parse JSON', 'error')
+        >
+          {() =>
+            admin.store.source() === 'replay' ? (
+              <button
+                type="button"
+                css={menuControlButton}
+                on:click={() => {
+                  confirmAction.set(null)
+                  clearConfirmTimer()
+                  importFeedback.set(null)
+                  admin.store.returnToLive()
+                }}
+              >
+                <Icon name="play" />
+                Return to live
+              </button>
+            ) : null
+          }
+          <button
+            type="button"
+            aria-pressed={() => admin.reporter.paused()}
+            css={`
+              ${menuControlButton}
+              color: ${colors.success};
+              &[aria-pressed='true'] {
+                color: ${colors.warning};
+                background: ${colors.warningSoft};
               }
-            }
-            reader.onerror = () => {
-              showFeedback('Import failed: could not read file', 'error')
-            }
-            reader.readAsText(file)
-            target.value = ''
-          }}
-        />
-
-        <button
-          type="button"
-          title="Clear workspace"
-          css={`
-            ${secondaryControlButton}
-            border-color: ${() =>
-              confirmAction() === 'clear' ? colors.error : colors.border};
-            color: ${() =>
-              confirmAction() === 'clear' ? colors.error : colors.textMuted};
-            background: ${() =>
-              confirmAction() === 'clear' ? colors.errorSoft : 'transparent'};
-          `}
-          on:click={() => {
-            if (confirmAction() === 'clear') {
-              clearConfirmTimer()
+            `}
+            on:click={() => {
               confirmAction.set(null)
-              importFeedback.set(null)
-              clearWorkspace()
-              return
-            }
-            confirmAction.set('clear')
-            scheduleConfirmRevert()
-          }}
-        >
-          {() => (confirmAction() === 'clear' ? 'Confirm clear' : 'Clear')}
-        </button>
-
-        <button
-          type="button"
-          title="Start fresh session"
-          css={`
-            ${secondaryControlButton}
-            border-color: ${() =>
-              confirmAction() === 'fresh' ? colors.error : colors.border};
-            color: ${() =>
-              confirmAction() === 'fresh' ? colors.error : colors.textMuted};
-            background: ${() =>
-              confirmAction() === 'fresh' ? colors.errorSoft : 'transparent'};
-          `}
-          on:click={() => {
-            if (confirmAction() === 'fresh') {
               clearConfirmTimer()
-              confirmAction.set(null)
               importFeedback.set(null)
-              startFreshSession()
-              return
+              if (admin.reporter.paused()) {
+                admin.reporter.paused.setFalse()
+                return
+              }
+              admin.reporter.paused.setTrue()
+            }}
+          >
+            {() =>
+              admin.reporter.paused() ? (
+                <>
+                  <Icon name="play" />
+                  Resume capture
+                </>
+              ) : (
+                <>
+                  <Icon name="pause" />
+                  Pause capture
+                </>
+              )
             }
-            confirmAction.set('fresh')
-            scheduleConfirmRevert()
-          }}
-        >
-          {() => (confirmAction() === 'fresh' ? 'Confirm fresh' : 'Fresh')}
-        </button>
+          </button>
+          {() =>
+            admin.reporter.paused() ? (
+              <span
+                aria-live="polite"
+                css={`
+                  position: absolute;
+                  width: 1px;
+                  height: 1px;
+                  padding: 0;
+                  margin: -1px;
+                  overflow: hidden;
+                  clip: rect(0, 0, 0, 0);
+                  white-space: nowrap;
+                  border: 0;
+                `}
+              >
+                Recording paused
+              </span>
+            ) : null
+          }
+          <button
+            type="button"
+            title="Import replay"
+            css={menuControlButton}
+            on:click={() => {
+              confirmAction.set(null)
+              clearConfirmTimer()
+              importInput?.click()
+            }}
+          >
+            <Icon name="import" />
+            Import
+          </button>
+          <button
+            type="button"
+            title="Clear workspace"
+            data-armed={() => (confirmAction() === 'clear' ? 'true' : 'false')}
+            css={`
+              ${menuControlButton}
+              &[data-armed='true'] {
+                border-color: ${colors.error};
+                color: ${colors.error};
+                background: ${colors.errorSoft};
+              }
+            `}
+            on:click={() => {
+              if (confirmAction() === 'clear') {
+                clearConfirmTimer()
+                confirmAction.set(null)
+                importFeedback.set(null)
+                clearWorkspace()
+                return
+              }
+              confirmAction.set('clear')
+              scheduleConfirmRevert()
+            }}
+          >
+            {() => (confirmAction() === 'clear' ? 'Confirm clear' : 'Clear')}
+          </button>
+          <button
+            type="button"
+            title="Start fresh session"
+            data-armed={() => (confirmAction() === 'fresh' ? 'true' : 'false')}
+            css={`
+              ${menuControlButton}
+              &[data-armed='true'] {
+                border-color: ${colors.error};
+                color: ${colors.error};
+                background: ${colors.errorSoft};
+              }
+            `}
+            on:click={() => {
+              if (confirmAction() === 'fresh') {
+                clearConfirmTimer()
+                confirmAction.set(null)
+                importFeedback.set(null)
+                startFreshSession()
+                return
+              }
+              confirmAction.set('fresh')
+              scheduleConfirmRevert()
+            }}
+          >
+            {() => (confirmAction() === 'fresh' ? 'Confirm fresh' : 'Fresh')}
+          </button>
 
-        {() => {
-          const message = importFeedback()
-          if (!message) return null
-          const tone = importFeedbackTone()
-          return (
-            <span
-              role="status"
-              css={`
-                font-size: 0.68rem;
-                color: ${tone === 'error' ? colors.error : colors.success};
-              `}
-            >
-              {message}
-            </span>
-          )
+          {() => {
+            const message = importFeedback()
+            if (!message) return null
+            const tone = importFeedbackTone()
+            return (
+              <span
+                role="status"
+                css={`
+                  font-size: 0.68rem;
+                  color: ${tone === 'error' ? colors.error : colors.success};
+                `}
+              >
+                {message}
+              </span>
+            )
+          }}
+        </div>
+      </details>
+      <input
+        type="file"
+        accept="application/json"
+        ref={(element) => {
+          importInput = element
+          return () => {
+            if (importInput === element) importInput = null
+          }
         }}
-      </div>
+        css={`
+          position: absolute;
+          width: 1px;
+          height: 1px;
+          padding: 0;
+          margin: -1px;
+          overflow: hidden;
+          clip: rect(0, 0, 0, 0);
+          white-space: nowrap;
+          border: 0;
+        `}
+        on:change={(event: Event) => {
+          const target = event.currentTarget
+          if (!(target instanceof HTMLInputElement)) return
+          const file = target.files?.[0]
+          if (!file) return
+
+          const reader = new FileReader()
+          reader.onload = () => {
+            try {
+              if (typeof reader.result !== 'string') {
+                showFeedback('Import failed: empty file', 'error')
+                return
+              }
+              const parsed: unknown = JSON.parse(reader.result)
+              if (!isImportedSessionPayload(parsed)) {
+                showFeedback('Import failed: invalid session payload', 'error')
+                return
+              }
+              admin.store.importSession(parsed)
+              showFeedback('Replay loaded', 'success')
+            } catch {
+              showFeedback('Import failed: could not parse JSON', 'error')
+            }
+          }
+          reader.onerror = () => {
+            showFeedback('Import failed: could not read file', 'error')
+          }
+          reader.readAsText(file)
+          target.value = ''
+        }}
+      />
     </div>
   )
 }
