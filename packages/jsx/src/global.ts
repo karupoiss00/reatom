@@ -3,7 +3,11 @@ import { _createGlobal, atom, peek, type Rec } from '@reatom/core'
 export type BoundaryHandle = (error: unknown) => void
 
 type JsxGlobal = {
-  inlineStyles: { count: number; ids: Rec<string> }
+  inlineStyles: {
+    count: number
+    ids: Rec<string>
+    sheets: WeakMap<CSSStyleSheet, Set<string>>
+  }
   hName: { current: string }
   metaSymbol: () => symbol
   boundaryCurrent: { current: BoundaryHandle | undefined }
@@ -25,7 +29,7 @@ let createJsxGlobal = (): JsxGlobal => {
   let metaSymbolTarget = atom(() => Symbol(), 'jsx.metaSymbol')
 
   return {
-    inlineStyles: { count: 0, ids: {} },
+    inlineStyles: { count: 0, ids: {}, sheets: new WeakMap() },
     hName: { current: '' },
     metaSymbol: () => peek(metaSymbolTarget),
     boundaryCurrent: { current: undefined },

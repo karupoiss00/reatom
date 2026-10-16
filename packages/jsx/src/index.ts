@@ -212,8 +212,8 @@ let walkTree = (
 /**
  * Subscribe parent-first (pre-order) so boundaries exist before descendants
  * initialize, then mount refs in post-order: children before their parent,
- * siblings in document order. For `<A><B><C/></B><D/></A>` refs run C, B, D,
- * A. Cleanup reverses the subscription order below.
+ * siblings in document order. For `<A><B><C/></B><D/></A>` refs run C, B, D, A.
+ * Cleanup reverses the subscription order below.
  */
 let connectNode = (node: Node, symbol: symbol) => {
   let nodesToMount: Node[] = []
@@ -902,6 +902,41 @@ let setProp = (dom: DomApis, element: JSX.Element, key: string, value: any) => {
   }
 }
 
+let styleSheetsSeen = (sheet: CSSStyleSheet) => {
+  let sheets = (jsxInlineStyles.sheets ??= new WeakMap())
+  let seen = sheets.get(sheet)
+  if (seen) return seen
+
+  seen = new Set<string>()
+  sheets.set(sheet, seen)
+  for (let index = 0; index < sheet.cssRules.length; index++) {
+    let rule = sheet.cssRules.item(index)
+    let match = rule?.cssText.match(/data-reatom-style="([^"]+)"/)
+    if (match?.[1]) seen.add(match[1])
+  }
+  return seen
+}
+
+/**
+ * Inserts `value` into the stylesheet of the current root. The style id is
+ * shared, but each sheet gets its own rule so a later shadow sheet or a sheet
+ * created after `context.reset()` still matches `data-reatom-style`.
+ */
+let ensureStyleRule = (value: string) => {
+  let styleId = jsxInlineStyles.ids[value]
+  if (!styleId) {
+    styleId = jsxInlineStyles.ids[value] = '_' + ++jsxInlineStyles.count
+  }
+
+  let sheet = stylesheet()
+  let seen = styleSheetsSeen(sheet)
+  if (!seen.has(styleId)) {
+    seen.add(styleId)
+    sheet.insertRule(`[data-reatom-style="${styleId}"]{${value}}`)
+  }
+  return styleId
+}
+
 let set = (dom: DomApis, element: JSX.Element, key: string, value: any) => {
   if (key.startsWith('css:')) {
     setStyleProp(
@@ -911,16 +946,7 @@ let set = (dom: DomApis, element: JSX.Element, key: string, value: any) => {
     )
   } else if (key === 'css') {
     /** @todo Should support record? */
-    let styleId = jsxInlineStyles.ids[value]
-    if (!styleId) {
-      styleId = jsxInlineStyles.ids[value] = '_' + ++jsxInlineStyles.count
-      // TODO improve stylesheet get for perf reason
-      // TODO measure the needness of batching
-      stylesheet().insertRule(`[data-reatom-style="${styleId}"]{${value}}`)
-    }
-
-    /** @see https://measurethat.net/Benchmarks/Show/11819 */
-    element.setAttribute('data-reatom-style', styleId)
+    element.setAttribute('data-reatom-style', ensureStyleRule(value))
   } else if (key === 'style') {
     if (isObject(value)) {
       for (let key in value) setStyleProp(element.style, key, value[key])

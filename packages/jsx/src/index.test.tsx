@@ -1159,11 +1159,11 @@ const expectHtmlElementProperty = <
   Tag extends keyof JSX.HTMLElementTags,
   Property extends keyof JSX.HTMLElementTags[Tag],
   Value extends JSX.HTMLElementTags[Tag][Property],
-  Expected extends Tag extends keyof HTMLElementTagNameMap
+  Expected extends (Tag extends keyof HTMLElementTagNameMap
     ? Property extends keyof HTMLElementTagNameMap[Tag]
       ? HTMLElementTagNameMap[Tag][Property]
       : never
-    : never,
+    : never),
 >(
   tag: Tag,
   prop: Property & string,
@@ -1308,6 +1308,26 @@ test('aria attributes', () =>
     expectAttribute('aria-checked', 'true')
     expectAttribute('aria-colcount', 1)
     expectAttribute('aria-colcount', '1')
+  }))
+
+test('the same css rule is inserted into every stylesheet that renders it', () =>
+  context.start(() => {
+    const first = new CSSStyleSheet()
+    stylesheet.set(first)
+    const element = <div css="display:flex"></div>
+    const styleId = element.getAttribute('data-reatom-style')
+
+    const second = new CSSStyleSheet()
+    stylesheet.set(second)
+    const again = <div css="display:flex"></div>
+
+    expect(again.getAttribute('data-reatom-style')).toBe(styleId)
+    expect(
+      [...first.cssRules].some((rule) => rule.cssText.includes(`${styleId}`)),
+    ).toBe(true)
+    expect(
+      [...second.cssRules].some((rule) => rule.cssText.includes(`${styleId}`)),
+    ).toBe(true)
   }))
 
 test('custom stylesheet for css property', () =>
