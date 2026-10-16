@@ -9,6 +9,7 @@ const RECORDS = 5
 const setup = (body: string) => {
   const requests: string[] = []
   const otel = reatomOpentelemetry({
+    name: 'partialSuccess',
     endpoint: 'http://collector.invalid',
     serviceName: 'partial-success-test',
     batchInterval: 100_000,
@@ -158,6 +159,7 @@ test.each(['http', 'partial', 'beacon', 'network'] as const)(
       'https://user:private-password@collector.invalid?token=private-query#private-fragment'
     await withWarnSpy(async (warn) => {
       const otel = reatomOpentelemetry({
+    name: 'partialSuccess',
         endpoint,
         serviceName: 'diagnostic-privacy',
         retry: { maxRetries: 0 },

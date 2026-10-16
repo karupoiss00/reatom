@@ -1,0 +1,50 @@
+{
+  "session": {
+    "traceId": "21dc5452dde19daf6c7c5b7f85a04449",
+    "spanId": "98c141dd4dcb2592",
+    "name": "app.session",
+    "kind": "internal",
+    "startTimeUnixNano": "1791451168617000000",
+    "endTimeUnixNano": "1791451168617000000",
+    "attributes": {
+      "reatom.name": "app.session",
+      "reatom.kind": "session",
+      "reatom.outcome": "ok"
+    },
+    "events": []
+  },
+  "logs": [
+    {
+      "timeUnixNano": "1791451168619000000",
+      "eventName": "reatom.log",
+      "traceId": "21dc5452dde19daf6c7c5b7f85a04449",
+      "spanId": "98c141dd4dcb2592",
+      "severityNumber": 9,
+      "body": [
+        "debug",
+        {
+          "n": 1
+        }
+      ],
+      "attributes": {
+        "event.name": "reatom.log"
+      }
+    },
+    {
+      "timeUnixNano": "1791451168619000000",
+      "eventName": "reatom.log",
+      "traceId": "21dc5452dde19daf6c7c5b7f85a04449",
+      "spanId": "98c141dd4dcb2592",
+      "severityNumber": 9,
+      "body": [
+        {
+          "n": 1
+        }
+      ],
+      "attributes": {
+        "event.name": "reatom.log",
+        "reatom.log.label": "fetch payload"
+      }
+    }
+  ]
+}

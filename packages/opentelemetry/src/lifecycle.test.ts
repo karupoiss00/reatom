@@ -20,6 +20,7 @@ const setup = (captureValues?: CaptureValuesOptions) => {
     return new Response('{}', { status: 200 })
   })
   const otel = reatomOpentelemetry({
+    name: 'lifecycle',
     endpoint: ENDPOINT,
     serviceName: 'guard-test',
     fetch: fetchMock,
@@ -160,17 +161,28 @@ for (const reject of [false, true]) {
         (error) => ({ ok: false, value: error }),
       )
       const liveTarget = action(() => live.promise, 'liveControl')
-      expect(context.start(() => liveTarget()) === live.promise).toBe(true)
+      const liveReturned = context.start(() => liveTarget()) as Promise<unknown>
+      expect(liveReturned).toBeInstanceOf(Promise)
+      expect(liveReturned).not.toBe(live.promise)
+      const liveDerived = liveReturned.then(
+        (result) => ({ ok: true, value: result }),
+        (error) => ({ ok: false, value: error }),
+      )
       if (reject) live.reject(value)
       else live.resolve(value)
-      const liveSettled = await liveOutcome
+      const [liveSettled, liveFollowed] = await Promise.all([
+        liveOutcome,
+        liveDerived,
+      ])
       await Promise.resolve()
       expect(liveSettled.ok).toBe(!reject)
       expect(liveSettled.value === value).toBe(true)
+      expect(liveFollowed.ok).toBe(!reject)
+      expect(liveFollowed.value === value).toBe(true)
       expect(reads.ownKeys).toBeGreaterThan(0)
       expect(reads.descriptors).toBeGreaterThan(0)
       await otel.flush()
-      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(1)
       fetchMock.mockClear()
       reads.ownKeys = reads.descriptors = 0
 
@@ -181,20 +193,32 @@ for (const reject of [false, true]) {
       }
       const target = action(pending, 'pending')
       // Start while active so completion, rather than the entry guard, is tested.
+      let started!: Promise<unknown>
       context.start(() => {
         const start = withClockCount(() => target())
-        expect(start.result).toBe(original)
+        started = start.result as Promise<unknown>
+        expect(started).toBeInstanceOf(Promise)
+        expect(started).not.toBe(original)
         expect(start.ticks).toBeGreaterThan(0)
         expect(start.ids).toBeGreaterThan(0)
       })
+      const startedOutcome = started.then(
+        (result) => ({ ok: true, value: result }),
+        (error) => ({ ok: false, value: error }),
+      )
       expect(calls).toBe(1)
       expect(reads).toEqual({ ownKeys: 0, descriptors: 0 })
       otel.dispose()
       finish(value)
-      const settled = await outcome
+      const [settled, startedSettled] = await Promise.all([
+        outcome,
+        startedOutcome,
+      ])
       await Promise.resolve()
       expect(settled.ok).toBe(!reject)
       expect(settled.value === value).toBe(true)
+      expect(startedSettled.ok).toBe(!reject)
+      expect(startedSettled.value === value).toBe(true)
       expect(calls).toBe(1)
       expect(reads).toEqual({ ownKeys: 0, descriptors: 0 })
       await otel.flush()

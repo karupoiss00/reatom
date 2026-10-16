@@ -1,6 +1,6 @@
 /* global URLSearchParams, location, window, __APP__ */
 
-import { bind, wrap } from '@reatom/core'
+import { action, bind, wrap } from '@reatom/core'
 import { reatomOpentelemetry } from '@reatom/opentelemetry'
 
 const params = new URLSearchParams(location.search)
@@ -8,6 +8,7 @@ const traced = params.get('mode') !== 'raw'
 const run = bind((callback) => callback())
 const otel = traced
   ? reatomOpentelemetry({
+      name: `collector-${__APP__}`,
       endpoint:
         params.get('offline') === 'true'
           ? 'http://collector:4319'
@@ -22,12 +23,18 @@ const otel = traced
       batchInterval: 60000,
       retry: { maxRetries: 0 },
       useBeacon: params.get('beacon') === 'true',
-      filter: (target) =>
-        __APP__ === 'tree'
-          ? /^tree#.*\.(toggle|add|del)$/.test(target.name)
-          : __APP__ === 'xo'
-            ? /^(makeMove|computerMove|resetGame)$/.test(target.name)
-            : false,
+      filter: (target) => {
+        const actionAdmitted =
+          __APP__ === 'tree'
+            ? /^tree#.*\.(toggle|add|del)$/.test(target.name)
+            : __APP__ === 'xo'
+              ? /^(makeMove|computerMove|resetGame)$/.test(target.name)
+              : false
+        if (actionAdmitted) return true
+        return (
+          params.get('atoms') === 'true' && target.__reatom.reactive === true
+        )
+      },
       ...(params.get('capture') === 'true'
         ? {
             captureValues: {
@@ -45,8 +52,17 @@ const otel = traced
 const { model } = await import('virtual:collector-entry')
 
 const pending = []
-const trace = (name, callback) =>
-  otel ? otel.startTrace(name, callback) : callback()
+const boundaries = new Map()
+const boundary = (name) => {
+  let target = boundaries.get(name)
+  if (!target) {
+    target = action((callback) => callback(), name)
+    if (otel) target.extend(otel.withOTel())
+    boundaries.set(name, target)
+  }
+  return target
+}
+const trace = (name, callback) => boundary(name)(callback)
 
 const controls = {
   ready: true,
@@ -98,11 +114,8 @@ const controls = {
   explicitReset: () =>
     run(() =>
       trace('explicit.root', async () => {
-        const saved = otel?.getCurrentContext()
         await wrap(Promise.resolve())
-        return otel
-          ? otel.withContext(saved, () => model.resetGame())
-          : model.resetGame()
+        return model.resetGame()
       }),
     ),
 }

@@ -36,6 +36,7 @@ test.each(['size', 'timer', 'flush'] as const)(
       }),
     )
     const otel = reatomOpentelemetry({
+    name: 'observationParity',
       endpoint: 'https://collector.invalid',
       serviceName: 'transport-observation',
       maxBatchSize: trigger === 'size' ? 1 : 10,
@@ -77,6 +78,7 @@ test.each(['size', 'timer', 'flush'] as const)(
 test('dispose prevents a deferred transport from starting and releases its lease', async () => {
   const fetch = vi.fn(async () => new Response(null))
   const otel = reatomOpentelemetry({
+    name: 'observationParity',
     endpoint: 'https://collector.invalid',
     serviceName: 'transport-dispose',
     maxBatchSize: 1,
@@ -98,9 +100,9 @@ test('dispose prevents a deferred transport from starting and releases its lease
   }
 })
 
-test.each(['action', 'root', 'async'] as const)(
+test.each(['action', 'async'] as const)(
   'capture does not initialize application state through result getters (%s)',
-  async (mode: 'action' | 'root' | 'async') => {
+  async (mode: 'action' | 'async') => {
     const run = context.start(() => bind(<T>(callback: () => T) => callback()))
     let phase = 0
     let calls = 0
@@ -114,6 +116,7 @@ test.each(['action', 'root', 'async'] as const)(
       }, 'capture-late.lazy'),
     )
     const otel = reatomOpentelemetry({
+    name: 'observationParity',
       endpoint: 'https://collector.invalid',
       serviceName: 'capture-late',
       captureValues: {},
@@ -132,8 +135,6 @@ test.each(['action', 'root', 'async'] as const)(
     }
     try {
       const result = run(() => {
-        if (mode === 'root')
-          return otel.startTrace('capture-late.root', () => value)
         const target = action(
           () => (mode === 'async' ? Promise.resolve(value) : value),
           'capture-late.action',
@@ -147,9 +148,9 @@ test.each(['action', 'root', 'async'] as const)(
       expect(getterCalls).toBe(0)
       await otel.flush()
       expect(requests).toBe(1)
-      expect(bodies.flatMap(parseSpans)[0]!.attributes.payload).toBe(
-        '{"value":"[Skipped]"}',
-      )
+      expect(
+        bodies.flatMap(parseSpans)[0]!.attributes['reatom.payload'],
+      ).toBe('{"value":"[Skipped]"}')
     } finally {
       otel.dispose()
     }
@@ -179,6 +180,7 @@ test.each([false, true])(
     let requests = 0
     const otel = traced
       ? reatomOpentelemetry({
+    name: 'observationParity',
           endpoint: 'https://collector.invalid',
           serviceName: 'capture-parity',
           captureValues: {},
@@ -228,6 +230,7 @@ test('beacon wrappers execute application actions without creating another expor
   let report = () => {}
   let requests = 0
   const otel = reatomOpentelemetry({
+    name: 'observationParity',
     endpoint: 'https://collector.invalid',
     serviceName: 'beacon-observation',
     useBeacon: true,

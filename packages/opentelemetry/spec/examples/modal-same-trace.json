@@ -1,0 +1,31 @@
+{
+  "page": {
+    "traceId": "95a6b6dd6936a944b3d0d31925ba1095",
+    "spanId": "7374ef0c16ea18f6",
+    "name": "route shop",
+    "kind": "internal",
+    "startTimeUnixNano": "1791451168559000000",
+    "endTimeUnixNano": "1791451168566000000",
+    "attributes": {
+      "reatom.name": "route shop",
+      "reatom.kind": "route",
+      "reatom.outcome": "ok"
+    },
+    "events": []
+  },
+  "dialog": {
+    "traceId": "95a6b6dd6936a944b3d0d31925ba1095",
+    "spanId": "f0b22192cdac622e",
+    "parentSpanId": "7374ef0c16ea18f6",
+    "name": "route dialog",
+    "kind": "internal",
+    "startTimeUnixNano": "1791451168566000000",
+    "endTimeUnixNano": "1791451168566000000",
+    "attributes": {
+      "reatom.name": "route dialog",
+      "reatom.kind": "route",
+      "reatom.outcome": "ok"
+    },
+    "events": []
+  }
+}

@@ -20,6 +20,15 @@
     "manifestDigest": "sha256:beddddcf96f19abec078cd2f3da676f40abd460e0e734ad5eed73627ce161d33",
     "image": "mcr.microsoft.com/playwright:v1.60.0-noble@sha256:beddddcf96f19abec078cd2f3da676f40abd460e0e734ad5eed73627ce161d33"
   },
+  "clickhouse": {
+    "version": "25.8.33.6",
+    "repository": "clickhouse/clickhouse-server",
+    "tag": "25.8.33.6",
+    "source": "https://github.com/ClickHouse/ClickHouse/releases/tag/v25.8.33.6",
+    "indexDigest": "sha256:0152dd511befe6a2c2ef53e930726179669b08116da78500b37c51c96ff5ee77",
+    "manifestDigest": "sha256:61dee53a0b34659b6b16048fa7f937dcd7b19696e0331a5b24e8f60760bf1fa6",
+    "image": "clickhouse/clickhouse-server:25.8.33.6@sha256:61dee53a0b34659b6b16048fa7f937dcd7b19696e0331a5b24e8f60760bf1fa6"
+  },
   "runner": {
     "repository": "reatom-otel-collector-runner",
     "package": {

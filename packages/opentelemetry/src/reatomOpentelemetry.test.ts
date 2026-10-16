@@ -28,6 +28,7 @@ const setup = (
     async () => new Response('{}', { status: 200 }),
   )
   const otel = reatomOpentelemetry({
+    name: 'reatomOpentelemetry',
     endpoint: 'https://traces.example.com',
     serviceName: 'test-svc',
     batchInterval: 50,
@@ -60,7 +61,9 @@ test('flushed batch posts OTLP/JSON payload to /v1/traces with service.name attr
   expect(parsePayload(init!.body as string)).toEqual({
     resourceSpans: [
       {
-        resource: { attributes: { 'service.name': 'test-svc' } },
+        resource: {
+          attributes: expect.objectContaining({ 'service.name': 'test-svc' }),
+        },
         scope: { name: '@reatom/opentelemetry', version: '' },
         spans: [
           {
@@ -71,13 +74,40 @@ test('flushed batch posts OTLP/JSON payload to /v1/traces with service.name attr
             kind: 'internal',
             startTimeUnixNano: expect.any(String),
             endTimeUnixNano: expect.any(String),
-            attributes: { params: '[]', payload: 'hello' },
+            attributes: expect.objectContaining({
+              'reatom.params': '[]',
+              'reatom.payload': 'hello',
+              'reatom.name': 'greet',
+              'reatom.kind': 'action',
+              'reatom.outcome': 'ok',
+            }),
             events: [],
             status: undefined,
           },
         ],
       },
     ],
+  })
+})
+
+test('omits duplicate reatom.name when span.name UTF-8 is large', async () => {
+  const { otel, fetchMock } = setup()
+  const largeName = `cjk.${'界'.repeat(2000)}`
+  const run = action(() => 1, largeName)
+
+  context.start(() => {
+    expect(run()).toBe(1)
+  })
+  await otel.flush()
+
+  expect(fetchMock).toHaveBeenCalledTimes(1)
+  const spans = parseSpans(fetchMock.mock.calls[0]![1]!.body as string)
+  expect(spans).toHaveLength(1)
+  expect(spans[0]!.name).toBe(largeName)
+  expect(spans[0]!.attributes).not.toHaveProperty('reatom.name')
+  expect(spans[0]!.attributes).toMatchObject({
+    'reatom.kind': 'action',
+    'reatom.outcome': 'ok',
   })
 })
 
@@ -222,8 +252,8 @@ test('auto-instrumented action emits params/payload, not prevState/nextState', a
     (s: { name: string }) => s.name === 'greet',
   )
   const attrs = attrsOf(span)
-  expect(attrs).toHaveProperty('params')
-  expect(attrs).toHaveProperty('payload', 'hi alice')
+  expect(attrs).toHaveProperty('reatom.params')
+  expect(attrs).toHaveProperty('reatom.payload', 'hi alice')
   expect(attrs).not.toHaveProperty('prevState')
   expect(attrs).not.toHaveProperty('nextState')
 })
@@ -244,7 +274,7 @@ test('auto-instrumented async action emits one span on resolve, not at synchrono
     (s: { name: string }) => s.name === 'fetchData',
   )
   expect(matches).toHaveLength(1)
-  expect(attrsOf(matches[0])).toHaveProperty('payload', 'done')
+  expect(attrsOf(matches[0])).toHaveProperty('reatom.payload', 'done')
 })
 
 test('flush() waits for its queued and in-flight snapshot through serial exports', async () => {
@@ -389,6 +419,7 @@ test('dispose() cancels an in-flight retry sleep, no further fetch attempts', as
     async () => new Response('boom', { status: 503 }),
   )
   const otel = reatomOpentelemetry({
+    name: 'reatomOpentelemetry',
     endpoint: 'https://traces.example.com',
     serviceName: 'test-svc',
     batchInterval: 50,
@@ -425,6 +456,7 @@ test('dispose() does not log abort warnings', async () => {
       async () => new Response('boom', { status: 503 }),
     )
     const otel = reatomOpentelemetry({
+    name: 'reatomOpentelemetry',
       endpoint: 'https://traces.example.com',
       serviceName: 'test-svc',
       batchInterval: 50,
@@ -463,6 +495,7 @@ test('default unload transport is keepalive fetch — sendBeacon is NOT called w
       async () => new Response('{}', { status: 200 }),
     )
     const otel = reatomOpentelemetry({
+    name: 'reatomOpentelemetry',
       endpoint: 'https://traces.example.com',
       serviceName: 'test-svc',
       batchInterval: 50,
@@ -502,6 +535,7 @@ test('beacon delivery failure surfaces an export warning', async () => {
       () => false,
     )
     const otel = reatomOpentelemetry({
+    name: 'reatomOpentelemetry',
       endpoint: 'https://traces.example.com',
       serviceName: 'test-svc',
       batchInterval: 50,
@@ -562,10 +596,12 @@ test('passes custom resourceAttributes and headers through to the fetch call', a
   )
   expect(
     parsePayload(init.body as string).resourceSpans[0]!.resource.attributes,
-  ).toEqual({
-    'service.name': 'test-svc',
-    'deployment.environment': 'staging',
-  })
+  ).toEqual(
+    expect.objectContaining({
+      'service.name': 'test-svc',
+      'deployment.environment': 'staging',
+    }),
+  )
 })
 
 // Regression: groupItemsByResource used to JSON.stringify the merged record
@@ -633,6 +669,7 @@ test('actions from another core entrypoint remain callable when installation is 
   const foreign = createRequire(import.meta.url)('@reatom/core') as typeof core
   const bodies: string[] = []
   const otel = reatomOpentelemetry({
+    name: 'reatomOpentelemetry',
     endpoint: 'https://collector.invalid',
     serviceName: 'mixed-core',
     fetch: async (_url, init) => {

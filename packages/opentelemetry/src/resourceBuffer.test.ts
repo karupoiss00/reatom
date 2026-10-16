@@ -14,6 +14,7 @@ const createRun = () =>
 const setup = (resourceAttributes: Record<string, OtlpAttrValue> = {}) => {
   const bodies: string[] = []
   const otel = reatomOpentelemetry({
+    name: 'resourceBuffer',
     endpoint: 'https://collector.invalid',
     serviceName: 'resource-buffer',
     resourceAttributes,
@@ -63,7 +64,14 @@ test('metadata-only ambient Buffers retain distinct resource groups after late m
       expect(group.spans.map((span) => span.name)).toEqual([
         'resource-buffer.ambient',
       ])
-      expect(group.spans[0]!.attributes).toEqual({})
+      expect(group.spans[0]!.attributes).toEqual(
+        expect.objectContaining({
+          'reatom.name': 'resource-buffer.ambient',
+          'reatom.kind': 'action',
+          'reatom.outcome': 'ok',
+        }),
+      )
+      expect(group.spans[0]!.attributes).not.toHaveProperty('payload')
     }
   } finally {
     otel.dispose()
@@ -100,7 +108,14 @@ test.each([
       expect(groups[0]!.spans.map((span) => span.name)).toEqual([
         'resource-buffer.factory',
       ])
-      expect(groups[0]!.spans[0]!.attributes).toEqual({})
+      expect(groups[0]!.spans[0]!.attributes).toEqual(
+        expect.objectContaining({
+          'reatom.name': 'resource-buffer.factory',
+          'reatom.kind': 'action',
+          'reatom.outcome': 'ok',
+        }),
+      )
+      expect(groups[0]!.spans[0]!.attributes).not.toHaveProperty('payload')
       expect(bodies[0]).not.toContain('private-factory-payload')
     } finally {
       otel.dispose()

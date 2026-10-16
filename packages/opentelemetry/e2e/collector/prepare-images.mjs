@@ -19,7 +19,7 @@ export async function buildInputs() {
   )
   if (images.schemaVersion !== 1 || images.platform !== 'linux/arm64')
     throw new Error('Unsupported image lock schema/platform')
-  for (const key of ['collector', 'playwright']) {
+  for (const key of ['collector', 'playwright', 'clickhouse']) {
     const entry = images[key]
     if (
       !/^sha256:[a-f0-9]{64}$/.test(entry.manifestDigest) ||
@@ -171,6 +171,17 @@ export async function prepareMain() {
     { timeout: 900_000 },
   )
   await execute(
+    'pull-clickhouse',
+    [
+      'docker',
+      'pull',
+      '--platform',
+      inputs.images.platform,
+      inputs.images.clickhouse.image,
+    ],
+    { timeout: 900_000 },
+  )
+  await execute(
     'build-runner',
     [
       'docker',
@@ -198,6 +209,7 @@ export async function prepareMain() {
     inputs.images.collector.image,
     inputs.images.playwright.image,
     inputs.runnerTag,
+    inputs.images.clickhouse.image,
   ])
   const inspected = JSON.parse(result.stdout)
   for (const image of inspected) {
@@ -221,6 +233,8 @@ export async function prepareMain() {
       inputSha256: inputs.hash,
       collector: inputs.images.collector.image,
       playwright: inputs.images.playwright.image,
+      clickhouse: inputs.images.clickhouse.image,
+      clickhouseImageId: inspected[3].Id,
     }),
   )
   console.log(

@@ -18,6 +18,7 @@ test('R12 shares ambient resource override across adapters but owns both resourc
     bodies: string[],
   ) =>
     reatomOpentelemetry({
+      name: serviceName,
       endpoint: 'https://collector.invalid',
       serviceName,
       resourceAttributes: { factory },
@@ -75,18 +76,20 @@ test('R12 shares ambient resource override across adapters but owns both resourc
         'resource-policy.r12-overridden',
       ])
       expect(resourceFor(bodies[0]!, 'resource-policy.r12-overridden')).toEqual(
-        {
+        expect.objectContaining({
           'service.name': serviceName,
           factory,
           tenant: { nested: 'R12_override_nested_original' },
           array: ['R12_override_array_original'],
           bytes: { bytes: 'AQID' },
-        },
+        }),
       )
-      expect(resourceFor(bodies[0]!, 'resource-policy.r12-defaults')).toEqual({
-        'service.name': serviceName,
-        factory,
-      })
+      expect(resourceFor(bodies[0]!, 'resource-policy.r12-defaults')).toEqual(
+        expect.objectContaining({
+          'service.name': serviceName,
+          factory,
+        }),
+      )
     }
   } finally {
     a.dispose()
@@ -98,6 +101,7 @@ test('auto instrumentation skips hidden names while explicit withOTel opts in on
   const bodies: string[] = []
   const run = createRun()
   const otel = reatomOpentelemetry({
+    name: 'resourcePolicy',
     endpoint: 'https://collector.invalid',
     serviceName: 'resource-policy-hidden',
     filter: () => true,

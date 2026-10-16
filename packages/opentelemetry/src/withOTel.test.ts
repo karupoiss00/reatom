@@ -1,6 +1,7 @@
-import { action, actionMiddleware, context, sleep, wrap } from '@reatom/core'
+import { action, actionMiddleware, atom, context, sleep, wrap } from '@reatom/core'
 import { expect, test, vi } from 'vitest'
 
+import type { LogRecordInput } from './buildLogRecord.ts'
 import type { SpanInput } from './buildSpan.ts'
 import {
   createTestWithOTel,
@@ -10,10 +11,14 @@ import {
 
 const collectSpans = () => {
   const spans: SpanInput[] = []
+  const logs: LogRecordInput[] = []
   const queueSpan = vi.fn((span: SpanInput) => {
     spans.push(span)
   })
-  return { spans, queueSpan }
+  const queueLog = vi.fn((log: LogRecordInput) => {
+    logs.push(log)
+  })
+  return { spans, logs, queueSpan, queueLog }
 }
 
 test('async action instrumentation survives minified core middleware names', async () => {
@@ -177,9 +182,10 @@ test('synchronous throw in an action records error span and rethrows', () => {
 // Message and data-property stack capture require explicit opt-in. Native
 // lazy stack accessors must not be evaluated by descriptor-only observation.
 test('async action rejection emits an `exception` event per OTel semconv', async () => {
-  const { spans, queueSpan } = collectSpans()
+  const { spans, logs, queueSpan, queueLog } = collectSpans()
   const withOTel = createTestWithOTel({
     queueSpan,
+    queueLog,
     isActive: () => true,
     captureValues: {},
   })
@@ -198,17 +204,21 @@ test('async action rejection emits an `exception` event per OTel semconv', async
   })
 
   expect(spans).toHaveLength(1)
-  expect(spans[0]!.events).toHaveLength(1)
-  const event = spans[0]!.events![0]!
-  expect(event.name).toBe('exception')
-  expect(event.attributes!['exception.type']).toBe('TypeError')
-  expect(event.attributes!['exception.message']).toBe('boom')
-  expect(event.attributes!['exception.stacktrace']).toBe(
+  expect(spans[0]!.events ?? []).toEqual([])
+  expect(spans[0]!.status?.code).toBe('error')
+  const exceptions = logs.filter((record) => record.eventName === 'exception')
+  expect(exceptions).toHaveLength(1)
+  const record = exceptions[0]!
+  expect(record.attributes!['exception.type']).toBe('TypeError')
+  expect(record.attributes!['exception.message']).toBe('boom')
+  expect(record.attributes!['exception.stacktrace']).toBe(
     'captured-stack: boom at async-action',
   )
-  expect(Object.hasOwn(event.attributes!, 'exception.escaped')).toBe(false)
-  expect(event.timeMs).toBeGreaterThanOrEqual(spans[0]!.startTimeMs)
-  expect(event.timeMs).toBeLessThanOrEqual(spans[0]!.endTimeMs)
+  expect(Object.hasOwn(record.attributes!, 'exception.escaped')).toBe(false)
+  expect(record.timeMs).toBeGreaterThanOrEqual(spans[0]!.startTimeMs)
+  expect(record.timeMs).toBeLessThanOrEqual(spans[0]!.endTimeMs)
+  expect(record.traceId).toBe(spans[0]!.traceId)
+  expect(record.spanId).toBe(spans[0]!.spanId)
 })
 
 test.each([undefined, {}])(
@@ -216,9 +226,10 @@ test.each([undefined, {}])(
   (
     captureValues: Parameters<typeof createTestWithOTel>[0]['captureValues'],
   ) => {
-    const { spans, queueSpan } = collectSpans()
+    const { spans, logs, queueSpan, queueLog } = collectSpans()
     const withOTel = createTestWithOTel({
       queueSpan,
+      queueLog,
       isActive: () => true,
       captureValues,
     })
@@ -239,23 +250,29 @@ test.each([undefined, {}])(
 
     expect(caught).toBe(failure)
     expect(spans).toHaveLength(1)
-    const event = spans[0]!.events![0]!
-    expect(event.name).toBe('exception')
-    expect(event.attributes!['exception.type']).toBe('RangeError')
+    expect(spans[0]!.events ?? []).toEqual([])
+    const exceptions = logs.filter((record) => record.eventName === 'exception')
+    expect(exceptions).toHaveLength(1)
+    const record = exceptions[0]!
+    expect(record.attributes!['exception.type']).toBe('RangeError')
+    expect(record.traceId).toBe(spans[0]!.traceId)
+    expect(record.spanId).toBe(spans[0]!.spanId)
     if (captureValues) {
-      expect(event.attributes!['exception.message']).toBe('out')
+      expect(record.attributes!['exception.message']).toBe('out')
     } else {
-      expect(event.attributes).toEqual({ 'exception.type': 'RangeError' })
+      expect(record.attributes).not.toHaveProperty('exception.message')
+      expect(record.attributes).not.toHaveProperty('exception.stacktrace')
       expect(spans[0]!.status).toEqual({ code: 'error' })
     }
-    expect(Object.hasOwn(event.attributes!, 'exception.escaped')).toBe(false)
+    expect(Object.hasOwn(record.attributes!, 'exception.escaped')).toBe(false)
   },
 )
 
 test('non-Error throw still records exception event with sane defaults', async () => {
-  const { spans, queueSpan } = collectSpans()
+  const { spans, logs, queueSpan, queueLog } = collectSpans()
   const withOTel = createTestWithOTel({
     queueSpan,
+    queueLog,
     isActive: () => true,
     captureValues: {},
   })
@@ -268,13 +285,16 @@ test('non-Error throw still records exception event with sane defaults', async (
     await expect(broken()).rejects.toBe('string-throw')
   })
 
-  const event = spans[0]!.events![0]!
-  expect(event.name).toBe('exception')
-  expect(event.attributes!['exception.type']).toBe('Error')
-  expect(event.attributes!['exception.message']).toBe('string-throw')
-  // No stacktrace available for non-Error throws — skip attribute, don't lie.
-  expect(event.attributes!).not.toHaveProperty('exception.stacktrace')
-  expect(Object.hasOwn(event.attributes!, 'exception.escaped')).toBe(false)
+  expect(spans[0]!.events ?? []).toEqual([])
+  const exceptions = logs.filter((record) => record.eventName === 'exception')
+  expect(exceptions).toHaveLength(1)
+  const record = exceptions[0]!
+  expect(record.attributes!['exception.type']).toBe('Error')
+  expect(record.attributes!['exception.message']).toBe('string-throw')
+  expect(record.attributes!).not.toHaveProperty('exception.stacktrace')
+  expect(Object.hasOwn(record.attributes!, 'exception.escaped')).toBe(false)
+  expect(record.traceId).toBe(spans[0]!.traceId)
+  expect(record.spanId).toBe(spans[0]!.spanId)
 })
 
 test('a thrown Promise is control flow — [Suspension] marker, no exception event', async () => {
@@ -402,4 +422,153 @@ test('bigint payloads stringify to decimal strings without crashing the action',
 
   await context.start(() => counter())
   expect(spans[0]!.attributes).toEqual({ params: '[]', payload: '"1"' })
+})
+
+test('withOTel attributes are written onto the span', () => {
+  const { spans, queueSpan } = collectSpans()
+  const withOTel = createTestWithOTel({
+    queueSpan,
+    isActive: () => true,
+    captureValues: {},
+  })
+  const buy = action((total: number) => total, 'shop.buy').extend(
+    withOTel({
+      attributes: ({ params, payload }) => ({
+        'app.order.value': Number(payload),
+        'app.order.params': Number(params[0]),
+      }),
+    }),
+  )
+
+  context.start(() => {
+    expect(buy(12)).toBe(12)
+  })
+
+  expect(spans).toHaveLength(1)
+  expect(spans[0]!.extraAttributes).toMatchObject({
+    'app.order.value': 12,
+    'app.order.params': 12,
+  })
+})
+
+test('static withOTel attributes survive a throwing attributes function on a later target', () => {
+  const { spans, queueSpan } = collectSpans()
+  const withOTel = createTestWithOTel({
+    queueSpan,
+    isActive: () => true,
+  })
+  const tagged = action(() => 'ok', 'shop.tagged').extend(
+    withOTel({ attributes: { 'app.keep': 'yes' } }),
+  )
+  const hostile = action(() => 'ok', 'shop.hostile').extend(
+    withOTel({
+      attributes: () => {
+        throw new Error('bad attributes')
+      },
+    }),
+  )
+
+  context.start(() => {
+    expect(tagged()).toBe('ok')
+    expect(hostile()).toBe('ok')
+  })
+
+  expect(spans).toHaveLength(2)
+  expect(spans[0]!.extraAttributes).toMatchObject({ 'app.keep': 'yes' })
+  expect(spans[1]!.extraAttributes).not.toHaveProperty('app.keep')
+})
+
+test('per-target captureValues and serialize override the instance', () => {
+  const { spans, queueSpan } = collectSpans()
+  const withOTel = createTestWithOTel({
+    queueSpan,
+    isActive: () => true,
+    captureValues: {},
+  })
+  const hidden = action((secret: string) => secret, 'shop.hidden').extend(
+    withOTel({ captureValues: false }),
+  )
+  const masked = action((note: string) => note, 'shop.masked').extend(
+    withOTel({
+      serialize: (value, key) => (key === 'params' ? ['hidden'] : value),
+    }),
+  )
+
+  context.start(() => {
+    expect(hidden('card')).toBe('card')
+    expect(masked('card')).toBe('card')
+  })
+
+  expect(spans[0]!.attributes).toBeUndefined()
+  expect(spans[1]!.attributes).toEqual({
+    params: '["hidden"]',
+    payload: 'card',
+  })
+})
+
+test('per-target captureValues true records values when the instance capture is off', () => {
+  const { spans, queueSpan } = collectSpans()
+  const withOTel = createTestWithOTel({
+    queueSpan,
+    isActive: () => true,
+    captureValues: false,
+  })
+  const shown = action((name: string) => name, 'shop.shown').extend(
+    withOTel({ captureValues: true }),
+  )
+
+  context.start(() => {
+    expect(shown('ada')).toBe('ada')
+  })
+
+  expect(spans[0]!.attributes).toEqual({
+    params: '["ada"]',
+    payload: 'ada',
+  })
+})
+
+test('withOTel enabled false runs the action and records no span', () => {
+  const { spans, queueSpan } = collectSpans()
+  const withOTel = createTestWithOTel({
+    queueSpan,
+    isActive: () => true,
+    captureValues: {},
+  })
+  const quiet = action(() => 'ok', 'shop.quiet')
+    .extend(withOTel({ attributes: { 'app.keep': true } }))
+    .extend(withOTel({ enabled: false }))
+
+  context.start(() => {
+    expect(quiet()).toBe('ok')
+  })
+
+  expect(spans).toEqual([])
+  expect(queueSpan).not.toHaveBeenCalled()
+})
+
+test('withOTel attributes are written onto atom update logs', async () => {
+  const { logs, queueSpan, queueLog } = collectSpans()
+  const withOTel = createTestWithOTel({
+    queueSpan,
+    queueLog,
+    isActive: () => true,
+  })
+  const count = atom(0, 'shop.count').extend(
+    withOTel({ attributes: { 'app.count.tag': 'cart' } }),
+  )
+  const write = action(() => {
+    count.set(1)
+  }, 'shop.write').extend(withOTel())
+
+  context.start(() => write())
+  await Promise.resolve()
+
+  const updates = logs.filter(
+    (record) => record.eventName === 'reatom.atom.update',
+  )
+  expect(updates.length).toBeGreaterThan(0)
+  expect(updates.at(-1)?.attributes).toMatchObject({
+    'reatom.name': 'shop.count',
+    'app.count.tag': 'cart',
+  })
 })

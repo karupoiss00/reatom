@@ -5,6 +5,7 @@ import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
 import { parseSpans } from './test-helpers.ts'
 
 const base = {
+  name: 'completionReservation',
   endpoint: 'http://collector.invalid',
   serviceName: 'test',
   maxQueueSize: 1,
@@ -12,13 +13,14 @@ const base = {
   retry: { maxRetries: 0 },
 }
 
-test('suspension and hostile-error observation free capacity; later work exports one span', async () => {
+test('suspension frees capacity; a throwing redact keeps its span and fills the queue', async () => {
   const fetchMock = vi.fn<typeof globalThis.fetch>(
     async () => new Response(null, { status: 200 }),
   )
   let failingCaptures = 0
   let liveCaptures = 0
   const otel = reatomOpentelemetry({
+    name: 'completionReservation',
     ...base,
     fetch: fetchMock,
     captureValues: {
@@ -76,30 +78,24 @@ test('suspension and hostile-error observation free capacity; later work exports
     })
     expect(failingCaptures).toBe(1)
     expect(liveCaptures).toBe(0)
-    expect(otel.stats()).toMatchObject({
-      active: 0,
-      queued: 0,
-      inFlight: 0,
-      dropped: 1,
-      droppedByReason: { observation: 1 },
-    })
+    expect(otel.stats().droppedByReason.observation).toBe(0)
 
     const ordinary = action(() => 'ok', 'ordinary')
     context.start(() => {
       expect(ordinary()).toBe('ok')
     })
-    expect(liveCaptures).toBe(1)
+    expect(liveCaptures).toBe(0)
     expect(failingCaptures).toBe(1)
+    expect(otel.stats().droppedByReason.capacity).toBeGreaterThan(0)
     await otel.flush()
-    expect(fetchMock).toHaveBeenCalledTimes(1)
-    const spans = parseSpans(String(fetchMock.mock.calls[0]![1]!.body))
-    expect(spans.map((s) => s.name)).toEqual(['ordinary'])
-    expect(otel.stats()).toMatchObject({
-      active: 0,
-      queued: 0,
-      inFlight: 0,
-      exported: 1,
-    })
+    const spans = fetchMock.mock.calls.flatMap((call) =>
+      parseSpans(String(call[1]?.body)),
+    )
+    expect(spans.map((span) => span.name).sort()).toEqual(['failing'])
+    expect(spans[0]?.status?.message).toBe('[Failed]')
+    expect(
+      fetchMock.mock.calls.map((call) => String(call[1]?.body)).join(''),
+    ).not.toContain('observer failure')
   } finally {
     otel.dispose()
     vi.restoreAllMocks()
@@ -122,6 +118,7 @@ test('a 200 body whose stream errors before the deadline drops as export, with n
     return response
   })
   const otel = reatomOpentelemetry({
+    name: 'completionReservation',
     endpoint: 'http://collector.invalid',
     serviceName: 'test',
     batchInterval: 100_000,

@@ -11,6 +11,7 @@ const setup = () => {
     return new Response('{}', { status: 200 })
   })
   const otel = reatomOpentelemetry({
+    name: 'manualOptIn',
     endpoint: 'http://collector.invalid',
     serviceName: 'manual-opt-in',
     filter: () => false, // reject every auto-instrumentation target
@@ -73,14 +74,17 @@ test('manual opt-in instruments a previously untouched filtered action exactly o
     expect(bridge.__reatom.middlewares).toHaveLength(
       raw.__reatom.middlewares.length,
     )
-    expect(run(() => otel.startTrace('manual-root', bridge))).toBe(20)
+    const manualTrace = otel.createTrace({ name: 'manual-root' })
+    expect(run(() => otel.traceVar.run(manualTrace, bridge))).toBe(20)
     expect(bodyCalls).toBe(3)
     await otel.flush()
-    const [child, root] = spans().slice(1)
     expect(spans()).toHaveLength(3)
-    expect([child!.name, root!.name]).toEqual(['mo.target', 'manual-root'])
-    expect(child!.parentSpanId).toBe(root!.spanId)
-    expect(child!.traceId).toBe(root!.traceId)
+    const manualSpans = spans().slice(1)
+    const child = manualSpans.find((span) => span.name === 'mo.target')!
+    const root = manualSpans.find((span) => span.name === 'manual-root')!
+    expect(child.parentSpanId).toBe(root.spanId)
+    expect(child.traceId).toBe(manualTrace.traceId)
+    expect(root.traceId).toBe(manualTrace.traceId)
   } finally {
     otel.dispose()
   }

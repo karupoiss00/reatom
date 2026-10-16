@@ -6,7 +6,7 @@ import {
   type ReatomOpentelemetryInput,
 } from './reatomOpentelemetry.ts'
 import { resourceAttributesVar } from './resourceAttributesVar.ts'
-import { parsePayload, parseSpans } from './test-helpers.ts'
+import { parseLogRecords, parsePayload, parseSpans } from './test-helpers.ts'
 
 const bytes = (value: unknown) =>
   new TextEncoder().encode(JSON.stringify(value)).length
@@ -34,6 +34,7 @@ const setup = (options: Partial<ReatomOpentelemetryInput> = {}) => {
   const bodies: string[] = []
   const run = context.start(() => bind(<T>(callback: () => T) => callback()))
   const otel = reatomOpentelemetry({
+    name: 'captureBudgets',
     endpoint: 'https://collector.invalid',
     serviceName: 'capture-budgets',
     batchInterval: 100_000,
@@ -51,7 +52,7 @@ const setup = (options: Partial<ReatomOpentelemetryInput> = {}) => {
 }
 
 test('params and payload share one capture budget through the real factory', async () => {
-  const { bodies, run, otel } = setup({ captureValues: {} })
+  const { bodies, run, otel } = setup()
   const input = ['a', 'b', 'c'].map((value) => value.repeat(2_000))
   const output = ['x', 'y', 'z'].map((value) => value.repeat(2_000))
   let calls = 0
@@ -61,17 +62,17 @@ test('params and payload share one capture budget through the real factory', asy
         calls++
         expect(params).toEqual(input)
         return output
-      }, 'capture-budgets.shared-session'),
+      }, 'capture-budgets.shared-budget'),
     )
     expect(run(() => target(...input))).toBe(output)
     expect(calls).toBe(1)
     await otel.flush()
     const spans = bodies.flatMap(parseSpans)
     expect(spans.map((span) => span.name)).toEqual([
-      'capture-budgets.shared-session',
+      'capture-budgets.shared-budget',
     ])
-    const params = JSON.parse(String(spans[0]!.attributes.params))
-    const payload = JSON.parse(String(spans[0]!.attributes.payload))
+    const params = JSON.parse(String(spans[0]!.attributes['reatom.params']))
+    const payload = JSON.parse(String(spans[0]!.attributes['reatom.payload']))
     expect(params).toEqual(input)
     expect(JSON.stringify(payload)).toContain('[Truncated]')
     expect(payload).not.toEqual(output)
@@ -85,11 +86,15 @@ test('params and payload share one capture budget through the real factory', asy
     await otel.flush()
     const allSpans = bodies.flatMap(parseSpans)
     expect(allSpans.map((span) => span.name)).toEqual([
-      'capture-budgets.shared-session',
-      'capture-budgets.shared-session',
+      'capture-budgets.shared-budget',
+      'capture-budgets.shared-budget',
     ])
-    const secondParams = JSON.parse(String(allSpans[1]!.attributes.params))
-    const secondPayload = JSON.parse(String(allSpans[1]!.attributes.payload))
+    const secondParams = JSON.parse(
+      String(allSpans[1]!.attributes['reatom.params']),
+    )
+    const secondPayload = JSON.parse(
+      String(allSpans[1]!.attributes['reatom.payload']),
+    )
     expect(secondParams).toEqual(input)
     expect(secondPayload).toEqual(payload)
     expect(
@@ -241,7 +246,14 @@ test('combined factory resource, ambient snapshot and metadata exceed one record
     )
     const attributes = parsePayload(control.bodies[0]).resourceSpans[0]!
       .resource.attributes
-    const { 'service.name': service, ...snapshot } = attributes
+    const {
+      'service.name': service,
+      'telemetry.sdk.name': _sdkName,
+      'telemetry.sdk.language': _sdkLanguage,
+      'telemetry.sdk.version': _sdkVersion,
+      'service.instance.id': _instanceId,
+      ...snapshot
+    } = attributes
     expect(service).toBe('capture-budgets')
     expect(bytes(['resource', snapshot])).toBeLessThanOrEqual(8_192)
     expect(Object.keys(snapshot).length).toBeLessThanOrEqual(100)
@@ -270,8 +282,13 @@ test('combined factory resource, ambient snapshot and metadata exceed one record
     expect(run(target)).toBe(output)
     await otel.flush()
     expect(bodies).toHaveLength(1)
-    const snapshot = parsePayload(bodies[0]).resourceSpans[0]!.resource
-      .attributes
+    const {
+      'telemetry.sdk.name': _factorySdkName,
+      'telemetry.sdk.language': _factorySdkLanguage,
+      'telemetry.sdk.version': _factorySdkVersion,
+      'service.instance.id': _factoryInstanceId,
+      ...snapshot
+    } = parsePayload(bodies[0]).resourceSpans[0]!.resource.attributes
     expect(bytes(snapshot)).toBeLessThanOrEqual(8_192)
     expect(Object.keys(snapshot).length).toBeLessThanOrEqual(100)
     expect(snapshot['factory.000']).toBe('f'.repeat(16))
@@ -372,21 +389,26 @@ test('opt-in long data-property error message and stack are redacted and bounded
     expect(error.message).toBe(message)
     expect(error.stack).toBe(stack)
     await otel.flush()
-    expect(bodies).toHaveLength(1)
     const spans = bodies.flatMap(parseSpans)
     expect(spans.map((span) => span.name)).toEqual([
       'capture-budgets.long-error',
     ])
     const span = spans[0]!
-    expect(span.events).toHaveLength(1)
-    const event = span.events[0]!
-    expect(event.name).toBe('exception')
-    expect(event.attributes['exception.type']).toBe('Error')
+    expect(span.events).toEqual([])
+    const exceptions = bodies
+      .flatMap(parseLogRecords)
+      .filter((record) => record.eventName === 'exception')
+    expect(exceptions).toHaveLength(1)
+    const record = exceptions[0]!
+    expect(record.severityNumber).toBe(17)
+    expect(record.traceId).toBe(span.traceId)
+    expect(record.spanId).toBe(span.spanId)
+    expect(record.attributes['exception.type']).toBe('Error')
     for (const [key, prefix] of [
       ['exception.message', 'public-message [redacted]'],
       ['exception.stacktrace', 'public-stack [redacted]'],
     ]) {
-      const value = event.attributes[key!]
+      const value = record.attributes[key!]
       expect(typeof value).toBe('string')
       expect(value).toContain(prefix)
       expect(value).toMatch(/\[Truncated\]$/)
@@ -394,12 +416,20 @@ test('opt-in long data-property error message and stack are redacted and bounded
     }
     expect(span.status).toEqual({
       code: 'error',
-      message: event.attributes['exception.message'],
+      message: record.attributes['exception.message'],
     })
-    expect(bytes(recordFromWire(bodies[0]!))).toBeLessThanOrEqual(16_384)
-    expect(bodies[0]).not.toContain(secret)
-    expect(bodies[0]).not.toContain('exception.escaped')
-    expect(otel.stats()).toMatchObject({ exported: 1, dropped: 0, active: 0 })
+    const tracesBody = bodies.find((body) => {
+      try {
+        return Array.isArray(JSON.parse(body).resourceSpans)
+      } catch {
+        return false
+      }
+    })
+    expect(tracesBody).toBeDefined()
+    expect(bytes(recordFromWire(tracesBody!))).toBeLessThanOrEqual(16_384)
+    expect(bodies.join('')).not.toContain(secret)
+    expect(bodies.join('')).not.toContain('exception.escaped')
+    expect(otel.stats()).toMatchObject({ exported: 2, dropped: 0, active: 0 })
   } finally {
     otel.dispose()
   }
@@ -445,9 +475,14 @@ test.each(['named', 'native'] as const)(
       expect(bodies).toHaveLength(1)
       const spans = bodies.flatMap(parseSpans)
       expect(spans.map((span) => span.name)).toEqual(['capture-budgets.abort'])
-      expect(spans[0]!.attributes).toEqual({
-        payload: 'public-abort [redacted]',
-      })
+      expect(spans[0]!.attributes).toEqual(
+        expect.objectContaining({
+          'reatom.payload': 'public-abort [redacted]',
+          'reatom.name': 'capture-budgets.abort',
+          'reatom.kind': 'action',
+          'reatom.outcome': 'abort',
+        }),
+      )
       expect(spans[0]!.events).toEqual([])
       expect(spans[0]!.status).toBeUndefined()
       expect(bodies[0]).not.toContain(secret)

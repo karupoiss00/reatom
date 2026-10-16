@@ -1,4 +1,4 @@
-import type { SpanId, TraceId } from './spanContext.ts'
+import type { SpanId, TraceId } from './traceContext.ts'
 import type { OtlpAttrValue } from './toOtlpValue.ts'
 import { toOtlpAttributes } from './toOtlpValue.ts'
 
@@ -16,6 +16,10 @@ const STATUS_CODE = { unset: 0, ok: 1, error: 2 } as const
 
 export const MAX_RECORD_BYTES = 16_384
 
+export const REATOM_NAME_DUP_MAX_UTF8 = 1920
+
+const nameEncoder = new TextEncoder()
+
 export type SpanKind = keyof typeof SPAN_KIND
 export type StatusCode = keyof typeof STATUS_CODE
 
@@ -23,6 +27,12 @@ export interface SpanEventInput {
   name: string
   timeMs: number
   attributes?: Record<string, OtlpAttrValue>
+}
+
+export interface SpanLink {
+  traceId: string
+  spanId: string
+  attributes?: Array<{ key: string; value: unknown }>
 }
 
 export interface SpanInput {
@@ -34,8 +44,10 @@ export interface SpanInput {
   startTimeMs: number
   endTimeMs: number
   attributes?: Record<string, OtlpAttrValue>
+  extraAttributes?: Record<string, OtlpAttrValue>
   events?: SpanEventInput[]
   status?: { code: StatusCode; message?: string }
+  links?: SpanLink[]
 }
 
 export interface OtlpSpan {
@@ -55,6 +67,7 @@ export interface OtlpSpan {
     attributes: ReturnType<typeof toOtlpAttributes>
   }[]
   status?: { code: (typeof STATUS_CODE)[StatusCode]; message?: string }
+  links?: SpanLink[]
 }
 
 // `Date.now() * 1e6` overflows Number.MAX_SAFE_INTEGER; BigInt keeps integer
@@ -65,6 +78,34 @@ const msToNano = (ms: number): string => {
   return (BigInt(truncMs) * 1_000_000n + BigInt(fracNs)).toString()
 }
 
+const spanAttributeKey = (key: string) =>
+  key === 'params' || key === 'payload' ? `reatom.${key}` : key
+
+const toSpanAttributes = (
+  name: string,
+  attributes: SpanInput['attributes'],
+  extraAttributes: SpanInput['extraAttributes'],
+): ReturnType<typeof toOtlpAttributes> => {
+  if (!attributes && !extraAttributes) return toOtlpAttributes(attributes)
+  const remapped: Record<string, OtlpAttrValue> = {}
+  const merge = (source: Record<string, OtlpAttrValue> | undefined) => {
+    if (!source) return
+    for (const [key, value] of Object.entries(source))
+      remapped[spanAttributeKey(key)] = value
+  }
+  merge(attributes)
+  merge(extraAttributes)
+  const rawName = remapped['reatom.name']
+  if (
+    typeof rawName === 'string' &&
+    rawName === name &&
+    nameEncoder.encode(name).byteLength > REATOM_NAME_DUP_MAX_UTF8
+  ) {
+    delete remapped['reatom.name']
+  }
+  return toOtlpAttributes(remapped)
+}
+
 export const buildSpan = (input: SpanInput): OtlpSpan => {
   const span: OtlpSpan = {
     traceId: input.traceId,
@@ -73,7 +114,11 @@ export const buildSpan = (input: SpanInput): OtlpSpan => {
     kind: SPAN_KIND[input.kind ?? 'internal'],
     startTimeUnixNano: msToNano(input.startTimeMs),
     endTimeUnixNano: msToNano(input.endTimeMs),
-    attributes: toOtlpAttributes(input.attributes),
+    attributes: toSpanAttributes(
+      input.name,
+      input.attributes,
+      input.extraAttributes,
+    ),
     events: (input.events ?? []).map((event) => ({
       timeUnixNano: msToNano(event.timeMs),
       name: event.name,
@@ -81,6 +126,7 @@ export const buildSpan = (input: SpanInput): OtlpSpan => {
     })),
   }
   if (input.parentSpanId) span.parentSpanId = input.parentSpanId
+  if (input.links?.length) span.links = input.links
   if (input.status) {
     const code = STATUS_CODE[input.status.code]
     span.status =

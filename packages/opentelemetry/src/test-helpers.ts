@@ -1,19 +1,34 @@
 import type { MockInstance } from 'vitest'
 import { onTestFinished, vi } from 'vitest'
 
+import type { LogRecordInput } from './buildLogRecord.ts'
 import type { SpanInput } from './buildSpan.ts'
 import { createWithOTel } from './withOTel.ts'
 
 /** Always-admitting sink for middleware unit tests; production uses the queue. */
 export const createTestWithOTel = (input: {
   queueSpan: (span: SpanInput) => void
+  queueLog?: (log: LogRecordInput) => void
   isActive: () => boolean
   captureValues?: Parameters<typeof createWithOTel>[0]['captureValues']
 }) => {
   const tracing = createWithOTel({
     isActive: input.isActive,
     captureValues: input.captureValues,
-    reserveSpan: () => ({ commit: input.queueSpan, cancel() {} }),
+    reserveSpan: () => ({
+      commit: input.queueSpan,
+      cancel() {},
+      release() {},
+    }),
+    ...(input.queueLog
+      ? {
+          reserveLog: () => ({
+            commit: input.queueLog!,
+            cancel() {},
+            release() {},
+          }),
+        }
+      : {}),
   })
   onTestFinished(tracing.dispose)
   return tracing.withOTel
@@ -219,6 +234,55 @@ export const parsePayload = (body: string | unknown): ParsedPayload => {
 /** Convenience: flat list of every span across all resourceSpans. */
 export const parseSpans = (body: string | unknown): ParsedSpan[] =>
   parsePayload(body).resourceSpans.flatMap((rs) => rs.spans)
+
+export interface ParsedLog {
+  timeUnixNano?: string
+  eventName?: string
+  traceId?: string
+  spanId?: string
+  severityNumber?: number
+  body?: unknown
+  attributes: Record<string, unknown>
+}
+
+export const parseLogRecords = (body: string | unknown): ParsedLog[] => {
+  const raw = typeof body === 'string' ? JSON.parse(String(body)) : body
+  if (!raw || typeof raw !== 'object') return []
+  return ((raw as { resourceLogs?: unknown[] }).resourceLogs ?? []).flatMap(
+    (resourceLogs) => {
+      const groups =
+        resourceLogs && typeof resourceLogs === 'object'
+          ? ((resourceLogs as { scopeLogs?: unknown[] }).scopeLogs ?? [])
+          : []
+      return groups.flatMap((scopeLogs) => {
+        const records =
+          scopeLogs && typeof scopeLogs === 'object'
+            ? ((scopeLogs as { logRecords?: unknown[] }).logRecords ?? [])
+            : []
+        return records.map((record): ParsedLog => {
+          const row = record as {
+            timeUnixNano?: string
+            eventName?: string
+            traceId?: string
+            spanId?: string
+            severityNumber?: number
+            body?: OtlpKeyValue['value']
+            attributes?: OtlpKeyValue[]
+          }
+          return {
+            timeUnixNano: row.timeUnixNano,
+            eventName: row.eventName,
+            traceId: row.traceId,
+            spanId: row.spanId,
+            severityNumber: row.severityNumber,
+            body: row.body ? decodeAttrValue(row.body) : undefined,
+            attributes: decodeAttrs(row.attributes ?? []),
+          }
+        })
+      })
+    },
+  )
+}
 
 /** Convenience: pick one span by name (asserts uniqueness). */
 export const findSpan = (body: string | unknown, name: string): ParsedSpan => {

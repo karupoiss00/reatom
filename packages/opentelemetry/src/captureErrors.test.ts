@@ -2,7 +2,7 @@ import { action, bind, context } from '@reatom/core'
 import { expect, test } from 'vitest'
 
 import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
-import { parseSpans } from './test-helpers.ts'
+import { parseLogRecords, parseSpans } from './test-helpers.ts'
 
 test.each([false, true])(
   'exception capture does not invoke accessors (opt-in=%s)',
@@ -10,6 +10,7 @@ test.each([false, true])(
     const bodies: string[] = []
     const run = context.start(() => bind(<T>(callback: () => T) => callback()))
     const otel = reatomOpentelemetry({
+      name: 'captureErrors',
       endpoint: 'https://collector.invalid',
       serviceName: 'error-capture',
       captureValues: capture ? {} : false,
@@ -46,10 +47,20 @@ test.each([false, true])(
       await otel.flush()
       const spans = bodies.flatMap(parseSpans)
       expect(spans.map((span) => span.name)).toEqual(['capture.error'])
-      expect(spans[0]!.events).toHaveLength(1)
-      expect(spans[0]!.events[0]!.attributes).toEqual({
-        'exception.type': 'Error',
-      })
+      expect(spans[0]!.events).toEqual([])
+      expect(spans[0]!.status?.code).toBe('error')
+      const exceptions = bodies
+        .flatMap(parseLogRecords)
+        .filter((record) => record.eventName === 'exception')
+      expect(exceptions).toHaveLength(1)
+      expect(exceptions[0]!.severityNumber).toBe(17)
+      expect(exceptions[0]!.traceId).toBe(spans[0]!.traceId)
+      expect(exceptions[0]!.spanId).toBe(spans[0]!.spanId)
+      expect(exceptions[0]!.attributes['exception.type']).toBe('Error')
+      expect(exceptions[0]!.attributes).not.toHaveProperty('exception.message')
+      expect(exceptions[0]!.attributes).not.toHaveProperty(
+        'exception.stacktrace',
+      )
       expect(reads).toBe(0)
       expect(bodies.join('')).not.toContain('accessor-private-sentinel')
     } finally {
@@ -59,11 +70,12 @@ test.each([false, true])(
 )
 
 test.each(['named', 'native'])(
-  'default abort exports a fixed marker without its private reason (%s)',
+  'default abort captures its reason without exception metadata (%s)',
   async (kind: string) => {
     const bodies: string[] = []
     const run = context.start(() => bind(<T>(callback: () => T) => callback()))
     const otel = reatomOpentelemetry({
+      name: 'captureErrors',
       endpoint: 'https://collector.invalid',
       serviceName: 'error-capture',
       filter: (target) => target.name === 'capture.abort',
@@ -97,8 +109,14 @@ test.each(['named', 'native'])(
       expect(spans.map((span) => span.name)).toEqual(['capture.abort'])
       expect(spans[0]!.events).toEqual([])
       expect(spans[0]!.status).toBeUndefined()
-      expect(spans[0]!.attributes).toEqual({ payload: '[AbortError]' })
-      expect(bodies.join('')).not.toContain('abort-private-sentinel')
+      expect(spans[0]!.attributes).toEqual(
+        expect.objectContaining({
+          'reatom.payload': 'abort-private-sentinel',
+          'reatom.name': 'capture.abort',
+          'reatom.kind': 'action',
+          'reatom.outcome': 'abort',
+        }),
+      )
     } finally {
       otel.dispose()
     }

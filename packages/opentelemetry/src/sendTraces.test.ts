@@ -1,6 +1,6 @@
 import { expect, test, vi } from 'vitest'
 
-import { sendTraces } from './sendTraces.ts'
+import { sendSignal, sendTraces } from './sendTraces.ts'
 
 const PAYLOAD = { resourceSpans: [] }
 
@@ -130,4 +130,22 @@ test('rejects without fetch when the signal is already aborted', async () => {
     }),
   ).rejects.toThrow()
   expect(fetch).not.toHaveBeenCalled()
+})
+
+test('sendSignal POSTs payload as JSON to /v1/logs', async () => {
+  const fetch = okFetch()
+  const payload = { resourceLogs: [] }
+  await sendSignal({
+    endpoint: 'https://collector.example.com',
+    payload,
+    fetch,
+    otlpSignal: 'logs',
+  })
+  expect(fetch).toHaveBeenCalledWith(
+    'https://collector.example.com/v1/logs',
+    expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  )
 })

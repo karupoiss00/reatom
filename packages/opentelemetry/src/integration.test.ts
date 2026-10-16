@@ -20,6 +20,7 @@ import {
   findSpan,
   HEX_SPAN_ID,
   HEX_TRACE_ID,
+  parseLogRecords,
   parsePayload,
   parseSpans,
   withWarnSpy,
@@ -98,6 +99,7 @@ const start = (
   overrides: Partial<Parameters<typeof reatomOpentelemetry>[0]> = {},
 ) => {
   const otel = reatomOpentelemetry({
+    name: 'integration',
     endpoint,
     serviceName: 'integration-svc',
     version: '0.0.0-test',
@@ -139,7 +141,11 @@ test('a sync action ships a span with action-shaped attributes', async () => {
   expect(parsePayload(received[0]!.body)).toEqual({
     resourceSpans: [
       {
-        resource: { attributes: { 'service.name': 'integration-svc' } },
+        resource: {
+          attributes: expect.objectContaining({
+            'service.name': 'integration-svc',
+          }),
+        },
         scope: { name: '@reatom/opentelemetry', version: '0.0.0-test' },
         spans: [
           {
@@ -150,7 +156,13 @@ test('a sync action ships a span with action-shaped attributes', async () => {
             kind: 'internal',
             startTimeUnixNano: expect.any(String),
             endTimeUnixNano: expect.any(String),
-            attributes: { params: '["alice"]', payload: 'hi alice' },
+            attributes: expect.objectContaining({
+              'reatom.params': '["alice"]',
+              'reatom.payload': 'hi alice',
+              'reatom.name': 'integration.greet',
+              'reatom.kind': 'action',
+              'reatom.outcome': 'ok',
+            }),
             events: [],
             status: undefined,
           },
@@ -192,7 +204,7 @@ test('async action records endTime after the awaited work', async () => {
     Number(BigInt(span!.endTimeUnixNano) - BigInt(span!.startTimeUnixNano)) /
     1_000_000
   expect(elapsedMs).toBeGreaterThanOrEqual(15)
-  expect(attrsOf(span!).payload).toBe('done')
+  expect(attrsOf(span!)['reatom.payload']).toBe('done')
 })
 
 test('two entry points produce two distinct traces', async () => {
@@ -229,10 +241,12 @@ test('custom headers and resourceAttributes reach the collector', async () => {
 
   expect(received[0]!.headers.authorization).toBe('Bearer secret')
   const parsed = parsePayload(received[0]!.body)
-  expect(parsed.resourceSpans[0]!.resource.attributes).toEqual({
-    'service.name': 'integration-svc',
-    'deployment.environment': 'staging',
-  })
+  expect(parsed.resourceSpans[0]!.resource.attributes).toEqual(
+    expect.objectContaining({
+      'service.name': 'integration-svc',
+      'deployment.environment': 'staging',
+    }),
+  )
   expect(parsed.resourceSpans[0]!.scope.version).toBe('0.0.0-test')
 })
 
@@ -266,7 +280,11 @@ test('persistent retryable failures retry and eventually succeed', async () => {
 test('persistent HTTP failure warns once with the reason and the dropped-span count', async () => {
   responder = () => ({ status: 400, body: 'nope' })
   await withWarnSpy(async (warnSpy) => {
-    const otel = start({ retry: { maxRetries: 0 }, maxBatchSize: 100 })
+    const otel = start({
+      retry: { maxRetries: 0 },
+      maxBatchSize: 100,
+      warnContextLoss: false,
+    })
     const probe = action(() => 'x', 'integration.fail')
     context.start(() => {
       for (let i = 0; i < 7; i++) probe()
@@ -391,19 +409,19 @@ test('spans with distinct resourceAttributesVar overrides land in separate resou
     expect.arrayContaining([
       expect.objectContaining({
         resource: {
-          attributes: {
+          attributes: expect.objectContaining({
             'service.name': 'integration-svc',
             'deployment.environment': 'staging',
-          },
+          }),
         },
         spans: [expect.objectContaining({ name: 'integration.tag-staging' })],
       }),
       expect.objectContaining({
         resource: {
-          attributes: {
+          attributes: expect.objectContaining({
             'service.name': 'integration-svc',
             'deployment.environment': 'production',
-          },
+          }),
         },
         spans: [expect.objectContaining({ name: 'integration.tag-prod' })],
       }),
@@ -534,8 +552,12 @@ test('a failing nested action emits an error span and exception event without po
   })
   await otel.flush()
 
-  expect(received).toHaveLength(1)
-  const parsed = parsePayload(received[0]!.body)
+  const traceBodies = received.filter((r) =>
+    String(r.url).endsWith('/v1/traces'),
+  )
+  const logBodies = received.filter((r) => String(r.url).endsWith('/v1/logs'))
+  expect(traceBodies).toHaveLength(1)
+  const parsed = parsePayload(traceBodies[0]!.body)
   const spans = parsed.resourceSpans.flatMap((rs) => rs.spans)
   const findByName = (name: string): ParsedSpan => {
     const matches = spans.filter((s) => s.name === name)
@@ -547,27 +569,22 @@ test('a failing nested action emits an error span and exception event without po
     return matches[0]!
   }
 
-  // The failed action carries the error status and an OTel-shaped
-  // `exception` event with the standard attributes.
   const failSpan = findByName('chain.fail')
   expect(failSpan.status?.code).toBe('error')
   expect(failSpan.status?.message).toContain('boom')
-  expect(failSpan.events).toEqual([
-    expect.objectContaining({
-      name: 'exception',
-      attributes: expect.objectContaining({
-        'exception.type': 'Error',
-        'exception.message': 'boom',
-      }),
-    }),
-  ])
+  expect(failSpan.events).toEqual([])
 
-  expect(
-    Object.hasOwn(failSpan.events[0]!.attributes, 'exception.escaped'),
-  ).toBe(false)
+  const exceptions = logBodies
+    .flatMap((r) => parseLogRecords(r.body))
+    .filter((record) => record.eventName === 'exception')
+  expect(exceptions).toHaveLength(1)
+  expect(exceptions[0]!.severityNumber).toBe(17)
+  expect(exceptions[0]!.traceId).toBe(failSpan.traceId)
+  expect(exceptions[0]!.spanId).toBe(failSpan.spanId)
+  expect(exceptions[0]!.attributes['exception.type']).toBe('Error')
+  expect(exceptions[0]!.attributes['exception.message']).toBe('boom')
+  expect(exceptions[0]!.attributes).not.toHaveProperty('exception.escaped')
 
-  // Sibling and parent must remain unset-status (instrumentation does not
-  // pre-fill OK; only application code sets that).
   const okSpans = spans.filter((s) => s.name === 'chain.ok')
   expect(okSpans).toHaveLength(2)
   for (const s of okSpans) expect(s.status).toBeUndefined()

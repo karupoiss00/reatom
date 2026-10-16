@@ -1,6 +1,11 @@
 {
   "extends": "../tsconfig.json",
-  "include": ["./compatibility.ts"],
+  "include": [
+    "./compatibility.ts",
+    "./v2-api.ts",
+    "./web-analytics.ts",
+    "./gdpr.ts"
+  ],
   "compilerOptions": {
     "noEmit": true
   }

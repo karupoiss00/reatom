@@ -3,8 +3,18 @@
 // and fragments survive — naive concatenation would mangle endpoints
 // like `https://collector?token=abc` into `…?token=abc/v1/traces`.
 // https://opentelemetry.io/docs/specs/otlp/#otlphttp-request
-export const tracesUrl = (endpoint: string): string => {
+export type OtlpHttpSignal = 'traces' | 'logs'
+
+export const signalUrl = (
+  endpoint: string,
+  signal: OtlpHttpSignal,
+): string => {
   const url = new URL(endpoint)
-  url.pathname = url.pathname.replace(/\/$/, '') + '/v1/traces'
+  url.pathname = url.pathname.replace(/\/$/, '') + `/v1/${signal}`
   return url.toString()
 }
+
+export const tracesUrl = (endpoint: string): string =>
+  signalUrl(endpoint, 'traces')
+
+export const logsUrl = (endpoint: string): string => signalUrl(endpoint, 'logs')

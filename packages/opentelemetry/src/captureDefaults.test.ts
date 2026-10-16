@@ -3,7 +3,7 @@ import { expect, test } from 'vitest'
 
 import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
 import { resourceAttributesVar } from './resourceAttributesVar.ts'
-import { parseSpans } from './test-helpers.ts'
+import { parseLogRecords, parseSpans } from './test-helpers.ts'
 import type { OtlpAnyValue, OtlpAttrValue } from './toOtlpValue.ts'
 
 const setup = (traced: boolean, captureValues?: false) => {
@@ -11,6 +11,7 @@ const setup = (traced: boolean, captureValues?: false) => {
   const run = context.start(() => bind(<T>(callback: () => T) => callback()))
   const otel = traced
     ? reatomOpentelemetry({
+        name: 'captureDefaults',
         endpoint: 'https://collector.invalid',
         serviceName: 'capture-defaults',
         filter: (target) => target.name.startsWith('capture-default.'),
@@ -56,10 +57,13 @@ const expectGettersUntouched = async (
       return () => target(input)
     })
     const result = run(invoke)
-    expect(result).toBe(output)
     if (kind === 'async-payload') {
-      expect(result).toBe(applicationPromise)
+      expect(result).toBeInstanceOf(Promise)
+      expect(result).not.toBe(applicationPromise)
+      expect(await result).toBe(value)
       expect(await applicationPromise).toBe(value)
+    } else {
+      expect(result).toBe(output)
     }
     expect(bodyCalls).toBe(1)
     await otel?.flush()
@@ -82,10 +86,13 @@ for (const kind of ['params', 'payload', 'async-payload'] as const) {
 test('without an adapter, application getters stay untouched', () =>
   expectGettersUntouched('params', false))
 
-test('default span exports metadata without parameter or result values', async () => {
+test('default span captures params and payload without an opt-in flag', async () => {
   const { run, otel, bodies, spans } = setup(true)
-  const input = { private: 'parameter-private-sentinel' }
-  const output = { private: 'result-private-sentinel' }
+  const input = {
+    sku: 'parameter-public-sentinel',
+    password: 'parameter-private-sentinel',
+  }
+  const output = { ok: true, token: 'result-private-sentinel' }
   try {
     const target = run(() =>
       action((received: typeof input) => {
@@ -98,19 +105,25 @@ test('default span exports metadata without parameter or result values', async (
     expect(spans().map((span) => span.name)).toEqual([
       'capture-default.metadata',
     ])
-    expect(bodies.join('')).not.toContain('parameter-private-sentinel')
-    expect(bodies.join('')).not.toContain('result-private-sentinel')
-    expect(spans()[0]!.attributes).not.toHaveProperty('params')
-    expect(spans()[0]!.attributes).not.toHaveProperty('payload')
+    const wire = bodies.join('')
+    expect(wire).toContain('parameter-public-sentinel')
+    expect(wire).toContain('[redacted]')
+    expect(wire).not.toContain('parameter-private-sentinel')
+    expect(wire).not.toContain('result-private-sentinel')
+    expect(spans()[0]!.attributes).toHaveProperty('reatom.params')
+    expect(spans()[0]!.attributes).toHaveProperty('reatom.payload')
   } finally {
     otel!.dispose()
   }
 })
 
-test('default exception preserves the throw and exports only its safe type', async () => {
+test('default exception preserves the throw and captures message and stack', async () => {
   const { run, otel, bodies, spans } = setup(true)
   const error = new Error('message-private-sentinel')
-  error.stack = 'stack-private-sentinel'
+  Object.defineProperty(error, 'stack', {
+    configurable: true,
+    value: 'stack-private-sentinel',
+  })
   error.name = 'name-private-sentinel'
   try {
     const target = run(() =>
@@ -132,15 +145,21 @@ test('default exception preserves the throw and exports only its safe type', asy
     expect(spans().map((span) => span.name)).toEqual([
       'capture-default.exception',
     ])
-    expect(spans()[0]!.events).toHaveLength(1)
-    expect(spans()[0]!.events[0]!.name).toBe('exception')
-    expect(spans()[0]!.events[0]!.attributes).toEqual({
+    expect(spans()[0]!.events).toEqual([])
+    const exceptions = bodies
+      .flatMap(parseLogRecords)
+      .filter((record) => record.eventName === 'exception')
+    expect(exceptions).toHaveLength(1)
+    expect(exceptions[0]!.severityNumber).toBe(17)
+    expect(exceptions[0]!.traceId).toBe(spans()[0]!.traceId)
+    expect(exceptions[0]!.spanId).toBe(spans()[0]!.spanId)
+    expect(exceptions[0]!.attributes).toMatchObject({
       'exception.type': 'Error',
+      'exception.message': 'message-private-sentinel',
+      'exception.stacktrace': 'stack-private-sentinel',
     })
-    expect(bodies.join('')).not.toContain('message-private-sentinel')
-    expect(bodies.join('')).not.toContain('stack-private-sentinel')
     expect(bodies.join('')).not.toContain('name-private-sentinel')
-    expect(spans()[0]!.status?.message).toBeUndefined()
+    expect(spans()[0]!.status?.message).toBe('message-private-sentinel')
   } finally {
     otel!.dispose()
   }
@@ -207,6 +226,7 @@ for (const source of ['factory', 'ambient'] as const) {
         bind(<T>(callback: () => T) => callback()),
       )
       const otel = reatomOpentelemetry({
+        name: 'captureDefaults',
         endpoint: 'https://collector.invalid',
         serviceName: 'resource-snapshot',
         resourceAttributes: source === 'factory' ? attributes : undefined,

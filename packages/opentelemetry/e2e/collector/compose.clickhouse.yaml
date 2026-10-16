@@ -1,0 +1,111 @@
+services:
+  clickhouse:
+    image: ${CLICKHOUSE_IMAGE:?Run the host run-clickhouse.mjs script}
+    platform: linux/arm64
+    pull_policy: never
+    hostname: clickhouse
+    environment:
+      CLICKHOUSE_DB: otel
+      CLICKHOUSE_PASSWORD: e2e
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    volumes:
+      - type: bind
+        source: ./clickhouse-listen.xml
+        target: /etc/clickhouse-server/config.d/listen.xml
+        read_only: true
+        bind:
+          create_host_path: false
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'clickhouse-client',
+          '--user',
+          'default',
+          '--password',
+          'e2e',
+          '--query',
+          'SELECT 1',
+        ]
+      interval: 2s
+      timeout: 5s
+      retries: 40
+      start_period: 20s
+    networks: [clickhouse_e2e]
+  collector:
+    image: ${COLLECTOR_IMAGE:?Run the host run-clickhouse.mjs script}
+    platform: linux/arm64
+    pull_policy: never
+    command: [--config=/etc/otelcol-contrib/config.yaml]
+    stop_grace_period: 30s
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=64m,mode=1777
+    volumes:
+      - type: bind
+        source: ./collector.clickhouse.yaml
+        target: /etc/otelcol-contrib/config.yaml
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${COLLECTOR_ARTIFACTS:?Fresh artifacts directory required}
+        target: /artifacts
+        bind:
+          create_host_path: false
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    networks: [clickhouse_e2e]
+  runner:
+    image: ${COLLECTOR_RUNNER_IMAGE:?Run prepare-images.mjs first}
+    platform: linux/arm64
+    pull_policy: never
+    user: '10001:10001'
+    init: true
+    working_dir: /suite
+    read_only: true
+    shm_size: 1gb
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=512m,mode=1777
+    environment:
+      COLLECTOR_ARTIFACTS: /artifacts
+      COLLECTOR_APPS: /apps
+      COLLECTOR_RUN_ID: ${COLLECTOR_RUN_ID:?Unique run ID required}
+      HOME: /tmp
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: e2e
+      CLICKHOUSE_DATABASE: otel
+    volumes:
+      - type: bind
+        source: .
+        target: /suite
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${COLLECTOR_APPS:?Prepared apps directory required}
+        target: /apps
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${COLLECTOR_ARTIFACTS:?Fresh artifacts directory required}
+        target: /artifacts
+        bind:
+          create_host_path: false
+    networks:
+      clickhouse_e2e:
+        aliases: [runner]
+networks:
+  clickhouse_e2e:
+    internal: true

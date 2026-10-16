@@ -1,8 +1,13 @@
 import { expect, test } from 'vitest'
 
-import { buildExportPayload, buildResource } from './buildExportPayload.ts'
+import {
+  buildExportPayload,
+  buildLogsPayload,
+  buildResource,
+} from './buildExportPayload.ts'
+import { buildLogRecord } from './buildLogRecord.ts'
 import { buildSpan } from './buildSpan.ts'
-import type { SpanId, TraceId } from './spanContext.ts'
+import type { SpanId, TraceId } from './traceContext.ts'
 
 const makeSpan = (name: string) =>
   buildSpan({
@@ -103,4 +108,29 @@ test('builds empty resource attributes and owns the spans array', () => {
       },
     ],
   })
+})
+
+test('owns the logRecords array', () => {
+  const logs = [
+    buildLogRecord({
+      eventName: 'reatom.log',
+      traceId: '0af7651916cd43dd8448eb211c80319c' as TraceId,
+      spanId: 'b7ad6b7169203331' as SpanId,
+      timeMs: 0,
+    }),
+  ]
+  const result = buildLogsPayload({
+    groups: [
+      {
+        resourceAttributes: { 'service.name': 'my-app' },
+        version: '1.0.0',
+        logs,
+      },
+    ],
+  })
+  logs.length = 0
+  expect(result.resourceLogs[0]!.scopeLogs[0]!.logRecords).toHaveLength(1)
+  expect(result.resourceLogs[0]!.scopeLogs[0]!.logRecords[0]!.eventName).toBe(
+    'reatom.log',
+  )
 })

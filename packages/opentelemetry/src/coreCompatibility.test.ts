@@ -53,6 +53,7 @@ test.each(['capture', 'throw', 'filtered'] as const)(
     const reads: number[] = []
     const bodies: string[] = []
     const otel = reatomOpentelemetry({
+    name: 'coreCompatibility',
       endpoint: 'https://collector.invalid',
       serviceName: 'compat',
       filter: (target) =>
@@ -116,11 +117,9 @@ test.each(['capture', 'throw', 'filtered'] as const)(
       })
       await otel.flush()
       expect(bodies.flatMap(parseSpans).map((span) => span.name)).toEqual(
-        mode === 'capture' ? ['compat.traced', 'compat.traced'] : [],
+        mode === 'filtered' ? [] : ['compat.traced', 'compat.traced'],
       )
-      expect(otel.stats().droppedByReason.observation).toBe(
-        mode === 'throw' ? 2 : 0,
-      )
+      expect(otel.stats().droppedByReason.observation).toBe(0)
     } finally {
       run(() => {
         unsubscribeRaw()
@@ -139,6 +138,7 @@ const runSyncParity = async (traced: boolean) => {
   const bodies: string[] = []
   const otel = traced
     ? reatomOpentelemetry({
+    name: 'coreCompatibility',
         endpoint: 'http://collector.invalid',
         serviceName: 'core-compatibility',
         batchInterval: 100_000,
@@ -354,6 +354,7 @@ const runAsyncParity = async (traced: boolean) => {
   const bodies: string[] = []
   const otel = traced
     ? reatomOpentelemetry({
+    name: 'coreCompatibility',
         endpoint: 'http://collector.invalid',
         serviceName: 'core-compatibility',
         batchInterval: 100_000,
@@ -558,6 +559,7 @@ const runAbortAndResetParity = async (traced: boolean) => {
   const bodies: string[] = []
   const otel = traced
     ? reatomOpentelemetry({
+    name: 'coreCompatibility',
         endpoint: 'http://collector.invalid',
         serviceName: 'core-compatibility',
         batchInterval: 100_000,
@@ -701,6 +703,7 @@ const runPolicyParity = async (traced: boolean) => {
   const manualBodies: string[] = []
   const manualOtel = traced
     ? reatomOpentelemetry({
+    name: 'coreCompatibility',
         endpoint: 'http://collector.invalid',
         serviceName: 'core-compatibility',
         filter: () => false,
@@ -775,6 +778,7 @@ const runPolicyParity = async (traced: boolean) => {
     const reattachedBodies: string[] = []
     const reattachedOtel = traced
       ? reatomOpentelemetry({
+    name: 'coreCompatibility',
           endpoint: 'http://collector.invalid',
           serviceName: 'core-compatibility',
           batchInterval: 100_000,
@@ -807,6 +811,7 @@ const runPolicyParity = async (traced: boolean) => {
   const capacityBodies: string[] = []
   const capacityOtel = traced
     ? reatomOpentelemetry({
+    name: 'coreCompatibility',
         endpoint: 'http://collector.invalid',
         serviceName: 'core-compatibility',
         maxQueueSize: 1,

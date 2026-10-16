@@ -9,6 +9,7 @@ test('poisoned then cancelling its reservation must not capture on late settleme
     async () => new Response(null, { status: 200 }),
   )
   const otel = reatomOpentelemetry({
+    name: 'subscriptionFailure',
     endpoint: 'http://collector.invalid',
     serviceName: 'test',
     captureValues: {},

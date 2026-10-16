@@ -11,6 +11,7 @@ test('capacity includes in-flight records and export is single-flight', async ()
     () => new Promise<Response>((resolve) => pending.push(resolve)),
   )
   const otel = reatomOpentelemetry({
+    name: 'pipeline',
     endpoint: 'http://collector.invalid',
     serviceName: 'test',
     maxBatchSize: 1,
@@ -45,6 +46,7 @@ test('invalid queue options are rejected before installing instrumentation', () 
   try {
     expect(() => {
       otel = reatomOpentelemetry({
+    name: 'pipeline',
         endpoint: 'http://collector.invalid',
         serviceName: 'test',
         maxQueueSize: 0,
@@ -74,6 +76,7 @@ const emit = (count = 1) => {
 }
 
 const base = {
+  name: 'pipeline',
   endpoint: 'http://collector.invalid',
   serviceName: 'test',
   batchInterval: 100_000,
@@ -90,6 +93,7 @@ test('flush wait deadlines are independent of each other and each batch deadline
     ReturnType<typeof deferred<Response>> & { signal: AbortSignal }
   > = []
   const otel = reatomOpentelemetry({
+    name: 'pipeline',
     ...base,
     fetch: async (_url, init) => {
       const request = { ...deferred<Response>(), signal: init!.signal! }
@@ -152,6 +156,7 @@ test('background exports have a batch deadline without a flush caller', async ()
   const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
   let signal!: AbortSignal
   const otel = reatomOpentelemetry({
+    name: 'pipeline',
     ...base,
     maxBatchSize: 10,
     batchInterval: 1000,
@@ -206,6 +211,7 @@ test.each([400, 503])(
         return new Response(null)
       })
     const otel = reatomOpentelemetry({
+    name: 'pipeline',
       ...base,
       fetch,
       retry: { maxRetries: 1, baseDelayMs: 0 },
@@ -301,6 +307,7 @@ test('cleanup ignoring abort holds the lease until late settlement', async () =>
   const body = new ReadableStream({ cancel: () => cleanup.promise })
   const fetch = vi.fn(async () => new Response(body, { status: 503 }))
   const otel = reatomOpentelemetry({
+    name: 'pipeline',
     ...base,
     fetch,
     retry: { maxRetries: 1, baseDelayMs: 0 },
@@ -343,6 +350,7 @@ test('Retry-After beyond the batch budget drops as timeout without early retry',
       }),
   )
   const otel = reatomOpentelemetry({
+    name: 'pipeline',
     ...base,
     fetch,
     retry: { maxRetries: 1, maxDelayMs: 1 },
@@ -365,6 +373,7 @@ test('Retry-After beyond the batch budget drops as timeout without early retry',
 test('admission precedes traversal and long application promises hold bounded capacity', async () => {
   const payloads: unknown[] = []
   const otel = reatomOpentelemetry({
+    name: 'pipeline',
     ...base,
     captureValues: {},
     maxQueueSize: 1,
@@ -393,7 +402,9 @@ test('admission precedes traversal and long application promises hold bounded ca
     expect(JSON.stringify(payloads)).toContain('known')
     traversals = 0
     context.start(() => {
-      expect(long()).toBe(pending.promise)
+      const hung = long()
+      expect(hung).toBeInstanceOf(Promise)
+      expect(hung).not.toBe(pending.promise)
       expect(read()).toBe(value)
     })
     expect(traversals).toBe(0)
@@ -420,6 +431,7 @@ test('admission precedes traversal and long application promises hold bounded ca
 
 test('failed observation releases its reservation and subsequent work still exports', async () => {
   const otel = reatomOpentelemetry({
+    name: 'pipeline',
     ...base,
     maxQueueSize: 1,
     fetch: async () => new Response(null),
@@ -454,6 +466,7 @@ test.each(['accepted', 'refused', 'throw'] as const)(
     })
     const fetch = vi.fn(async () => new Response(null))
     const otel = reatomOpentelemetry({
+    name: 'pipeline',
       ...base,
       maxBatchSize: 10,
       useBeacon: true,
@@ -464,7 +477,7 @@ test.each(['accepted', 'refused', 'throw'] as const)(
       // Four records fit the shared 60 KiB budget; the oldest fifth does not.
       const names = Array.from(
         { length: 5 },
-        (_, i) => `record-${i}-` + 'x'.repeat(14_000),
+        (_, i) => `record-${i}-` + 'x'.repeat(12_500),
       )
       context.start(() => {
         for (const name of names) action(() => 42, name)()
@@ -509,6 +522,7 @@ test('unload does not steal a normal export slot or count unsent records as lost
     .mockResolvedValue(new Response(null))
   const sendBeacon = vi.fn(() => true)
   const otel = reatomOpentelemetry({
+    name: 'pipeline',
     ...base,
     fetch,
     useBeacon: true,
@@ -533,6 +547,7 @@ test('unload does not steal a normal export slot or count unsent records as lost
 
 test('an ID-generation failure releases admission before the application continues', async () => {
   const otel = reatomOpentelemetry({
+    name: 'pipeline',
     ...base,
     maxQueueSize: 1,
     fetch: async () => new Response(null),

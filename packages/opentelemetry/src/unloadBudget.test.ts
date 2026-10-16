@@ -8,6 +8,7 @@ import { availableUnloadBytes, reserveUnloadBytes } from './unloadBudget.ts'
 const LIMIT = 60 * 1024
 const bytes = (body: string) => new TextEncoder().encode(body).length
 const base = {
+  name: 'unloadBudget',
   endpoint: 'http://collector.invalid',
   serviceName: 'unload-budget',
   batchInterval: 100_000,
@@ -184,12 +185,14 @@ test.each(['HTTP 503', 'oversized response'] as const)(
     })
     const a = reatomOpentelemetry({
       ...base,
+      name: 'unloadBudget-a-retry',
       filter: (target) => target.name.startsWith('a.'),
       retry: { maxRetries: 1, baseDelayMs: 1, maxDelayMs: 1 },
       fetch: fetchA,
     })
     const b = reatomOpentelemetry({
       ...base,
+      name: 'unloadBudget-b-retry',
       filter: (target) => target.name.startsWith('b.'),
       fetch: fetchB,
     })
@@ -297,11 +300,13 @@ test.each([false, true])(
     })
     const a = reatomOpentelemetry({
       ...base,
+      name: 'unloadBudget-a-beacon',
       filter: (t) => t.name.startsWith('a.'),
       fetch: fetchA,
     })
     const b = reatomOpentelemetry({
       ...base,
+      name: 'unloadBudget-b-beacon',
       filter: (t) => t.name.startsWith('b.'),
       fetch: fetchB,
       useBeacon,
@@ -355,6 +360,7 @@ test('accepted beacon bytes survive repeated lifecycle events and adapter recrea
   })
   const fetch = vi.fn(async () => new Response(null))
   let otel = reatomOpentelemetry({
+    name: 'unloadBudget',
     ...base,
     useBeacon: true,
     sendBeacon,
@@ -477,12 +483,14 @@ test.each(['export', 'timeout', 'disposed'] as const)(
     const fetchB = vi.fn(async () => new Response(null))
     const a = reatomOpentelemetry({
       ...base,
+      name: 'unloadBudget-a-timeout',
       exportTimeoutMs: 30,
       filter: (t) => t.name.startsWith('a.'),
       fetch: fetchA,
     })
     const b = reatomOpentelemetry({
       ...base,
+      name: 'unloadBudget-b-timeout',
       filter: (t) => t.name.startsWith('b.'),
       fetch: fetchB,
     })

@@ -103,7 +103,7 @@ test('does not call toJSON, coercion, iterator, constructor or function name acc
   expect(calls).toBe(0)
   expect(encoded).toContain('visible')
   expect(encoded).not.toContain('application hook')
-  expect(opaque).toBe('[Opaque]')
+  expect(opaque).toEqual({ '@map': [['private', 'hidden']] })
 })
 
 test('owns nested object, array and byte snapshots before application mutation', () => {
@@ -174,8 +174,10 @@ test('preserves primitives and safely normalizes unsupported scalar values', () 
     '-Infinity',
   ])
   expect(session.capture('value', 42n)).toBe(42n)
-  expect(session.capture('value', new Date())).toBe('[Opaque]')
-  expect(session.capture('value', new Set([1]))).toBe('[Opaque]')
+  expect(session.capture('value', new Date(0))).toBe(
+    '1970-01-01T00:00:00.000Z',
+  )
+  expect(session.capture('value', new Set([1]))).toEqual({ '@set': [1] })
 })
 
 test('preserves own __proto__ content and ignores inherited and non-enumerable values', () => {
@@ -193,7 +195,7 @@ test('preserves own __proto__ content and ignores inherited and non-enumerable v
   ).toEqual({ public: 'visible' })
 })
 
-test('never inspects objects beyond depth two', () => {
+test('never inspects objects beyond depth five', () => {
   let traps = 0
   const deep = new Proxy(
     {},
@@ -213,10 +215,14 @@ test('never inspects objects beyond depth two', () => {
     },
   )
 
-  const result = createValueCapture().capture('state', { child: { deep } })
+  const result = createValueCapture().capture('state', {
+    a: { b: { c: { d: { e: { deep } } } } },
+  })
 
   expect(traps).toBe(0)
-  expect(result).toEqual({ child: { deep: '[Truncated]' } })
+  expect(result).toEqual({
+    a: { b: { c: { d: { e: '[Truncated]' } } } },
+  })
 })
 
 test('shares the entry budget between params and payload and stops before getters or redaction', () => {
@@ -368,6 +374,29 @@ test('oversized keys and binary inputs do not require traversing their values', 
   expect(JSON.stringify(object)).toContain('[Truncated]')
   expect(bytes).toBe('[Truncated]')
   expect(() => session.capture('k'.repeat(1_000_000), {})).toThrow(RangeError)
+})
+
+test('redacts password, secret and token keys at any reachable depth by default', () => {
+  const result = createValueCapture().capture('params', [
+    {
+      sku: 'public',
+      password: 'hidden-password',
+      nested: { secret: 'hidden-secret', public: 'ok' },
+    },
+  ])
+  expect(result).toEqual([
+    {
+      sku: 'public',
+      password: '[redacted]',
+      nested: { secret: '[redacted]', public: 'ok' },
+    },
+  ])
+  expect(
+    createValueCapture().capture('payload', {
+      ok: true,
+      token: 'hidden-token',
+    }),
+  ).toEqual({ ok: true, token: '[redacted]' })
 })
 
 test('redacts root and child keys before normalization and owns transformed values', () => {
@@ -666,8 +695,8 @@ test.each([
   ['Uint16Array', new Uint16Array([1, 2, 3])],
   ['DataView', new DataView(new ArrayBuffer(3))],
 ] as const)(
-  'keeps %s opaque even when its user tag pretends to be Uint8Array',
-  (_kind: string, input: ArrayBufferView) => {
+  'names %s when its user tag pretends to be Uint8Array',
+  (kind: string, input: ArrayBufferView) => {
     let tagReads = 0
     Object.defineProperty(input, Symbol.toStringTag, {
       get() {
@@ -679,7 +708,7 @@ test.each([
     const result = createValueCapture().capture('bytes', input)
 
     expect(tagReads).toBe(0)
-    expect(result).toBe('[Opaque]')
+    expect(result).toBe(`[${kind}]`)
   },
 )
 

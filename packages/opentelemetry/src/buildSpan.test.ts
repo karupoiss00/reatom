@@ -2,7 +2,7 @@ import { expect, test } from 'vitest'
 
 import type { SpanInput } from './buildSpan.ts'
 import { buildSpan } from './buildSpan.ts'
-import type { SpanId, TraceId } from './spanContext.ts'
+import type { SpanId, TraceId } from './traceContext.ts'
 
 const TRACE_ID = '0af7651916cd43dd8448eb211c80319c' as TraceId
 const SPAN_ID = 'b7ad6b7169203331' as SpanId
@@ -116,6 +116,22 @@ test('includes attributes when provided', () => {
   ])
 })
 
+test('renames params and payload to reatom.params and reatom.payload', () => {
+  const span = buildSpan({
+    traceId: TRACE_ID,
+    spanId: SPAN_ID,
+    name: 'test',
+    startTimeMs: 0,
+    endTimeMs: 0,
+    attributes: { params: '[1]', payload: '2', other: 'x' },
+  })
+  expect(span.attributes).toEqual([
+    { key: 'reatom.params', value: { stringValue: '[1]' } },
+    { key: 'reatom.payload', value: { stringValue: '2' } },
+    { key: 'other', value: { stringValue: 'x' } },
+  ])
+})
+
 test('maps status names to OTLP integer codes', () => {
   const statusOf = (status: NonNullable<SpanInput['status']>) =>
     buildSpan({
@@ -175,6 +191,51 @@ test('includes events when provided', () => {
       timeUnixNano: '1500000000',
       name: 'exception',
       attributes: [{ key: 'message', value: { stringValue: 'oops' } }],
+    },
+  ])
+})
+
+test('omits links when absent', () => {
+  const span = buildSpan({
+    traceId: TRACE_ID,
+    spanId: SPAN_ID,
+    name: 'test',
+    startTimeMs: 0,
+    endTimeMs: 0,
+  })
+  expect('links' in span).toBe(false)
+})
+
+test('includes links when provided', () => {
+  const span = buildSpan({
+    traceId: TRACE_ID,
+    spanId: SPAN_ID,
+    name: 'cart.total',
+    startTimeMs: 0,
+    endTimeMs: 0,
+    links: [
+      {
+        traceId: TRACE_ID,
+        spanId: PARENT_SPAN_ID,
+        attributes: [
+          {
+            key: 'reatom.link.reason',
+            value: { stringValue: 'computed.dependency' },
+          },
+        ],
+      },
+    ],
+  })
+  expect(span.links).toEqual([
+    {
+      traceId: TRACE_ID,
+      spanId: PARENT_SPAN_ID,
+      attributes: [
+        {
+          key: 'reatom.link.reason',
+          value: { stringValue: 'computed.dependency' },
+        },
+      ],
     },
   ])
 })

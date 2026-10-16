@@ -18,6 +18,7 @@ const make = (
 ) => {
   const bodies: string[] = []
   const otel = reatomOpentelemetry({
+    name: 'noCore',
     endpoint: 'http://collector.invalid',
     serviceName: 'no-core',
     batchInterval: 60000,
@@ -43,24 +44,24 @@ test('sync root/action nesting exports actual spans and preserves values and ide
   }, 'child')
   const parent = action(() => child(result), 'parent')
   try {
-    expect(run(() => otel.startTrace('root', parent))).toBe(result)
+    expect(run(parent)).toBe(result)
     expect(calls).toBe(1)
-    expect(otel.getCurrentContext()).toBeUndefined()
+    expect(run(() => otel.traceVar.get())).toBeUndefined()
     await otel.flush()
     const spans = bodies.flatMap(parseSpans)
-    expect(spans.map((s) => s.name).sort()).toEqual(['child', 'parent', 'root'])
-    const root = spans.find((s) => s.name === 'root')!
+    expect(spans.map((s) => s.name).sort()).toEqual(['child', 'parent'])
     const outer = spans.find((s) => s.name === 'parent')!
     const inner = spans.find((s) => s.name === 'child')!
-    expect(outer.parentSpanId).toBe(root.spanId)
+    expect(outer.parentSpanId).toBeUndefined()
     expect(inner.parentSpanId).toBe(outer.spanId)
     expect(new Set(spans.map((s) => s.traceId)).size).toBe(1)
-    expect(bodies.join('')).not.toContain('private-payload')
+    expect(bodies.join('')).toContain('private-payload')
+    expect(bodies.join('')).toContain('reatom.payload')
     expect(spans.every((s) => s.startTimeUnixNano <= s.endTimeUnixNano)).toBe(
       true,
     )
     expect(otel.stats()).toMatchObject({
-      exported: 3,
+      exported: 2,
       dropped: 0,
       active: 0,
       queued: 0,
@@ -170,7 +171,7 @@ test('adapter never adds private observation or continuation metadata to origina
     )
   }, 'private-metadata')
   try {
-    run(() => otel.startTrace('metadata-root', target))
+    run(target)
     expect(frameKeys).toEqual([])
     expect(contextKeys).toEqual([])
     await otel.flush()

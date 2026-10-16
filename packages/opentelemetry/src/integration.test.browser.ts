@@ -27,6 +27,7 @@ const control = async (command: 'state' | 'reset' | 'hold' | 'release') => {
 }
 const setup = (scenario: string, cors: 'allow' | 'deny' = 'allow') => {
   const adapter = reatomOpentelemetry({
+    name: 'browser-synthetic',
     endpoint: `${inject('otelCollectorUrl')}/collector/${cors}/${scenario}`,
     serviceName: 'browser-synthetic',
     filter: (target) => target.name.startsWith('browser.'),

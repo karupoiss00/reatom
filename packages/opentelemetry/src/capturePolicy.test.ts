@@ -8,19 +8,20 @@ const createRun = () =>
   context.start(() => bind(<T>(callback: () => T) => callback()))
 
 const policyInput = {
+  name: 'capturePolicy',
   endpoint: 'https://collector.invalid',
   serviceName: 'capture-policy',
   batchInterval: 100_000,
   maxBatchSize: 10,
   maxQueueSize: 10,
   retry: { maxRetries: 0 },
-  captureValues: {},
 } as const
 
 test('R05 captures sync action params before its body and owns the completed payload', async () => {
   const bodies: string[] = []
   const run = createRun()
   const otel = reatomOpentelemetry({
+    name: 'capturePolicy',
     ...policyInput,
     fetch: async (_url, init) => {
       bodies.push(String(init?.body))
@@ -48,8 +49,10 @@ test('R05 captures sync action params before its body and owns the completed pay
     await otel.flush()
     const [span] = bodies.flatMap(parseSpans)
     expect(span?.name).toBe('capture-policy.r05-sync')
-    const capturedParams = JSON.parse(String(span?.attributes.params))
-    const capturedPayload = JSON.parse(String(span?.attributes.payload))
+    const capturedParams = JSON.parse(String(span?.attributes['reatom.params']))
+    const capturedPayload = JSON.parse(
+      String(span?.attributes['reatom.payload']),
+    )
     expect(capturedParams).toEqual([{ value: 'R05_sync_before' }])
     expect(capturedPayload).toEqual({ result: 'R05_sync_after' })
     expect(bodies.join('')).not.toContain('R05_sync_inside')
@@ -64,6 +67,7 @@ test('R05 async action retains its original promise and owns begin and completio
   const bodies: string[] = []
   const run = createRun()
   const otel = reatomOpentelemetry({
+    name: 'capturePolicy',
     ...policyInput,
     fetch: async (_url, init) => {
       bodies.push(String(init?.body))
@@ -87,12 +91,12 @@ test('R05 async action retains its original promise and owns begin and completio
     )
 
     const applicationPromise = run(() => target(params))
-    expect(applicationPromise).toBe(originalPromise)
+    expect(applicationPromise).toBeInstanceOf(Promise)
+    expect(applicationPromise).not.toBe(originalPromise)
     gate.resolve()
-    // The observer registers its completion handler during invocation, before
-    // this caller awaits the original promise. The extra microtask confirms
-    // that handler has committed before the deliberately late mutations.
-    expect(await originalPromise).toBe(output)
+    // The observer registers its completion handler during invocation. Awaiting
+    // the derived promise settles after that handler records the snapshots.
+    expect(await applicationPromise).toBe(output)
     await Promise.resolve()
     expect(otel.stats()).toMatchObject({ active: 0, queued: 1 })
     params.value = 'R05_async_late_input'
@@ -101,10 +105,10 @@ test('R05 async action retains its original promise and owns begin and completio
     await otel.flush()
     const [span] = bodies.flatMap(parseSpans)
     expect(span?.name).toBe('capture-policy.r05-async')
-    expect(JSON.parse(String(span?.attributes.params))).toEqual([
+    expect(JSON.parse(String(span?.attributes['reatom.params']))).toEqual([
       { value: 'R05_async_before' },
     ])
-    expect(JSON.parse(String(span?.attributes.payload))).toEqual({
+    expect(JSON.parse(String(span?.attributes['reatom.payload']))).toEqual({
       result: 'R05_async_after',
     })
     expect(bodies.join('')).not.toContain('R05_async_inside')
@@ -121,6 +125,7 @@ test('R06 uses key-aware redaction in the final OTLP body without changing the a
   const bodies: string[] = []
   const run = createRun()
   const otel = reatomOpentelemetry({
+    name: 'capturePolicy',
     ...policyInput,
     captureValues: {
       redact: (key, value) => (key === 'private' ? '[redacted]' : value),
@@ -150,10 +155,11 @@ test('R06 uses key-aware redaction in the final OTLP body without changing the a
   }
 })
 
-test('R06 drops a throwing redaction observation and releases its reservation', async () => {
+test('R06 a throwing redaction records [Failed] for that value and keeps the span', async () => {
   const bodies: string[] = []
   const run = createRun()
   const otel = reatomOpentelemetry({
+    name: 'capturePolicy',
     ...policyInput,
     captureValues: {
       redact: (key, value) => {
@@ -177,15 +183,17 @@ test('R06 drops a throwing redaction observation and releases its reservation', 
     expect(run(target)).toBe(privateOutput)
     expect(otel.stats()).toMatchObject({
       active: 0,
-      queued: 1,
-      droppedByReason: { observation: 1 },
+      queued: 2,
+      droppedByReason: { observation: 0 },
     })
 
     await otel.flush()
-    expect(bodies.flatMap(parseSpans).map((span) => span.name)).toEqual([
+    expect(bodies.flatMap(parseSpans).map((span) => span.name).sort()).toEqual([
       'capture-policy.r06-control',
+      'capture-policy.r06-throwing',
     ])
     expect(bodies.join('')).toContain('R06_positive_control')
+    expect(bodies.join('')).toContain('[Failed]')
     expect(bodies.join('')).not.toContain('R06_throwing_private')
   } finally {
     otel.dispose()
@@ -213,6 +221,7 @@ test('R04 only admitted records traverse, redact, and export values', async () =
       },
     )
   const otel = reatomOpentelemetry({
+    name: 'capturePolicy',
     ...policyInput,
     maxQueueSize: 1,
     maxBatchSize: 2,
@@ -278,6 +287,7 @@ test('R04 filter and dispose skip value traversal and preserve the returned obje
   )
   const create = (filter?: () => boolean) =>
     reatomOpentelemetry({
+    name: 'capturePolicy',
       ...policyInput,
       filter,
       captureValues: {

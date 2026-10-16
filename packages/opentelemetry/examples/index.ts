@@ -1,1 +1,1 @@
-export { createTracedCounter } from './with-tracing'
+export { createTracedCounter } from './with-tracing.ts'

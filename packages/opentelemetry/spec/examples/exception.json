@@ -1,0 +1,38 @@
+{
+  "span": {
+    "traceId": "41608a9f28ce831fc68a5173cdc62495",
+    "spanId": "e20c97014fba3cd9",
+    "name": "explode",
+    "kind": "internal",
+    "startTimeUnixNano": "1791451168646000000",
+    "endTimeUnixNano": "1791451168646294922",
+    "attributes": {
+      "reatom.name": "explode",
+      "reatom.kind": "action",
+      "reatom.outcome": "error",
+      "reatom.params": "[]",
+      "reatom.frame.id": "1",
+      "reatom.cause.ids": []
+    },
+    "events": [],
+    "status": {
+      "code": "error",
+      "message": "boom"
+    }
+  },
+  "log": {
+    "timeUnixNano": "1791451168646231934",
+    "eventName": "exception",
+    "traceId": "41608a9f28ce831fc68a5173cdc62495",
+    "spanId": "e20c97014fba3cd9",
+    "severityNumber": 17,
+    "attributes": {
+      "event.name": "exception",
+      "exception.type": "TypeError",
+      "exception.message": "boom",
+      "exception.stacktrace": "captured-stack: boom at throw-error",
+      "reatom.frame.id": "1",
+      "reatom.cause.ids": []
+    }
+  }
+}

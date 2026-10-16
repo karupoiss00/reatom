@@ -1,0 +1,58 @@
+{
+  "route": {
+    "traceId": "31ba8c1e4752d9965db527dac342040d",
+    "spanId": "62fe5878d77ce99f",
+    "name": "route goods",
+    "kind": "internal",
+    "startTimeUnixNano": "1791451168536000000",
+    "endTimeUnixNano": "1791451168543000000",
+    "attributes": {
+      "reatom.name": "route goods",
+      "reatom.kind": "route",
+      "reatom.outcome": "ok"
+    },
+    "events": []
+  },
+  "fetch": {
+    "traceId": "31ba8c1e4752d9965db527dac342040d",
+    "spanId": "f3e3eceb482271e7",
+    "parentSpanId": "62fe5878d77ce99f",
+    "name": "goods.fetch",
+    "kind": "internal",
+    "startTimeUnixNano": "1791451168537000000",
+    "endTimeUnixNano": "1791451168542814453",
+    "attributes": {
+      "reatom.name": "goods.fetch",
+      "reatom.kind": "action",
+      "reatom.outcome": "ok",
+      "reatom.params": "[\"tech\"]",
+      "reatom.payload": "[{\"id\":\"tech\"}]",
+      "reatom.attempt": "1",
+      "reatom.frame.id": "4",
+      "reatom.cause.ids": [
+        "5"
+      ]
+    },
+    "events": []
+  },
+  "afterLoad": {
+    "traceId": "31ba8c1e4752d9965db527dac342040d",
+    "spanId": "662e0e542fe35cbb",
+    "parentSpanId": "62fe5878d77ce99f",
+    "name": "goods.afterLoad",
+    "kind": "internal",
+    "startTimeUnixNano": "1791451168544000000",
+    "endTimeUnixNano": "1791451168544042480",
+    "attributes": {
+      "reatom.name": "goods.afterLoad",
+      "reatom.kind": "action",
+      "reatom.outcome": "ok",
+      "reatom.params": "[]",
+      "reatom.payload": "ready",
+      "reatom.attempt": "1",
+      "reatom.frame.id": "12",
+      "reatom.cause.ids": []
+    },
+    "events": []
+  }
+}

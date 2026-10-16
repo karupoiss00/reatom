@@ -18,6 +18,7 @@ test.each([false, true])(
       if (throwing) throw new Error('diagnostic failure')
     })
     const otel = reatomOpentelemetry({
+    name: 'nonInterference',
       endpoint: 'http://collector.invalid',
       serviceName: 'test',
       retry: { maxRetries: 0 },
@@ -125,13 +126,26 @@ for (const reject of [false, true]) {
     const traced = action(() => original, 'traced').extend(
       createTestWithOTel({ isActive: () => true, queueSpan: sink })(),
     )
+    let returned!: Promise<unknown>
     context.start(() => {
-      expect(traced()).toBe(original)
+      returned = traced() as Promise<unknown>
+      expect(returned).toBeInstanceOf(Promise)
+      expect(returned).not.toBe(original)
     })
     finish(value)
-    const [settled] = await Promise.all([outcome, observation])
+    const followed = returned.then(
+      (result) => ({ ok: true, value: result }),
+      (error) => ({ ok: false, value: error }),
+    )
+    const [settled, derived] = await Promise.all([
+      outcome,
+      followed,
+      observation,
+    ])
     expect(settled.ok).toBe(!reject)
     expect(settled.value).toBe(value)
+    expect(derived.ok).toBe(!reject)
+    expect(derived.value).toBe(value)
     expect(sink).toHaveBeenCalledTimes(1)
   })
 }
@@ -149,9 +163,11 @@ test(`action: repeated Promise callbacks finish observation only once`, async ()
   const traced = action(() => original, 'traced').extend(
     createTestWithOTel({ isActive: () => true, queueSpan: sink })(),
   )
+  let returned!: Promise<number>
   context.start(() => {
-    expect(traced()).toBe(original)
+    returned = traced() as Promise<number>
   })
+  expect(await returned).toBe(42)
   expect(await original).toBe(42)
   expect(sink).toHaveBeenCalledTimes(1)
 })

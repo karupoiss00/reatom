@@ -1,8 +1,9 @@
+/** v2 barrel compatibility (spec 02 #28 / F-01 / F-02). */
 import type { AtomLike, Ext, GenericExt } from '@reatom/core'
 import { action, atom, computed, withParams } from '@reatom/core'
 
-import type { ReatomOpentelemetry } from '../dist/index.js'
-import { reatomOpentelemetry } from '../dist/index.js'
+import type { ReatomOpentelemetry } from '../src/index.ts'
+import { reatomOpentelemetry } from '../src/index.ts'
 
 type Equal<Left, Right> =
   (<Value>() => Value extends Left ? 1 : 2) extends <
@@ -13,9 +14,65 @@ type Equal<Left, Right> =
 
 declare function expectExact<Check extends true>(_check?: Check): void
 
-// Compile-only consumer of the built entrypoint. These functions are never run.
+export function missingEndpointKey() {
+  // @ts-expect-error missing endpoint
+  reatomOpentelemetry({ name: 'type-consumer', serviceName: 'type-consumer' })
+}
+
+export function misspelledSpanKind() {
+  const otel = reatomOpentelemetry({
+    name: 'type-consumer',
+    endpoint: 'http://collector.invalid',
+    serviceName: 'type-consumer',
+  })
+  // @ts-expect-error kind: 'clinet'
+  otel.withOTel({ kind: 'clinet' })
+}
+
+export function unguardedParseTraceparent(header: string | null) {
+  const otel = reatomOpentelemetry({
+    name: 'type-consumer',
+    endpoint: null,
+    serviceName: 'type-consumer',
+  })
+  // @ts-expect-error parseTraceparent into traceVar.set
+  otel.traceVar.set(otel.parseTraceparent(header))
+}
+
+export function verifyV1BarrelExportsAbsent() {
+  // @ts-expect-error resourceAttributesVar
+  const resourceAttributesVar: (typeof import('../src/index.ts'))['resourceAttributesVar'] =
+    undefined as never
+  // @ts-expect-error SpanContext
+  const spanContext: import('../src/index.ts').SpanContext = undefined as never
+  // @ts-expect-error startTrace
+  const startTrace: (typeof import('../src/index.ts'))['startTrace'] =
+    undefined as never
+  // @ts-expect-error getCurrentContext
+  const getCurrentContext: (typeof import('../src/index.ts'))['getCurrentContext'] =
+    undefined as never
+  // @ts-expect-error withContext
+  const withContext: (typeof import('../src/index.ts'))['withContext'] =
+    undefined as never
+  void resourceAttributesVar
+  void spanContext
+  void startTrace
+  void getCurrentContext
+  void withContext
+}
+
+export function verifyV1InstanceMethodsAbsent(otel: ReatomOpentelemetry) {
+  // @ts-expect-error startTrace is replaced by traceVar.set(otel.createTrace())
+  otel.startTrace('root', () => {})
+  // @ts-expect-error getCurrentContext is replaced by traceVar.get()
+  otel.getCurrentContext()
+  // @ts-expect-error withContext is replaced by traceVar.run()
+  otel.withContext(undefined, () => {})
+}
+
 export function verifyTypes() {
   const otel = reatomOpentelemetry({
+    name: 'type-consumer',
     endpoint: 'http://collector.invalid',
     serviceName: 'type-consumer',
   })
@@ -145,54 +202,6 @@ export function verifyTypes() {
   expectExact<Equal<typeof _actionThroughExt, typeof rawAction>>()
   // @ts-expect-error OTel extensions require an AtomLike target
   extension({ value: 1 })
-
-  const syncValue: { readonly id: number; status: 'ready' } = {
-    id: 1,
-    status: 'ready',
-  }
-  const syncCallback = () => syncValue
-  const _syncResult = otel.startTrace('types.syncRoot', syncCallback)
-  expectExact<Equal<typeof _syncResult, typeof syncValue>>()
-  expectExact<Equal<typeof _syncResult, ReturnType<typeof syncCallback>>>()
-
-  const identity = <Value>(value: Value): Value => value
-  const _returnedFunction = otel.startTrace(
-    'types.functionRoot',
-    () => identity,
-  )
-  expectExact<Equal<typeof _returnedFunction, typeof identity>>()
-
-  const pending = Promise.resolve(syncValue)
-  const _promiseResult = otel.startTrace('types.promiseRoot', () => pending)
-  expectExact<Equal<typeof _promiseResult, typeof pending>>()
-  expectExact<Equal<typeof _promiseResult, Promise<typeof syncValue>>>()
-
-  const asyncCallback = async () => syncValue
-  const _asyncResult = otel.startTrace('types.asyncRoot', asyncCallback)
-  expectExact<Equal<typeof _asyncResult, ReturnType<typeof asyncCallback>>>()
-  expectExact<Equal<typeof _asyncResult, Promise<typeof syncValue>>>()
-
-  const promiseTag: { readonly tag: 'kept' } = { tag: 'kept' }
-  const taggedPromise = Object.assign(Promise.resolve(syncValue), promiseTag)
-  const _taggedResult = otel.startTrace(
-    'types.taggedPromiseRoot',
-    () => taggedPromise,
-  )
-  expectExact<Equal<typeof _taggedResult, typeof taggedPromise>>()
-  expectExact<Equal<typeof _taggedResult.tag, 'kept'>>()
-  const pair = otel.getCurrentContext()
-  const _contextResult = otel.withContext(pair, () => syncValue)
-  const _contextPromise = otel.withContext(pair, () => taggedPromise)
-  expectExact<Equal<typeof _contextResult, typeof syncValue>>()
-  expectExact<Equal<typeof _contextPromise, typeof taggedPromise>>()
-  otel.withContext(undefined, () => syncValue)
-  // @ts-expect-error a context requires a complete ID pair
-  otel.withContext({ traceId: pair!.traceId }, () => syncValue)
-  // @ts-expect-error withContext does not supply callback arguments
-  otel.withContext(pair, (value: number) => value)
-
-  // @ts-expect-error startTrace does not accept callbacks requiring arguments
-  otel.startTrace('types.badCallback', (value: number) => value)
 }
 
 export function verifyGenericExtension<Target extends AtomLike>(

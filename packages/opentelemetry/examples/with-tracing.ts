@@ -13,23 +13,24 @@ export const createTracedCounter = (options: ReatomOpentelemetryInput) => {
     () => count.set((value) => value + 1),
     'example.increment',
   )
-  const incrementAfter = action(async (wait: Promise<void>) => {
-    const parent = otel.getCurrentContext()
+  const update = action(
+    () => ({
+      count: increment(),
+      doubled: doubled(),
+      context: otel.traceVar.get(),
+    }),
+    'example.update',
+  )
+  const updateAfter = action(async (wait: Promise<void>) => {
     await wrap(wait)
-    return otel.withContext(parent, increment)
-  }, 'example.incrementAfter')
+    return increment()
+  }, 'example.updateAfter')
 
   return {
     count,
     doubled,
-    update: () =>
-      otel.startTrace('example.update', () => ({
-        count: increment(),
-        doubled: doubled(),
-        context: otel.getCurrentContext(),
-      })),
-    updateAfter: (wait: Promise<void>) =>
-      otel.startTrace('example.updateAfter', () => incrementAfter(wait)),
+    update,
+    updateAfter,
     flush: otel.flush,
     dispose: otel.dispose,
   }

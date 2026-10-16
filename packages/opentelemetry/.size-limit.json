@@ -1,0 +1,30 @@
+[
+  {
+    "name": "opentelemetry",
+    "path": "dist/index.js",
+    "import": "{ reatomOpentelemetry, otlpTransport, checkSensitiveNames }",
+    "ignore": ["@reatom/core"],
+    "limit": "16 KB"
+  },
+  {
+    "name": "gdpr",
+    "path": "dist/gdpr/index.js",
+    "import": "{ reatomGDPR, DEFAULT_GDPR_CATEGORIES }",
+    "ignore": ["@reatom/core"],
+    "limit": "500 B"
+  },
+  {
+    "name": "web-analytics (over opentelemetry)",
+    "path": "dist/web-analytics/index.js",
+    "import": "{ connectWebAnalytics }",
+    "ignore": ["@reatom/core", "../reatomOpentelemetry-*"],
+    "limit": "4.5 KB"
+  },
+  {
+    "name": "web-analytics (tracer + analytics)",
+    "path": "dist/web-analytics/index.js",
+    "import": "{ connectWebAnalytics }",
+    "ignore": ["@reatom/core"],
+    "limit": "19 KB"
+  }
+]

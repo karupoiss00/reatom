@@ -272,6 +272,34 @@ test('synchronous worker and diagnostic failures do not escape or leak slots', a
   queue.dispose()
 })
 
+test('pauseWhile holds send until wake, then resumes the same items', async () => {
+  let paused = true
+  const { queue, sent, push } = setup({
+    maxBatchSize: 2,
+    pauseWhile: () => paused,
+  })
+  push(1)
+  push(2)
+  push(3)
+  await vi.advanceTimersByTimeAsync(1000)
+  expect(sent).toHaveLength(0)
+  expect(queue.stats()).toMatchObject({ queued: 3, inFlight: 0, exported: 0 })
+  paused = false
+  queue.wake()
+  expect(sent.map((lease) => lease.items)).toEqual([[1, 2]])
+  success(sent[0]!)
+  const leftover = queue.flush()
+  expect(sent.map((lease) => lease.items)).toEqual([[1, 2], [3]])
+  success(sent[1]!)
+  await leftover
+  expect(queue.stats()).toMatchObject({
+    queued: 0,
+    inFlight: 0,
+    exported: 3,
+  })
+  queue.dispose()
+})
+
 test('a completed flush clears its own wait deadline without a timeout count', async () => {
   const onFlushTimeout = vi.fn()
   const { queue, sent, push } = setup({
@@ -288,5 +316,37 @@ test('a completed flush clears its own wait deadline without a timeout count', a
   await vi.advanceTimersByTimeAsync(31)
   expect(queue.stats().flushTimeouts).toBe(0)
   expect(onFlushTimeout).not.toHaveBeenCalled()
+  queue.dispose()
+})
+
+test('dropQueued removes queued records and leaves the leased batch', () => {
+  const { queue, push, sent } = setup({ maxBatchSize: 1 })
+  push(1)
+  push(2)
+  queue.dropQueued()
+  expect(queue.stats()).toMatchObject({ queued: 0, inFlight: 1 })
+  expect(sent[0]!.items).toEqual([1])
+  success(sent[0]!)
+  expect(queue.stats()).toMatchObject({
+    queued: 0,
+    inFlight: 0,
+    droppedByReason: { consent: 1 },
+  })
+  queue.dispose()
+})
+
+test('dropQueued keeps records the predicate rejects', () => {
+  const { queue, push } = setup({ batchInterval: 60_000, maxBatchSize: 10 })
+  push(1)
+  push(2)
+  queue.dropQueued((value) => value === 1)
+  expect(queue.stats().queued).toBe(1)
+  const lease = queue.takeForUnload()!
+  expect(lease.items).toEqual([2])
+  lease.release({ exported: 1, beaconAccepted: 0, droppedByReason: {} })
+  expect(queue.stats()).toMatchObject({
+    queued: 0,
+    droppedByReason: { consent: 1 },
+  })
   queue.dispose()
 })

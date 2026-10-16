@@ -1,0 +1,37 @@
+{
+  "span": {
+    "traceId": "6c9c13391c641d655b93189cb4bede02",
+    "spanId": "bc4028c0fee59680",
+    "name": "tree#.toggle",
+    "kind": "internal",
+    "startTimeUnixNano": "1791451168514000000",
+    "endTimeUnixNano": "1791451168515052246",
+    "attributes": {
+      "reatom.name": "tree#12.toggle",
+      "reatom.kind": "action",
+      "reatom.outcome": "ok",
+      "reatom.params": "[]",
+      "reatom.payload": "true",
+      "reatom.instance": "12",
+      "reatom.frame.id": "1",
+      "reatom.cause.ids": []
+    },
+    "events": []
+  },
+  "log": {
+    "eventName": "reatom.atom.update",
+    "traceId": "6c9c13391c641d655b93189cb4bede02",
+    "spanId": "bc4028c0fee59680",
+    "severityNumber": 9,
+    "body": true,
+    "attributes": {
+      "event.name": "reatom.atom.update",
+      "reatom.name": "tree.checked",
+      "reatom.kind": "atom",
+      "reatom.frame.id": "2",
+      "reatom.cause.ids": [
+        "1"
+      ]
+    }
+  }
+}

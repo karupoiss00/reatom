@@ -6,9 +6,21 @@
   "private": false,
   "sideEffects": false,
   "exports": {
-    "types": "./dist/index.d.ts",
-    "require": "./dist/index.cjs",
-    "default": "./dist/index.js"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.cjs",
+      "default": "./dist/index.js"
+    },
+    "./gdpr": {
+      "types": "./dist/gdpr/index.d.ts",
+      "require": "./dist/gdpr/index.cjs",
+      "default": "./dist/gdpr/index.js"
+    },
+    "./web-analytics": {
+      "types": "./dist/web-analytics/index.d.ts",
+      "require": "./dist/web-analytics/index.cjs",
+      "default": "./dist/web-analytics/index.js"
+    }
   },
   "main": "dist/index.cjs",
   "module": "dist/index.js",
@@ -25,9 +37,16 @@
     "test:types": "tsc -p type-tests/tsconfig.json",
     "test:browser": "vitest run --config vitest.browser.config.ts",
     "test:e2e:collector": "node e2e/collector/run.mjs",
-    "test:e2e:collector:oracle": "node --test e2e/collector/*.test.mjs"
+    "test:e2e:collector:oracle": "node --test e2e/collector/*.test.mjs",
+    "test:e2e:clickhouse": "node e2e/collector/run-clickhouse.mjs",
+    "size": "size-limit --config .size-limit.json"
   },
   "tsdown": {
+    "entry": [
+      "src/index.ts",
+      "src/gdpr/index.ts",
+      "src/web-analytics/index.ts"
+    ],
     "format": [
       "esm",
       "cjs"
@@ -71,10 +90,12 @@
     "/dist"
   ],
   "devDependencies": {
-    "tsdown": "catalog:",
-    "vitest": "catalog:",
-    "@vitest/browser-playwright": "catalog:",
+    "@size-limit/preset-small-lib": "catalog:",
     "@vitest/browser": "catalog:",
-    "playwright": "catalog:"
+    "@vitest/browser-playwright": "catalog:",
+    "playwright": "catalog:",
+    "size-limit": "catalog:",
+    "tsdown": "catalog:",
+    "vitest": "catalog:"
   }
 }

@@ -7,6 +7,7 @@ export type DropReason =
   | 'export'
   | 'timeout'
   | 'observation'
+  | 'consent'
 
 export interface BatchOutcome {
   exported: number
@@ -21,7 +22,9 @@ export interface TelemetryStats {
   readonly exported: number
   readonly dropped: number
   /** Oversized includes both record limits and available unload byte budget. */
-  readonly droppedByReason: Readonly<Record<DropReason, number>>
+  readonly droppedByReason: Readonly<
+    Record<DropReason, number> & { rateLimit?: number }
+  >
   readonly beaconAccepted: number
   readonly flushTimeouts: number
   readonly transportQuarantined: boolean
@@ -30,6 +33,8 @@ export interface TelemetryStats {
 export interface Reservation<T> {
   commit(record: T): void
   cancel(reason: DropReason): void
+  /** End the slot without exporting or counting a drop. */
+  release(): void
 }
 
 export interface BatchLease<T> {
@@ -43,14 +48,20 @@ export interface BatchQueueInput<T> extends QueueOptions {
   onError?: (error: unknown, items: readonly T[]) => void
   onFlushTimeout?: (unfinished: number) => void
   isQuarantined?: () => boolean
+  /** When true, queued items stay leased-unsent until `wake()`. */
+  pauseWhile?: () => boolean
 }
 
 export interface BatchQueue<T> {
   reserve(): Reservation<T> | undefined
   flush(): Promise<void>
   takeForUnload(): BatchLease<T> | undefined
+  /** Drop queued records. In-flight leases stay with their transport. */
+  dropQueued(match?: (record: T) => boolean): void
   stats(): TelemetryStats
   dispose(): void
+  /** Recheck `pauseWhile` and resume pumping when the gate is open. */
+  wake(): void
 }
 
 const emptyDrops = (): Record<DropReason, number> => ({
@@ -60,6 +71,7 @@ const emptyDrops = (): Record<DropReason, number> => ({
   export: 0,
   timeout: 0,
   observation: 0,
+  consent: 0,
 })
 
 // Diagnostics must not break ownership transitions, including outside a frame.
@@ -159,9 +171,21 @@ export const createBatchQueue = <T>(
     slot = lease
     return lease
   }
+  const isPaused = () => {
+    try {
+      return input.pauseWhile?.() === true
+    } catch {
+      return false
+    }
+  }
   const pump = () => {
     if (disposed) return
     if (queued.length === 0) {
+      draining = false
+      clearTimer()
+      return
+    }
+    if (isPaused()) {
       draining = false
       clearTimer()
       return
@@ -221,6 +245,11 @@ export const createBatchQueue = <T>(
           droppedByReason[reason]++
           settle(entry)
         },
+        release() {
+          if (entry.state !== 'active') return
+          active--
+          settle(entry)
+        },
       }
     },
     flush() {
@@ -248,6 +277,29 @@ export const createBatchQueue = <T>(
         pump()
       })
     },
+    dropQueued(match?: (record: T) => boolean) {
+      if (disposed || queued.length === 0) return
+      const kept: Entry[] = []
+      for (const entry of queued) {
+        const record = entry.record
+        const drop =
+          record !== undefined && (match === undefined || match(record))
+        if (!drop) {
+          kept.push(entry)
+          continue
+        }
+        droppedByReason.consent++
+        settle(entry)
+      }
+      if (kept.length === queued.length) return
+      queued.length = 0
+      if (kept.length === 0) {
+        draining = false
+        clearTimer()
+        return
+      }
+      queued.push(...kept)
+    },
     takeForUnload() {
       if (disposed || slot || !queued.length) return
       const lease = take(
@@ -271,6 +323,10 @@ export const createBatchQueue = <T>(
         droppedByReason: Object.freeze({ ...droppedByReason }),
         transportQuarantined: input.isQuarantined?.() ?? false,
       })
+    },
+    wake() {
+      if (disposed) return
+      pump()
     },
     dispose() {
       if (disposed) return

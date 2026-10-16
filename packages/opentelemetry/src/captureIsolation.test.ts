@@ -4,7 +4,7 @@ import { expect, test, vi } from 'vitest'
 import type { ReatomOpentelemetry } from './reatomOpentelemetry.ts'
 import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
 import { resourceAttributesVar } from './resourceAttributesVar.ts'
-import type { SpanContext } from './spanContext.ts'
+import type { SpanContext } from './traceContext.ts'
 import { parsePayload, parseSpans } from './test-helpers.ts'
 
 const createRun = () =>
@@ -16,6 +16,7 @@ const setup = (input: {
 }) => {
   const bodies: string[] = []
   const otel = reatomOpentelemetry({
+    name: 'captureIsolation',
     endpoint: 'https://collector.invalid',
     serviceName: 'capture-no-core',
     retry: { maxRetries: 0 },
@@ -61,7 +62,12 @@ test.each(['sync', 'async'] as const)(
       }, name)
 
       const returned = run(() => resourceAttributesVar.run(resource, save))
-      expect(returned).toBe(mode === 'async' ? original : value)
+      if (mode === 'async') {
+        expect(returned).toBeInstanceOf(Promise)
+        expect(returned).not.toBe(original)
+      } else {
+        expect(returned).toBe(value)
+      }
       expect(bodyCalls).toBe(1)
       expect(otel.stats()).toMatchObject({
         active: mode === 'sync' ? 0 : 1,
@@ -117,6 +123,7 @@ test('redacting params may dispose telemetry without changing the body/result or
   let positive: ReturnType<typeof setup> | undefined
   try {
     otel = reatomOpentelemetry({
+    name: 'captureIsolation',
       endpoint: 'https://collector.invalid',
       serviceName: 'capture-no-core',
       retry: { maxRetries: 0 },
@@ -139,7 +146,7 @@ test('redacting params may dispose telemetry without changing the body/result or
     })
     const target = action(() => {
       bodyCalls++
-      bodyContext = otel!.getCurrentContext()
+      bodyContext = otel!.traceVar.get()
       return result
     }, 'capture.dispose.redact')
 
@@ -150,7 +157,7 @@ test('redacting params may dispose telemetry without changing the body/result or
     expect(idCallsAfterDispose).toBe(0)
     expect(random).not.toHaveBeenCalled()
     expect(bodyContext).toBeUndefined()
-    expect(run(otel.getCurrentContext)).toBeUndefined()
+    expect(run(() => otel.traceVar.get())).toBeUndefined()
     await otel.flush()
     expect(bodies).toEqual([])
     expect(otel.stats()).toMatchObject({
