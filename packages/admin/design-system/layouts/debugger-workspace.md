@@ -1,5 +1,5 @@
 ---
-sourcesHash: 350e38fcdfe4dbfbeaa647134f23350459f3dfd0077b5582ae3b54a95ce5a015
+sourcesHash: 72dfdf63f5bea0aec66dc0fa9692b2a55793129e3f51cd26d3c03bc2af2091bf
 id: debugger-workspace
 description: >-
   Arrange the admin shell as a header, filters, a main view, a frame card,
@@ -44,7 +44,7 @@ Import `DebuggerWorkspace` and `DEBUGGER_WORKSPACE_SIDE_MIN` from `src/view/desi
 
 - `header`, `filter`, `main`, and `status` are the regions. `main` is one element. The shell reparents it when the card opens, closes, or the shell crosses 680px. Keep view state in atoms.
 - `inspector` builds the frame card. It is called when the card is shown and again when the shell crosses 680px. Pass null when there is no card. Keep card state in atoms.
-- `inspectorLabel` names the side region and the drawer dialog.
+- `inspectorLabel` names the side region and the drawer dialog. Pass a function when the name changes with the view, such as Frame or Step.
 - `inspectorOpen` is the caller's atom.
 - `onInspectorClose` sets that atom false. The caller also returns focus to the selected row when the drawer did not already restore it.
 

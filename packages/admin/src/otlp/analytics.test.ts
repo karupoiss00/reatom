@@ -13,167 +13,23 @@ import {
   type AnalyticsSession,
   analyticsSessions,
   analyticsTotals,
+  analyticsTrend,
   cleanAnalyticsPath,
+  compareAnalyticsPathNodes,
   NO_SOURCE,
+  selectAnalyticsSessions,
   typicalAnalyticsPath,
   typicalAnalyticsSession,
 } from './analytics.ts'
 import { parseCalculator, recordMatchesCalculator } from './calculator.ts'
 import { type AdminRecord, reatomOtlpStore } from './ingest.ts'
+import {
+  ANALYTICS_FIXTURE_T0 as T0,
+  analyticsLog,
+  shopRecords,
+} from './fixtures/analyticsRecords.ts'
 
-const T0 = 1_760_000_000_000
 const SECOND = 1_000
-
-let recordCount = 0
-
-const analyticsLog = (
-  eventName: string,
-  start: number,
-  attributes: Record<string, unknown>,
-  traceId = 'page-trace',
-): AdminRecord => {
-  recordCount += 1
-  return {
-    id: `clickhouse:log:${recordCount}`,
-    sourceId: 'clickhouse',
-    kind: 'log',
-    traceId,
-    spanId: `span-${recordCount}`,
-    name: eventName,
-    start,
-    attributes: {
-      'event.name': eventName,
-      'app.analytics.consent': 'granted',
-      ...attributes,
-    },
-    resource: { 'service.name': 'shop-web' },
-    links: [],
-    causeIds: [],
-    eventName,
-  }
-}
-
-interface ScriptedPage {
-  path: string
-  atSecond: number
-  visibleSeconds?: number
-  errors?: number
-}
-
-const scriptedSession = (
-  sessionId: string,
-  visitorId: string,
-  pages: readonly ScriptedPage[],
-  startAttributes: Record<string, unknown> = {},
-  viewAttributes: Record<string, unknown> = {},
-): AdminRecord[] => {
-  const identity = { 'session.id': sessionId, 'app.visitor.id': visitorId }
-  const records = [
-    analyticsLog('session.start', T0 + pages[0]!.atSecond * SECOND, {
-      ...identity,
-      ...startAttributes,
-    }),
-  ]
-  pages.forEach((page, index) => {
-    const viewAt = T0 + page.atSecond * SECOND
-    const pageTrace = `${sessionId}:${index}`
-    records.push(
-      analyticsLog(
-        'app.page_view',
-        viewAt,
-        { ...identity, ...viewAttributes, 'url.path': page.path },
-        pageTrace,
-      ),
-    )
-    for (let error = 0; error < (page.errors ?? 0); error += 1) {
-      records.push(
-        analyticsLog(
-          'exception',
-          viewAt + 1 + error,
-          { ...identity, 'exception.type': 'TypeError' },
-          pageTrace,
-        ),
-      )
-    }
-    const nextPage = pages[index + 1]
-    const visibleMs = nextPage
-      ? (nextPage.atSecond - page.atSecond) * SECOND
-      : (page.visibleSeconds ?? 0) * SECOND
-    if (visibleMs === 0) return
-    records.push(
-      analyticsLog('app.page.engagement', viewAt + visibleMs, {
-        ...identity,
-        'app.engagement.visible_ms': visibleMs,
-        'app.engagement.active_ms': Math.min(visibleMs, 5 * SECOND),
-      }),
-    )
-  })
-  return records
-}
-
-const shopRecords = () => [
-  ...scriptedSession('s1', 'v1', [
-    { path: '/', atSecond: 0 },
-    { path: '/goods/42', atSecond: 10 },
-    { path: '/cart', atSecond: 30 },
-    { path: '/checkout', atSecond: 40, visibleSeconds: 5 },
-  ]),
-  ...scriptedSession(
-    's2',
-    'v1',
-    [
-      { path: '/', atSecond: 100 },
-      { path: '/goods/7', atSecond: 120 },
-      { path: '/cart', atSecond: 150, visibleSeconds: 10, errors: 1 },
-    ],
-    { 'session.previous_id': 's1' },
-  ),
-  ...scriptedSession('s3', 'v3', [
-    { path: '/', atSecond: 200 },
-    { path: '/goods/42', atSecond: 205, visibleSeconds: 3 },
-  ]),
-  ...scriptedSession('s4', 'v4', [
-    { path: '/', atSecond: 300, visibleSeconds: 3 },
-  ]),
-  ...scriptedSession(
-    's5',
-    'v5',
-    [
-      { path: '/goods/9', atSecond: 400 },
-      { path: '/cart', atSecond: 430 },
-      { path: '/checkout', atSecond: 460, visibleSeconds: 20 },
-    ],
-    {
-      'app.attribution.last.source': 'google',
-      'app.attribution.last.campaign': 'spring',
-    },
-  ),
-  ...scriptedSession(
-    's6',
-    'v6',
-    [
-      { path: '/', atSecond: 500 },
-      { path: '/about', atSecond: 504, visibleSeconds: 2 },
-    ],
-    { 'app.attribution.last.gclid': 'abc' },
-  ),
-  ...scriptedSession('s7', 'v7', [
-    { path: '/', atSecond: 600 },
-    { path: '/goods/42', atSecond: 610 },
-    { path: '/goods/42', atSecond: 615 },
-    { path: '/cart', atSecond: 625, visibleSeconds: 40 },
-  ]),
-  ...scriptedSession(
-    's8',
-    'v8',
-    [
-      { path: '/blog/2f9c1e7a-8d4b-4c2e-9f1a-0b7c3d5e6f70', atSecond: 700 },
-      { path: '/', atSecond: 760, visibleSeconds: 1 },
-    ],
-    {},
-    { 'app.utm.source': 'newsletter' },
-  ),
-]
 
 const ids = (sessions: readonly AnalyticsSession[]) =>
   sessions.map((session) => session.id)
@@ -215,13 +71,23 @@ describe('sessions', () => {
         },
         'cart-trace',
       ),
-      analyticsLog('app.page.engagement', T0, {
-        ...identity,
-        'app.engagement.visible_ms': '1200',
-        'app.engagement.active_ms': '1200',
-      }),
-      analyticsLog('app.page_view', T0, { ...identity, 'url.path': '/' }),
-      analyticsLog('session.start', T0, identity),
+      analyticsLog(
+        'app.page.engagement',
+        T0,
+        {
+          ...identity,
+          'app.engagement.visible_ms': '1200',
+          'app.engagement.active_ms': '1200',
+        },
+        'home-trace',
+      ),
+      analyticsLog(
+        'app.page_view',
+        T0,
+        { ...identity, 'url.path': '/' },
+        'home-trace',
+      ),
+      analyticsLog('session.start', T0, identity, 'tie:start'),
       analyticsLog(
         'app.page.engagement',
         T0 + 9 * SECOND,
@@ -260,19 +126,34 @@ describe('sessions', () => {
         'action-trace',
       )
     const records = [
-      analyticsLog('app.page_view', T0, { ...identity, 'url.path': '/cart' }),
+      analyticsLog(
+        'app.page_view',
+        T0,
+        { ...identity, 'url.path': '/cart' },
+        'cart-trace',
+      ),
       error(T0 + 100, 'TypeError'),
       error(T0 + 200, 'TypeError'),
       error(T0 + 300, 'RangeError'),
-      analyticsLog('exception.suppressed', T0 + 10 * SECOND, {
-        ...identity,
-        'exception.type': 'TypeError',
-        'app.exception.count': '12',
-      }),
-      analyticsLog('app.page_view', T0 + 10 * SECOND, {
-        ...identity,
-        'url.path': '/done',
-      }),
+      analyticsLog(
+        'exception.suppressed',
+        T0 + 10 * SECOND,
+        {
+          ...identity,
+          'exception.type': 'TypeError',
+          'app.exception.count': '12',
+        },
+        'cart-trace',
+      ),
+      analyticsLog(
+        'app.page_view',
+        T0 + 10 * SECOND,
+        {
+          ...identity,
+          'url.path': '/done',
+        },
+        'done-trace',
+      ),
     ]
 
     const [session] = analyticsSessions(records)
@@ -284,18 +165,38 @@ describe('sessions', () => {
   test('only analytics logs with a session id form sessions, and a session needs a page view', () => {
     const identity = { 'session.id': 's', 'app.visitor.id': 'v' }
     const tracerSpan: AdminRecord = {
-      ...analyticsLog('app.page_view', T0, identity),
+      ...analyticsLog('app.page_view', T0, identity, 'span-trace'),
       kind: 'span',
     }
     const records = [
       tracerSpan,
-      analyticsLog('reatom.log', T0, { ...identity, 'url.path': '/x' }),
-      analyticsLog('exception', T0, { 'exception.type': 'TypeError' }),
-      analyticsLog('session.start', T0, {
-        'session.id': 'no-views',
-        'app.visitor.id': 'v',
-      }),
-      analyticsLog('app.page_view', T0 + 1, { ...identity, 'url.path': '/' }),
+      analyticsLog(
+        'reatom.log',
+        T0,
+        { ...identity, 'url.path': '/x' },
+        'log-trace',
+      ),
+      analyticsLog(
+        'exception',
+        T0,
+        { 'exception.type': 'TypeError' },
+        'orphan-trace',
+      ),
+      analyticsLog(
+        'session.start',
+        T0,
+        {
+          'session.id': 'no-views',
+          'app.visitor.id': 'v',
+        },
+        'no-views:start',
+      ),
+      analyticsLog(
+        'app.page_view',
+        T0 + 1,
+        { ...identity, 'url.path': '/' },
+        'home-trace',
+      ),
     ]
 
     const sessions = analyticsSessions(records)
@@ -651,5 +552,105 @@ describe('path tree', () => {
     expect(cameFrom.offsetMs.median + cameFrom.durationMs.median).toBe(
       root.offsetMs.median,
     )
+  })
+
+  test('compareAnalyticsPathNodes puts steps before the alignment point first and folded rows last', () => {
+    const base = analyticsPathTree(analyticsSessions(shopRecords()))
+    const home = nodeAt(base, 'paths → /')
+    const blog = nodeAt(base, 'paths → /blog/:id')
+    const folded = nodeAt(
+      analyticsPathTree(analyticsSessions(shopRecords()), { maxChildren: 1 }),
+      'paths → \u0000more',
+    )
+    const before = { ...home, direction: 'before' as const }
+
+    expect(compareAnalyticsPathNodes(before, home)).toBeLessThan(0)
+    expect(compareAnalyticsPathNodes(home, blog)).toBeLessThan(0)
+    expect(compareAnalyticsPathNodes(folded, blog)).toBeGreaterThan(0)
+    expect(
+      [blog, home, folded]
+        .sort(compareAnalyticsPathNodes)
+        .map((node) => node.label),
+    ).toEqual(['/', '/blog/:id', '+2 more'])
+  })
+})
+
+describe('trend and session selection', () => {
+  test('an empty session list uses a one minute bucket and no buckets', () => {
+    expect(analyticsTrend([])).toEqual({ bucketMs: 60_000, buckets: [] })
+  })
+
+  test('the first step that fits is dense, including empty buckets', () => {
+    const sessions = analyticsSessions(shopRecords())
+    const trend = analyticsTrend(sessions, 48)
+    const earliest = sessions[0]!.start
+    const latest = sessions[sessions.length - 1]!.start
+    expect(trend.bucketMs).toBe(60_000)
+    expect(trend.buckets[0]!.start).toBe(Math.floor(earliest / 60_000) * 60_000)
+    expect(trend.buckets.at(-1)!.start).toBe(
+      Math.floor(latest / 60_000) * 60_000,
+    )
+    expect(
+      trend.buckets.reduce((sum, bucket) => sum + bucket.sessions, 0),
+    ).toBe(sessions.length)
+    expect(trend.buckets.some((bucket) => bucket.sessions === 0)).toBe(true)
+    const wide = analyticsTrend(
+      [
+        { ...sessions[0]!, start: 0 },
+        { ...sessions[1]!, start: 100 * 60_000 },
+      ],
+      10,
+    )
+    expect(wide.bucketMs).toBe(15 * 60_000)
+    expect(wide.buckets.length).toBeLessThanOrEqual(10)
+    const epoch = analyticsTrend(
+      [
+        { ...sessions[0]!, start: 0 },
+        { ...sessions[1]!, start: 400 * 24 * 60 * 60 * 1000 },
+      ],
+      48,
+    )
+    const epochSpan = 400 * 24 * 60 * 60 * 1000
+    expect(epoch.bucketMs).toBeGreaterThanOrEqual(Math.ceil(epochSpan / 48))
+    expect(epoch.buckets.length).toBeLessThanOrEqual(48)
+    expect(epoch.buckets[0]?.start).toBe(0)
+    expect(
+      epoch.buckets.reduce((sum, bucket) => sum + bucket.sessions, 0),
+    ).toBe(2)
+  })
+
+  test('no active filter keeps every session in both modes', () => {
+    const sessions = analyticsSessions(shopRecords())
+    expect(selectAnalyticsSessions(sessions, { mode: 'exclude' })).toHaveLength(
+      8,
+    )
+    expect(
+      selectAnalyticsSessions(sessions, {
+        matchedRecords: undefined,
+        mode: 'exclude',
+      }),
+    ).toHaveLength(8)
+  })
+
+  test('a scope intersects the matched sessions', () => {
+    const records = shopRecords()
+    const sessions = analyticsSessions(records)
+    expect(
+      ids(
+        selectAnalyticsSessions(sessions, {
+          matchedRecords: matching(records, 'attr.url.path=/cart'),
+          sessionIds: new Set(['s1', 's3', 's5']),
+        }),
+      ),
+    ).toEqual(['s1', 's5'])
+  })
+
+  test('a range is half-open on the session start', () => {
+    const sessions = analyticsSessions(shopRecords())
+    const start = sessions[3]!.start
+    const end = sessions[5]!.start
+    expect(
+      ids(selectAnalyticsSessions(sessions, { range: { start, end } })),
+    ).toEqual(['s4', 's5'])
   })
 })

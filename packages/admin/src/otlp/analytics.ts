@@ -13,6 +13,43 @@ export const ENGAGED_PAGE_VIEWS = 2
 export const NO_SOURCE = '(none)'
 export const ALL_SESSIONS_LABEL = 'All sessions'
 
+/**
+ * Share and continuation percents render only when the denominator is at least
+ * this.
+ */
+export const ANALYTICS_MIN_SHARE_SESSIONS = 5
+
+const analyticsPercent = new Intl.NumberFormat(undefined, {
+  style: 'percent',
+  maximumFractionDigits: 0,
+})
+
+/** A share percent, or an em dash when the denominator is under the minimum. */
+export function analyticsPercentText(
+  share: number,
+  denominator: number,
+): string {
+  if (denominator < ANALYTICS_MIN_SHARE_SESSIONS) return '—'
+  return analyticsPercent.format(share)
+}
+
+/**
+ * Share of the root sessions. The denominator is rebuilt from `sessions /
+ * share`.
+ */
+export function analyticsShareText(node: AnalyticsPathNode): string {
+  const rootSessions =
+    node.share > 0 ? node.sessions / node.share : node.sessions
+  return analyticsPercentText(node.share, rootSessions)
+}
+
+/** Share of the parent sessions. A zero continuation has an empty denominator. */
+export function analyticsContinuationText(node: AnalyticsPathNode): string {
+  const parentSessions =
+    node.continuation > 0 ? node.sessions / node.continuation : 0
+  return analyticsPercentText(node.continuation, parentSessions)
+}
+
 const ANALYTICS_EVENT_NAMES: ReadonlySet<string> = new Set(
   Object.values(ANALYTICS_EVENTS),
 )
@@ -412,6 +449,82 @@ export function analyticsSessions(
   )
 }
 
+export interface AnalyticsSelection {
+  /** `undefined` means no active filter: keep every session in both modes. */
+  matchedRecords?: Iterable<AdminRecord>
+  mode?: AnalyticsSegmentMode
+  sessionIds?: ReadonlySet<string>
+  /** Half-open interval on session start, `[start, end)`. */
+  range?: { start: number; end: number }
+}
+
+export interface AnalyticsTrend {
+  bucketMs: number
+  buckets: Array<{ start: number; sessions: number }>
+}
+
+const TREND_STEPS_MS = [
+  60_000,
+  5 * 60_000,
+  15 * 60_000,
+  60 * 60_000,
+  6 * 60 * 60_000,
+  24 * 60 * 60_000,
+  7 * 24 * 60 * 60_000,
+]
+
+/**
+ * Dense buckets of session starts. A bucket starts at a multiple of `bucketMs`
+ * since the Unix epoch, so the grid is UTC rather than local midnight. The
+ * first step from one minute through seven days whose bucket count is at most
+ * `maxBuckets` is used. A wider span starts at `Math.ceil(span / maxBuckets)`
+ * milliseconds and grows until the UTC buckets fit.
+ */
+export function analyticsTrend(
+  sessions: readonly AnalyticsSession[],
+  maxBuckets = 48,
+): AnalyticsTrend {
+  if (sessions.length === 0) return { bucketMs: 60_000, buckets: [] }
+  let earliest = Infinity
+  let latest = -Infinity
+  for (const session of sessions) {
+    if (session.start < earliest) earliest = session.start
+    if (session.start > latest) latest = session.start
+  }
+  let bucketMs: number | undefined
+  for (const step of TREND_STEPS_MS) {
+    const count = Math.floor(latest / step) - Math.floor(earliest / step) + 1
+    if (count <= maxBuckets) {
+      bucketMs = step
+      break
+    }
+  }
+  if (bucketMs === undefined) {
+    const span = Math.max(0, latest - earliest)
+    bucketMs = Math.max(1, Math.ceil(span / Math.max(1, maxBuckets)))
+    // Inclusive epoch buckets can be one past `span / bucketMs`.
+    while (
+      maxBuckets > 0 &&
+      Math.floor(latest / bucketMs) - Math.floor(earliest / bucketMs) + 1 >
+        maxBuckets
+    ) {
+      bucketMs += 1
+    }
+  }
+  const first = Math.floor(earliest / bucketMs) * bucketMs
+  const last = Math.floor(latest / bucketMs) * bucketMs
+  const counts = new Map<number, number>()
+  for (const session of sessions) {
+    const bucketStart = Math.floor(session.start / bucketMs) * bucketMs
+    counts.set(bucketStart, (counts.get(bucketStart) ?? 0) + 1)
+  }
+  const buckets: AnalyticsTrend['buckets'] = []
+  for (let start = first; start <= last; start += bucketMs) {
+    buckets.push({ start, sessions: counts.get(start) ?? 0 })
+  }
+  return { bucketMs, buckets }
+}
+
 export function analyticsSegment(
   sessions: readonly AnalyticsSession[],
   matchedRecords: Iterable<AdminRecord>,
@@ -424,6 +537,31 @@ export function analyticsSegment(
     (session) =>
       session.recordIds.some((id) => matchedIds.has(id)) === keepMatched,
   )
+}
+
+export function selectAnalyticsSessions(
+  sessions: readonly AnalyticsSession[],
+  selection: AnalyticsSelection = {},
+): AnalyticsSession[] {
+  let picked: readonly AnalyticsSession[] = sessions
+  if (selection.matchedRecords !== undefined) {
+    picked = analyticsSegment(
+      picked,
+      selection.matchedRecords,
+      selection.mode ?? 'include',
+    )
+  }
+  if (selection.sessionIds) {
+    const sessionIds = selection.sessionIds
+    picked = picked.filter((session) => sessionIds.has(session.id))
+  }
+  if (selection.range) {
+    const { start, end } = selection.range
+    picked = picked.filter(
+      (session) => session.start >= start && session.start < end,
+    )
+  }
+  return [...picked]
 }
 
 export function analyticsTotals(
@@ -761,6 +899,22 @@ export function typicalAnalyticsPath(
     }
   }
   return [...follow('before').reverse(), root, ...follow('after')]
+}
+
+const pathDirectionRank = (direction: AnalyticsPathDirection) =>
+  direction === 'before' ? 0 : direction === 'after' ? 2 : 1
+
+/** Waterfall order: steps before the alignment point, then after; folded last. */
+export function compareAnalyticsPathNodes(
+  left: AnalyticsPathNode,
+  right: AnalyticsPathNode,
+): number {
+  const byDirection =
+    pathDirectionRank(left.direction) - pathDirectionRank(right.direction)
+  if (byDirection !== 0) return byDirection
+  if (left.folded !== right.folded) return left.folded ? 1 : -1
+  if (left.sessions !== right.sessions) return right.sessions - left.sessions
+  return compareText(left.label, right.label)
 }
 
 /** A real session that followed the whole path in the median time. */

@@ -3,17 +3,38 @@ import { wrap } from '@reatom/core'
 import { recordHasError, recordLabel, recordTimeRange } from '../otlp/bind.ts'
 import type { OtlpAdmin } from '../otlp/chrome.ts'
 import { parseFilterCalculator } from '../otlp/calculator.ts'
-import { recordsForFilter } from '../otlp/filter.ts'
+import { hasActiveFilter, recordsForFilter } from '../otlp/filter.ts'
+import {
+  analyticsBreakdown,
+  analyticsPathTree,
+  analyticsTotals,
+  analyticsTrend,
+  selectAnalyticsSessions,
+  typicalAnalyticsPath,
+  typicalAnalyticsSession,
+  type AnalyticsBreakdownRow,
+  type AnalyticsDimension,
+  type AnalyticsPathNode,
+  type AnalyticsSession,
+  type AnalyticsTotals,
+  type AnalyticsTrend,
+} from '../otlp/analytics.ts'
 import { localValuesOf, type AdminRecord } from '../otlp/ingest.ts'
 import type { OtlpStateNode } from '../otlp/bind.ts'
+import { ADMIN_MCP_MAX_BYTES } from './types.ts'
 import {
   copyAttributes,
   decodeCursor,
+  jsonUtf8Bytes,
   packCappedResponse,
   shrinkAttributes,
   truncateUnknown,
 } from './cap.ts'
 import type {
+  AdminMcpAnalyticsSummaryData,
+  AdminMcpAnalyticsSummaryInput,
+  AdminMcpAnalyticsTotals,
+  AdminMcpBreakdownRow,
   AdminMcpCause,
   AdminMcpConnectRemoteInput,
   AdminMcpFilter,
@@ -24,6 +45,9 @@ import type {
   AdminMcpListTracesInput,
   AdminMcpMiss,
   AdminMcpOk,
+  AdminMcpPathNode,
+  AdminMcpPathsData,
+  AdminMcpPathsInput,
   AdminMcpRecordData,
   AdminMcpRecordSummary,
   AdminMcpSearchInput,
@@ -642,6 +666,199 @@ export function getStateTool(
       data: {
         path,
         nodes: items,
+      },
+      ...(nextCursor !== undefined ? { nextCursor } : {}),
+    }),
+  })
+}
+
+const ANALYTICS_DIMENSIONS: readonly AnalyticsDimension[] = [
+  'page',
+  'entry',
+  'exit',
+  'source',
+]
+
+const clampBreakdownLimit = (limit: number | undefined) => {
+  const requested = limit ?? 10
+  if (!Number.isFinite(requested)) return 10
+  return Math.min(50, Math.max(1, Math.floor(requested)))
+}
+
+const clampPathLimit = (
+  value: number | undefined,
+  fallback: number,
+  min: number,
+  max: number,
+) => {
+  if (value === undefined || !Number.isFinite(value)) return fallback
+  return Math.min(max, Math.max(min, Math.floor(value)))
+}
+
+function analyticsCohort(
+  admin: OtlpAdmin,
+  filter: AdminMcpFilter | undefined,
+  calculator: ReturnType<typeof parseFilterCalculator>,
+  segment: AdminMcpAnalyticsSummaryInput['segment'],
+  range: AdminMcpAnalyticsSummaryInput['range'],
+): AnalyticsSession[] {
+  const matchedRecords = hasActiveFilter(filter)
+    ? recordsForFilter(admin, filter, calculator).matched
+    : undefined
+  return selectAnalyticsSessions(admin.analytics.sessions(), {
+    matchedRecords,
+    mode: segment,
+    range,
+  })
+}
+
+function mcpTotals(totals: AnalyticsTotals): AdminMcpAnalyticsTotals {
+  return {
+    visitors: totals.visitors,
+    sessions: totals.sessions,
+    pageViews: totals.pageViews,
+    engagedSessions: totals.engagedSessions,
+    engagementRate: totals.engagementRate,
+    bounceRate: totals.bounceRate,
+    sessionsWithErrors: totals.sessionsWithErrors,
+    medianPageViews: totals.pageViewsPerSession.median,
+    medianActiveMs: totals.activeMsPerSession.median,
+    medianVisibleMs: totals.visibleMsPerSession.median,
+  }
+}
+
+function mcpBreakdownRow(row: AnalyticsBreakdownRow): AdminMcpBreakdownRow {
+  return {
+    key: row.key,
+    sessions: row.sessions,
+    visitors: row.visitors,
+    pageViews: row.pageViews,
+    engagedSessions: row.engagedSessions,
+    medianActiveMs: row.activeMs.median,
+  }
+}
+
+function mcpPathNode(node: AnalyticsPathNode): AdminMcpPathNode {
+  return {
+    id: node.id,
+    ...(node.parentId !== undefined ? { parentId: node.parentId } : {}),
+    label: node.label,
+    step: node.step,
+    sessions: node.sessions,
+    share: node.share,
+    continuation: node.continuation,
+    stops: node.stops,
+    medianOffsetMs: node.offsetMs.median,
+    medianDurationMs: node.durationMs.median,
+    medianActiveMs: node.activeMs.median,
+    sessionsWithErrors: node.sessionsWithErrors,
+    folded: node.folded,
+  }
+}
+
+export function analyticsSummaryTool(
+  admin: OtlpAdmin,
+  input: AdminMcpAnalyticsSummaryInput = {},
+): AdminMcpOk<AdminMcpAnalyticsSummaryData> | AdminMcpMiss {
+  const resolved = calculatorFilterMiss(admin, input.filter)
+  if (resolved.miss) return resolved.miss
+  const cohort = analyticsCohort(
+    admin,
+    input.filter,
+    resolved.calculator,
+    input.segment,
+    input.range,
+  )
+  const totals = mcpTotals(analyticsTotals(cohort))
+  const trend = analyticsTrend(cohort)
+  const full = {} as Record<AnalyticsDimension, AnalyticsBreakdownRow[]>
+  for (const dimension of ANALYTICS_DIMENSIONS) {
+    full[dimension] = analyticsBreakdown(cohort, dimension)
+  }
+  const headerBase = headerFromRecords(admin.records())
+  type TrendDetail = 'full' | 'thin' | 'none'
+  const trendFor = (detail: TrendDetail): AnalyticsTrend => {
+    if (detail === 'none') return { bucketMs: trend.bucketMs, buckets: [] }
+    if (detail === 'thin') {
+      return {
+        bucketMs: trend.bucketMs * 2,
+        buckets: trend.buckets.filter((_, index) => index % 2 === 0),
+      }
+    }
+    return trend
+  }
+  const build = (rowLimit: number, detail: TrendDetail) => {
+    const breakdowns = {} as Record<AnalyticsDimension, AdminMcpBreakdownRow[]>
+    let truncated = detail !== 'full'
+    for (const dimension of ANALYTICS_DIMENSIONS) {
+      const rows = full[dimension]!
+      if (rows.length > rowLimit) truncated = true
+      breakdowns[dimension] = rows.slice(0, rowLimit).map(mcpBreakdownRow)
+    }
+    return {
+      ok: true as const,
+      header: { ...headerBase, truncated },
+      data: {
+        sessions: cohort.length,
+        totalSessions: admin.analytics.sessions().length,
+        totals,
+        trend: trendFor(detail),
+        breakdowns,
+      },
+    }
+  }
+  let cap = clampBreakdownLimit(input.limit)
+  let detail: TrendDetail = 'full'
+  let body = build(cap, detail)
+  while (jsonUtf8Bytes(body) > ADMIN_MCP_MAX_BYTES) {
+    if (cap > 1) cap = Math.floor(cap / 2)
+    else if (detail === 'full') detail = 'thin'
+    else if (detail === 'thin') detail = 'none'
+    else return miss(headerBase, 'too-large')
+    body = build(cap, detail)
+  }
+  return body
+}
+
+export function pathsTool(
+  admin: OtlpAdmin,
+  input: AdminMcpPathsInput = {},
+): AdminMcpOk<AdminMcpPathsData> | AdminMcpMiss {
+  const resolved = calculatorFilterMiss(admin, input.filter)
+  if (resolved.miss) return resolved.miss
+  const cohort = analyticsCohort(
+    admin,
+    input.filter,
+    resolved.calculator,
+    input.segment,
+    input.range,
+  )
+  const nodes = analyticsPathTree(cohort, {
+    align: input.align,
+    maxDepth: clampPathLimit(input.maxDepth, 8, 1, 20),
+    maxChildren: clampPathLimit(input.maxChildren, 6, 1, 50),
+  })
+  const typicalPath = typicalAnalyticsPath(nodes)
+  const typicalSession = typicalAnalyticsSession(cohort, typicalPath)
+  const shown = nodes[0]?.sessions ?? 0
+  const offset = decodeCursor(input.cursor)
+  const header = headerFromRecords(admin.records())
+  return packCappedResponse({
+    header,
+    items: nodes.slice(offset),
+    offset,
+    wrap: ({ items, header: packedHeader, nextCursor }) => ({
+      ok: true as const,
+      header: packedHeader,
+      data: {
+        sessions: shown,
+        leftOut: cohort.length - shown,
+        ...(input.align !== undefined ? { align: input.align } : {}),
+        typicalPathIds: typicalPath.map((node) => node.id),
+        ...(typicalSession !== undefined
+          ? { typicalSessionId: typicalSession.id }
+          : {}),
+        nodes: items.map(mcpPathNode),
       },
       ...(nextCursor !== undefined ? { nextCursor } : {}),
     }),

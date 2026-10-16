@@ -1,5 +1,10 @@
 import type { FilterMode } from '../types.ts'
 import type {
+  AnalyticsDimension,
+  AnalyticsSegmentMode,
+  AnalyticsTrend,
+} from '../otlp/analytics.ts'
+import type {
   AdminRecordKind,
   AdminRecordOutcome,
   AdminReatomKind,
@@ -195,4 +200,102 @@ export interface AdminMcpStateNode {
 export interface AdminMcpStateData {
   path: string
   nodes: AdminMcpStateNode[]
+}
+
+export interface AdminMcpAnalyticsSummaryInput {
+  /**
+   * Calculator and chip predicates. `mode` (show, hide, highlight) is ignored:
+   * session membership uses `segment`.
+   */
+  filter?: AdminMcpFilter
+  /**
+   * `include` keeps sessions that have a matching record. `exclude` drops them.
+   * With no match predicates every session stays, in both modes.
+   */
+  segment?: AnalyticsSegmentMode
+  /** Half-open interval on session start, `[start, end)`. */
+  range?: { start: number; end: number }
+  /**
+   * Breakdown rows per dimension. Defaults to 10 and clamps to 1–50.
+   * `header.truncated` is true when a breakdown had more rows than the returned
+   * cap, or when the trend was thinned or dropped so the JSON stays within 20
+   * KB. It does not mean another summary page exists.
+   */
+  limit?: number
+}
+
+export interface AdminMcpBreakdownRow {
+  key: string
+  sessions: number
+  visitors: number
+  pageViews: number
+  engagedSessions: number
+  medianActiveMs: number
+}
+
+export interface AdminMcpAnalyticsTotals {
+  visitors: number
+  sessions: number
+  pageViews: number
+  engagedSessions: number
+  engagementRate: number
+  bounceRate: number
+  sessionsWithErrors: number
+  medianPageViews: number
+  medianActiveMs: number
+  medianVisibleMs: number
+}
+
+export interface AdminMcpAnalyticsSummaryData {
+  sessions: number
+  totalSessions: number
+  totals: AdminMcpAnalyticsTotals
+  trend: AnalyticsTrend
+  breakdowns: Record<AnalyticsDimension, AdminMcpBreakdownRow[]>
+}
+
+export interface AdminMcpPathsInput {
+  /**
+   * Calculator and chip predicates. `mode` (show, hide, highlight) is ignored:
+   * session membership uses `segment`.
+   */
+  filter?: AdminMcpFilter
+  /**
+   * `include` keeps sessions that have a matching record. `exclude` drops them.
+   * With no match predicates every session stays, in both modes.
+   */
+  segment?: AnalyticsSegmentMode
+  /** Half-open interval on session start, `[start, end)`. */
+  range?: { start: number; end: number }
+  align?: string
+  /** Steps in each direction. Defaults to 8. Clamped to 1–20. NaN uses 8. */
+  maxDepth?: number
+  /** Children per node before folding. Defaults to 6. Clamped to 1–50. */
+  maxChildren?: number
+  cursor?: string
+}
+
+export interface AdminMcpPathNode {
+  id: string
+  parentId?: string
+  label: string
+  step: number
+  sessions: number
+  share: number
+  continuation: number
+  stops: number
+  medianOffsetMs: number
+  medianDurationMs: number
+  medianActiveMs: number
+  sessionsWithErrors: number
+  folded: boolean
+}
+
+export interface AdminMcpPathsData {
+  sessions: number
+  leftOut: number
+  align?: string
+  typicalPathIds: string[]
+  typicalSessionId?: string
+  nodes: AdminMcpPathNode[]
 }

@@ -1,4 +1,11 @@
-import { addChangeHook, atom, effect, sleep, wrap, type Atom } from '@reatom/core'
+import {
+  addChangeHook,
+  atom,
+  effect,
+  sleep,
+  wrap,
+  type Atom,
+} from '@reatom/core'
 import { mount } from '@reatom/jsx'
 
 import type { AdminConnection, OtlpAdmin, OtlpAdminOptions } from '../../otlp'
@@ -30,10 +37,12 @@ import { ADMIN_HOST_Z_INDEX, keepAdminHostInView } from '../hostBox'
 import { bindAdminStylesheet } from '../stylesheet'
 import { importRecordFile } from '../../otlp/importRecords'
 import { adminSettings, bindAdminPalette } from '../settings'
+import { OtlpAnalyticsScreen, analystStatusWords } from './AnalyticsScreen'
 import { closeFrameCard, OtlpFrameCard } from './FrameCard'
 import { OtlpFilterBar } from './FilterBar'
 import { floatAdminHost, type FloatingWindowOptions } from './FloatingWindow'
-import { OtlpGanttChart } from './GanttChart'
+import { OtlpGanttChart, pathRowAdapter, recordRowAdapter } from './GanttChart'
+import { PathStepCard } from './PathStepCard'
 import { OtlpRemotePanel } from './RemotePanel'
 import { OtlpGraphView, OtlpStateView } from './SecondaryViews'
 import { handleAdminShellKey, isEditableTarget } from './shellKeys'
@@ -46,7 +55,10 @@ export interface OtlpAppProps {
   minimized?: Atom<boolean>
   /** Shared with the floating window so Close shrinks the host to an icon. */
   closed?: Atom<boolean>
-  /** The host is already docked, so the closed icon fills it instead of using `position: fixed`. */
+  /**
+   * The host is already docked, so the closed icon fills it instead of using
+   * `position: fixed`.
+   */
   floating?: boolean
 }
 
@@ -65,6 +77,7 @@ const VIEWS = [
   { id: 'timeline' as const, label: 'Timeline' },
   { id: 'state' as const, label: 'State' },
   { id: 'graph' as const, label: 'Graph' },
+  { id: 'analytics' as const, label: 'Analytics' },
   { id: 'settings' as const, label: 'Settings' },
 ]
 
@@ -342,11 +355,22 @@ export const OtlpApp = ({
         if (view === 'settings') return <SettingsScreen />
         if (view === 'state') return <OtlpStateView admin={admin} />
         if (view === 'graph') return <OtlpGraphView admin={admin} />
+        if (view === 'analytics') return <OtlpAnalyticsScreen admin={admin} />
+        if (admin.timelineUnit() === 'paths') {
+          return (
+            <OtlpGanttChart
+              gantt={admin.analytics.paths}
+              admin={admin}
+              adapter={pathRowAdapter(admin)}
+              onInspect={() => admin.cardOpen.setTrue()}
+            />
+          )
+        }
         return (
           <OtlpGanttChart
             gantt={admin.gantt}
             admin={admin}
-            selection={admin.ganttSelection}
+            adapter={recordRowAdapter(admin, admin.ganttSelection)}
             onInspect={() => admin.cardOpen.setTrue()}
           />
         )
@@ -359,6 +383,10 @@ export const OtlpApp = ({
       <span role="status">{() => statusWords(admin, connection)}</span>
       <span>
         {() => {
+          const analyst =
+            admin.view() === 'analytics' ||
+            (admin.view() === 'timeline' && admin.timelineUnit() === 'paths')
+          if (analyst) return analystStatusWords(admin)
           const summary = admin.summary()
           return `${summary.visibleFrames} of ${summary.totalFrames}`
         }}
@@ -522,8 +550,12 @@ export const OtlpApp = ({
           header={header}
           filter={filters}
           main={main}
-          inspector={() => <OtlpFrameCard admin={admin} />}
-          inspectorLabel="Frame"
+          inspector={() => <OtlpInspectorBody admin={admin} />}
+          inspectorLabel={() =>
+            admin.view() === 'timeline' && admin.timelineUnit() === 'paths'
+              ? 'Step'
+              : 'Frame'
+          }
           inspectorOpen={frameCardOpen}
           onInspectorClose={() => closeFrameCard(admin)}
           status={status}
@@ -552,6 +584,18 @@ export const OtlpApp = ({
   )
 }
 
+const OtlpInspectorBody = ({ admin }: { admin: OtlpAdmin }) => (
+  <div css="display: contents;">
+    {() =>
+      admin.view() === 'timeline' && admin.timelineUnit() === 'paths' ? (
+        <PathStepCard admin={admin} />
+      ) : (
+        <OtlpFrameCard admin={admin} />
+      )
+    }
+  </div>
+)
+
 const HelpBody = () => (
   <div
     css={`
@@ -567,12 +611,17 @@ const HelpBody = () => (
       card. Esc closes the top layer. <Kbd keys={['/']} /> focuses name search.{' '}
       <Kbd keys={['?']} /> opens this help. <Kbd keys={['Alt', 'Left']} /> and{' '}
       <Kbd keys={['Alt', 'Right']} /> walk selection history.{' '}
-      <Kbd keys={['I']} /> toggles kind icons. <Kbd keys={['C']} /> toggles
-      kind colors.
+      <Kbd keys={['I']} /> toggles kind icons. <Kbd keys={['C']} /> toggles kind
+      colors.
     </p>
     <p css="margin: 0;">
       Filter language: name, kind, errors, duration, spans, trace, attr, cause
       and the direction markers. Example: name:makeMove kind:action.
+    </p>
+    <p css="margin: 0;">
+      Paths and Analytics treat the filter as a session filter (a session is in
+      when any record matches; Exclude flips). Show, Hide, and Highlight do not
+      apply there, and filter.mode is ignored by the analytics tools.
     </p>
   </div>
 )

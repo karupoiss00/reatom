@@ -1,5 +1,5 @@
 ---
-sourcesHash: 62010d3b72f23cfdb204f62d5490ad0434df1d7b0b4fbf9d06580865278c0e16
+sourcesHash: 39cf763e8b9db9416348247f271b15837392585b34a3af707b22fe2b44cab735
 id: field
 description: >-
   Collect one search string, one choice from a known option list, or one
@@ -37,7 +37,7 @@ Import `SearchField`, `SelectField`, and `NumberField` from `src/view/design-sys
 ```
 
 - `SearchField` `value` is the string atom. `label` is the accessible name. `placeholder` is the hint in the empty field. `shortcut` is the visible chord inside the field, default `⌘K`; pass an empty string to hide it. `testId` sets `data-testid`.
-- `SelectField` `value` is the atom. `label` is the accessible name. `options` is `{ value, label }[]` in the order shown. The caller owns which values are legal.
+- `SelectField` `value` is the atom. `label` is the accessible name. `options` is `{ value, label }[]`, or a function that returns that list, in the order shown. The caller owns which values are legal.
 - `NumberField` `label` is the visible label and the accessible name. `value` reads a number or `''`. `onChange` receives the next number or `''` when the field is cleared. `min`, `step`, and `placeholder` follow the native number input. Invalid text is ignored.
 
 The search field shows a decorative search icon. Tokens come from [tokens.ts](../../src/view/design-system/tokens.ts).
