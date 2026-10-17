@@ -31,9 +31,13 @@ function kindColor(kind: string): string {
 export const GanttTimeStrip = ({
   gantt,
   admin,
+  paused = () => admin.paused(),
+  dropped = () => false,
 }: {
   gantt: Gantt<AdminRecord>
   admin: OtlpAdmin
+  paused?: () => boolean
+  dropped?: () => boolean
 }) => {
   const hover = atom('', `_Admin.gantt.strip.hover`)
   return (
@@ -108,8 +112,8 @@ export const GanttTimeStrip = ({
           range,
           gantt.visibleTime(),
           {
-            paused: admin.paused(),
-            dropped: false,
+            paused: paused(),
+            dropped: dropped(),
           },
         )
         if (model === null) {
@@ -137,7 +141,7 @@ export const GanttTimeStrip = ({
           admin.ganttRecords(),
           range,
           gantt.visibleTime(),
-          { paused: admin.paused(), dropped: false },
+          { paused: paused(), dropped: dropped() },
         )
         if (model === null) return null
         return (

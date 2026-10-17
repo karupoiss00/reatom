@@ -439,6 +439,7 @@ export const OtlpApp = ({
                   <OtlpGanttChart
                     gantt={admin.analytics.paths}
                     admin={admin}
+                    connection={connection}
                     adapter={pathRowAdapter(admin)}
                     onInspect={() => admin.cardOpen.setTrue()}
                   />
@@ -451,7 +452,8 @@ export const OtlpApp = ({
           <OtlpGanttChart
             gantt={admin.gantt}
             admin={admin}
-            adapter={recordRowAdapter(admin, admin.ganttSelection)}
+            connection={connection}
+            adapter={recordRowAdapter(admin, admin.ganttSelection, connection)}
             onInspect={() => admin.cardOpen.setTrue()}
           />
         )
@@ -701,7 +703,7 @@ export const OtlpApp = ({
               font-weight: 750;
               cursor: pointer;
               pointer-events: auto;
-              box-shadow: 0 12px 28px -16px oklch(0 0 0 / 0.7);
+              box-shadow: 0 12px 28px -16px ${tokens.shadowStrong};
               ${focusVisible}
               &[data-capturing='true'] {
                 ${capturingPulse}

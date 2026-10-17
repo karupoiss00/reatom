@@ -4,12 +4,20 @@ import type { AdminRecord } from './ingest.ts'
 import { LOCAL_VALUES } from './ingest.ts'
 import {
   appendCalculatorClause,
+  calculatorClauses,
   describeCalculator,
   durationThresholdMs,
   evaluateRecordExpression,
+  explainEmptyClauses,
+  explainRecordMatch,
+  formatMatchExplanation,
   highlightCalculator,
   parseCalculator,
+  previewGhostRecordIds,
+  removeCalculatorClause,
+  savedFilterReason,
   stringifyCalculator,
+  wouldMatchHeadline,
 } from './calculator.ts'
 
 const SPEC_QUERY =
@@ -541,4 +549,100 @@ test('describeCalculator restates kind, duration, and cause', () => {
     'errors, highlighted',
   )
   expect(describeCalculator('')).toBeUndefined()
+})
+
+test('calculatorClauses splits an applied AND without using a broken draft', () => {
+  expect(calculatorClauses('duration>100ms cause>submit name:pay')).toEqual([
+    { source: 'duration>100ms' },
+    { source: 'cause>submit' },
+    { source: 'name:pay' },
+  ])
+  expect(calculatorClauses('name:x AND (bogus')).toEqual([])
+  expect(
+    removeCalculatorClause('duration>100ms cause>submit name:pay', 'cause>submit'),
+  ).toBe('duration>100ms AND name:pay')
+  expect(removeCalculatorClause('duration>100ms', 'duration>100ms')).toBe('')
+})
+
+test('previewGhostRecordIds ghosts the draft only, never an empty draft', () => {
+  const pay = record({ id: 'pay', name: 'pay', reatomKind: 'action' })
+  const atom = record({ id: 'atom', name: 'cart', reatomKind: 'atom' })
+  expect(
+    previewGhostRecordIds([pay, atom], 'kind:action', 'kind:action'),
+  ).toEqual(new Set())
+  expect(previewGhostRecordIds([pay, atom], '', '')).toEqual(new Set())
+  expect(
+    [...previewGhostRecordIds([pay, atom], 'kind:action', '')],
+  ).toEqual(['pay'])
+  expect(
+    [...previewGhostRecordIds([pay, atom], 'kind:action name:pay', '', 'name:pay')],
+  ).toEqual(['pay'])
+})
+
+test('wouldMatchHeadline names show versus hide', () => {
+  expect(wouldMatchHeadline('show', 42, 1310, 3)).toBe(
+    'Would show 42 of 1,310 · 3 errors',
+  )
+  expect(wouldMatchHeadline('hide', 1, 10, 1)).toBe('Would hide 1 of 10 · 1 error')
+})
+
+test('explainRecordMatch names cause hops and empty clauses', () => {
+  const submit = record({
+    id: 'submit',
+    frameId: '1',
+    name: 'submit',
+    atomName: 'submit',
+    reatomKind: 'action',
+    causeIds: [],
+  })
+  const cart = record({
+    id: 'cart',
+    frameId: '2',
+    name: 'cartAtom',
+    atomName: 'cartAtom',
+    reatomKind: 'atom',
+    causeIds: ['1'],
+  })
+  const checkout = record({
+    id: 'checkout',
+    frameId: '3',
+    name: 'checkout',
+    atomName: 'checkout',
+    reatomKind: 'action',
+    causeIds: ['2'],
+  })
+  const lines = explainRecordMatch(
+    checkout,
+    'name:checkout cause>submit',
+    [submit, cart, checkout],
+  )
+  expect(lines).toEqual([
+    { clause: 'name:checkout', matched: true },
+    {
+      clause: 'cause>submit',
+      matched: true,
+      hops: ['submit', 'cartAtom', 'checkout'],
+    },
+  ])
+  expect(formatMatchExplanation(lines!)).toContain(
+    'cause>submit ✓ via submit → cartAtom → checkout',
+  )
+  expect(explainRecordMatch(checkout, '', [checkout])).toBeUndefined()
+  const empty = explainEmptyClauses('name:missing duration>1ms', [
+    checkout,
+  ])
+  expect(empty?.[0]).toEqual({ clause: 'name:missing', count: 0 })
+  expect(empty?.[1]?.count).toBe(1)
+})
+
+test('savedFilterReason names a missing session.id', () => {
+  expect(savedFilterReason('session:abc', [record()])).toBe(
+    'No session.id in this capture',
+  )
+  expect(
+    savedFilterReason('session:abc', [
+      record({ attributes: { 'session.id': 'abc' } }),
+    ]),
+  ).toBeUndefined()
+  expect(savedFilterReason('name:pay', [record()])).toBeUndefined()
 })

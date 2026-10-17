@@ -1,6 +1,7 @@
 import { atom, type AtomLike } from '@reatom/core'
 
 import {
+  explainRecordMatch,
   filterByValueDraft,
   formatRecordAge,
   formatRecordDuration,
@@ -393,6 +394,40 @@ export const FrameOverview = ({
         </p>
       ) : null}
       <CauseChips admin={admin} record={record} />
+      {() => {
+        const source = admin.filterCalculator().trim()
+        if (source === '') return null
+        const mode = admin.filterMode()
+        if (mode === 'hide' || mode === 'exclude') return null
+        if (mode === 'highlight' && !admin.highlightedIds().has(record.id)) {
+          return null
+        }
+        const lines = explainRecordMatch(record, source, admin.records())
+        if (lines === undefined) return null
+        return (
+          <div
+            data-testid="filter-match"
+            css={`
+              display: grid;
+              gap: var(--admin-space-4);
+            `}
+          >
+            {lines.map((line) => (
+              <span
+                css={`
+                  ${type.meta}
+                  color: ${tokens.text2};
+                `}
+              >
+                {`${line.clause} ${line.matched ? '✓' : '✗'}`}
+                {line.hops && line.hops.length > 0
+                  ? ` via ${line.hops.join(' → ')}`
+                  : ''}
+              </span>
+            ))}
+          </div>
+        )
+      }}
       <div
         css={`
           display: grid;

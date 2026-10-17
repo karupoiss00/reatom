@@ -106,3 +106,24 @@ export function orderedRoots(records: readonly AdminRecord[]): AdminRecord[] {
     .filter(isRootSpan)
     .sort((left, right) => left.start - right.start)
 }
+
+export function sectionStickyTop(
+  row: AdminRecord,
+  rows: readonly AdminRecord[],
+  scrollOffset: number,
+  rowHeight: number,
+): string {
+  const index = rows.findIndex((entry) => entry.id === row.id)
+  if (index === -1) return '0px'
+  let next = -1
+  for (let i = index + 1; i < rows.length; i++) {
+    if (isRootSpan(rows[i]!)) {
+      next = i
+      break
+    }
+  }
+  if (next === -1) return '0px'
+  const collision = next * rowHeight - scrollOffset
+  if (collision < rowHeight) return `${collision - rowHeight}px`
+  return '0px'
+}

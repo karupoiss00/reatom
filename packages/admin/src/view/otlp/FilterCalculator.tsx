@@ -7,8 +7,11 @@ import {
   endedSpanPercentile,
   highlightCalculator,
   parseCalculator,
+  recordHasError,
   recordMatches,
   recordMatchesCalculator,
+  savedFilterReason,
+  wouldMatchHeadline,
   type OtlpAdmin,
 } from '../../otlp'
 import type { FilterMode } from '../../types'
@@ -36,6 +39,35 @@ import {
 } from './calculatorPad'
 
 const SAVED_STORAGE_KEY = '_Admin.filter.saved.v1'
+
+type SavedExpression = {
+  expression: string
+  mode: FilterMode
+}
+
+function readSaved(entries: readonly unknown[]): SavedExpression[] {
+  const result: SavedExpression[] = []
+  for (const entry of entries) {
+    if (typeof entry === 'string' && entry.trim() !== '') {
+      result.push({ expression: entry, mode: 'show' })
+      continue
+    }
+    if (entry === null || typeof entry !== 'object') continue
+    const record = entry as { expression?: unknown; mode?: unknown }
+    const expression =
+      typeof record.expression === 'string' ? record.expression.trim() : ''
+    if (expression === '') continue
+    const mode = record.mode
+    result.push({
+      expression,
+      mode:
+        mode === 'hide' || mode === 'highlight' || mode === 'exclude'
+          ? mode
+          : 'show',
+    })
+  }
+  return result
+}
 
 const MODE_KEYS: Array<{ mode: FilterMode; label: string; hint: string }> = [
   { mode: 'show', label: 'Show only', hint: 'Only matching records stay' },
@@ -101,10 +133,11 @@ export const FilterCalculator = ({ admin, draft }: FilterCalculatorProps) => {
   const name = (part: string) =>
     `_Admin.filter.calculator.${calculatorId}.${part}`
 
-  const savedBase = atom<string[]>([], name('saved'))
+  const savedBase = atom<Array<string | SavedExpression>>([], name('saved'))
   const saved = canPersistToLocalStorage()
     ? savedBase.extend(withLocalStorage(SAVED_STORAGE_KEY))
     : savedBase
+  const savedList = computed(() => readSaved(saved()), name('savedList'))
 
   const parsedDraft = computed(() => parseCalculator(draft()), name('parsed'))
   const inputState = computed(
@@ -159,7 +192,11 @@ export const FilterCalculator = ({ admin, draft }: FilterCalculatorProps) => {
 
   const canSave = () => {
     const source = draft().trim()
-    return source !== '' && parsedDraft().ok && !saved().includes(source)
+    return (
+      source !== '' &&
+      parsedDraft().ok &&
+      !savedList().some((entry) => entry.expression === source)
+    )
   }
 
   const Key = ({
@@ -416,14 +453,31 @@ export const FilterCalculator = ({ admin, draft }: FilterCalculatorProps) => {
               )
             }
             const total = chipRecords().length
+            if (isApplied()) {
+              return (
+                <>
+                  <span data-tone="result">{`= ${matched} of ${total} records match`}</span>
+                  <span data-tone="muted">Applied</span>
+                </>
+              )
+            }
+            const ghostIds = admin.previewGhostIds()
+            const visible = admin.visibleRecords()
+            let errors = 0
+            for (const record of visible) {
+              if (ghostIds.has(record.id) && recordHasError(record)) errors += 1
+            }
             return (
               <>
-                <span data-tone="result">{`= ${matched} of ${total} records match`}</span>
-                {isApplied() ? (
-                  <span data-tone="muted">Applied</span>
-                ) : (
-                  <span data-tone="pending">Not applied. Enter or Apply.</span>
-                )}
+                <span data-tone="result">
+                  {wouldMatchHeadline(
+                    admin.filterMode(),
+                    ghostIds.size,
+                    visible.length,
+                    errors,
+                  )}
+                </span>
+                <span data-tone="pending">Not applied. Enter or Apply.</span>
               </>
             )
           }}
@@ -603,7 +657,12 @@ export const FilterCalculator = ({ admin, draft }: FilterCalculatorProps) => {
                 gap: var(--admin-space-2);
               `}
             >
-              <BreakdownRow node={root} depth={0} total={total} />
+              <BreakdownRow
+                node={root}
+                depth={0}
+                total={total}
+                onHoverClause={(clause) => admin.hoveredClause.set(clause)}
+              />
             </ul>
           </section>
         )
@@ -665,7 +724,10 @@ export const FilterCalculator = ({ admin, draft }: FilterCalculatorProps) => {
           onClick={() => {
             const source = draft().trim()
             if (!canSave()) return
-            saved.set([...saved(), source])
+            saved.set([
+              ...saved(),
+              { expression: source, mode: admin.filterMode() },
+            ])
           }}
         >
           Save
@@ -682,7 +744,7 @@ export const FilterCalculator = ({ admin, draft }: FilterCalculatorProps) => {
       </div>
 
       {() =>
-        saved().length === 0 ? null : (
+        savedList().length === 0 ? null : (
           <section
             aria-label="Saved expressions"
             css={`
@@ -693,53 +755,112 @@ export const FilterCalculator = ({ admin, draft }: FilterCalculatorProps) => {
             <span css={keyRowLabel}>Saved</span>
             <ul
               css={`
-                display: flex;
-                flex-wrap: wrap;
+                display: grid;
                 gap: var(--admin-space-6);
                 margin: 0;
                 padding: 0;
                 list-style: none;
               `}
             >
-              {saved().map((source) => (
-                <li
-                  css={`
-                    display: inline-flex;
-                    gap: var(--admin-space-2);
-                    min-width: 0;
-                  `}
-                >
-                  <Button
-                    variant="ghost"
-                    label={`Use saved expression ${source}`}
-                    title={source}
-                    pressed={() => admin.filterCalculator() === source}
-                    onClick={() => {
-                      draft.set(source)
-                      admin.filterCalculator.set(source)
-                    }}
+              {savedList().map((entry) => {
+                const parsed = parseCalculator(entry.expression)
+                const index = recordIndex()
+                const candidates = chipRecords()
+                const count =
+                  parsed.ok
+                    ? candidates.filter((record) =>
+                        recordMatchesCalculator(record, parsed, index),
+                      ).length
+                    : 0
+                const reason =
+                  count === 0
+                    ? savedFilterReason(entry.expression, admin.records())
+                    : undefined
+                const modeLabel =
+                  entry.mode === 'highlight'
+                    ? 'Highlight'
+                    : entry.mode === 'hide' || entry.mode === 'exclude'
+                      ? 'Hide'
+                      : 'Show'
+                return (
+                  <li
+                    css={`
+                      display: flex;
+                      flex-wrap: wrap;
+                      align-items: center;
+                      gap: var(--admin-space-6);
+                      min-width: 0;
+                      opacity: ${count === 0 ? 0.55 : 1};
+                    `}
                   >
+                    <Button
+                      variant="ghost"
+                      label={`Use saved expression ${entry.expression}`}
+                      title={entry.expression}
+                      pressed={() => draft() === entry.expression}
+                      onClick={() => {
+                        draft.set(entry.expression)
+                        admin.filterMode.set(entry.mode)
+                        focusDisplayEnd()
+                      }}
+                    >
+                      <span
+                        css={`
+                          ${type.data}
+                          ${truncate}
+                          max-width: 18rem;
+                        `}
+                      >
+                        {entry.expression}
+                      </span>
+                    </Button>
+                    <span
+                      css={`
+                        ${type.meta}
+                        color: ${tokens.text3};
+                      `}
+                    >
+                      {modeLabel}
+                    </span>
                     <span
                       css={`
                         ${type.data}
-                        ${truncate}
-                        max-width: 18rem;
+                        font-variant-numeric: tabular-nums;
+                        color: ${tokens.text2};
                       `}
                     >
-                      {source}
+                      {String(count)}
                     </span>
-                  </Button>
-                  <Button
-                    variant="icon"
-                    label={`Remove saved expression ${source}`}
-                    onClick={() =>
-                      saved.set(saved().filter((entry) => entry !== source))
-                    }
-                  >
-                    ×
-                  </Button>
-                </li>
-              ))}
+                    {reason ? (
+                      <span
+                        css={`
+                          ${type.meta}
+                          color: ${tokens.text3};
+                        `}
+                      >
+                        {reason}
+                      </span>
+                    ) : null}
+                    <Button
+                      variant="icon"
+                      label={`Remove saved expression ${entry.expression}`}
+                      onClick={() =>
+                        saved.set(
+                          saved().filter((item) => {
+                            const expression =
+                              typeof item === 'string'
+                                ? item
+                                : item.expression
+                            return expression !== entry.expression
+                          }),
+                        )
+                      }
+                    >
+                      ×
+                    </Button>
+                  </li>
+                )
+              })}
             </ul>
           </section>
         )
@@ -752,10 +873,12 @@ const BreakdownRow = ({
   node,
   depth,
   total,
+  onHoverClause,
 }: {
   node: CalculatorBreakdownNode
   depth: number
   total: number
+  onHoverClause: (clause: string | null) => void
 }) => {
   const share = total === 0 ? 0 : Math.round((node.count / total) * 100)
   const groupWords = node.kind === 'all' ? 'all of' : 'any of'
@@ -786,6 +909,12 @@ const BreakdownRow = ({
           }
         `}
         data-empty={String(node.count === 0)}
+        on:pointerenter={() => {
+          if (node.kind === 'clause') onHoverClause(node.label)
+        }}
+        on:pointerleave={() => {
+          if (node.kind === 'clause') onHoverClause(null)
+        }}
       >
         <span
           css={`
@@ -818,9 +947,14 @@ const BreakdownRow = ({
             gap: var(--admin-space-2);
           `}
         >
-          {node.children.map((child) => (
-            <BreakdownRow node={child} depth={depth + 1} total={total} />
-          ))}
+            {node.children.map((child) => (
+              <BreakdownRow
+                node={child}
+                depth={depth + 1}
+                total={total}
+                onHoverClause={onHoverClause}
+              />
+            ))}
         </ul>
       )}
     </li>

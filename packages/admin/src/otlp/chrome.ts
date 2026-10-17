@@ -35,7 +35,7 @@ import {
 } from './bind.ts'
 import { findCausePathIds, selectedCauseThread } from './causeThread.ts'
 import { fetchClickHouseExport } from './clickhouse.ts'
-import { parseCalculator } from './calculator.ts'
+import { parseCalculator, previewGhostRecordIds } from './calculator.ts'
 import {
   applyFilterMode,
   candidateRecords,
@@ -99,6 +99,8 @@ function reatomOtlpAdminModel(options: OtlpAdminOptions) {
     null,
     `${PREFIX}.pendingCalculatorDraft`,
   )
+  const filterDraft = atom('', `${PREFIX}.filter.draft`)
+  const hoveredClause = atom<string | null>(null, `${PREFIX}.filter.hoveredClause`)
   const followLive = reatomBoolean(true, `${PREFIX}.followLive`)
   const source = atom<OtlpAdminSource>(
     options.source ?? 'live',
@@ -207,6 +209,8 @@ function reatomOtlpAdminModel(options: OtlpAdminOptions) {
     filterName.set('')
     filterQuery.set('')
     filterCalculator.set('')
+    filterDraft.set('')
+    hoveredClause.set(null)
     filterHasError.set(undefined)
     filterReatomKind.set(undefined)
     filterKind.set(undefined)
@@ -298,6 +302,15 @@ function reatomOtlpAdminModel(options: OtlpAdminOptions) {
   const highlightedIds = computed(() => {
     return highlightedRecordIds(matchedRecords(), filter())
   }, `${PREFIX}.highlightedIds`)
+  const previewGhostIds = computed(() => {
+    return previewGhostRecordIds(
+      visibleRecords(),
+      filterDraft(),
+      filterCalculator(),
+      hoveredClause(),
+      store.records(),
+    )
+  }, `${PREFIX}.previewGhostIds`)
 
   const feedRecords = computed(() => {
     return visibleFeed(visibleRecords(), FEED_RENDER_LIMIT)
@@ -791,6 +804,9 @@ function reatomOtlpAdminModel(options: OtlpAdminOptions) {
     graphPathIds,
     causeThread,
     pendingCalculatorDraft,
+    filterDraft,
+    hoveredClause,
+    previewGhostIds,
     followLive,
     source,
     remoteOpen,

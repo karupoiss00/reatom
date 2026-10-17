@@ -4,11 +4,13 @@ import { mcpCallLog } from '../../mcp/callLog'
 import type { OtlpAdmin } from '../../otlp'
 import {
   appendCalculatorClause,
+  calculatorClauses,
   chipCountRecords,
   describeCalculator,
   hasActiveFilter,
   parseCalculator,
   quoteCalculatorValue,
+  removeCalculatorClause,
   topRecordNames,
 } from '../../otlp'
 import type { AdminRecord, AdminRecordKind, AdminReatomKind } from '../../otlp'
@@ -154,6 +156,9 @@ export const OtlpFilterBar = ({ admin }: { admin: OtlpAdmin }) => {
     }
     draft.set(pending)
   }, `_Admin.filter.pendingDraft.${barId}`)
+  effect(() => {
+    admin.filterDraft.set(draft())
+  }, `_Admin.filter.draftSync.${barId}`)
 
   const toggleKind = (kind: AdminReatomKind) => {
     admin.filterKind.set(undefined)
@@ -167,6 +172,7 @@ export const OtlpFilterBar = ({ admin }: { admin: OtlpAdmin }) => {
     admin.showAbortAndSuspense.setFalse()
     admin.showMountLogs.setFalse()
     draft.set('')
+    admin.hoveredClause.set(null)
   }
 
   return (
@@ -375,8 +381,11 @@ export const OtlpFilterBar = ({ admin }: { admin: OtlpAdmin }) => {
         const applied = admin.filterCalculator().trim()
         if (applied === '') return null
         const sentence = describeCalculator(applied, admin.filterMode())
+        const clauses = calculatorClauses(applied)
+        const pills = clauses.length > 0 ? clauses : [{ source: applied }]
         return (
           <span
+            data-testid="filter-clause-pills"
             css={`
               display: inline-flex;
               flex-wrap: wrap;
@@ -385,22 +394,29 @@ export const OtlpFilterBar = ({ admin }: { admin: OtlpAdmin }) => {
               min-width: 0;
             `}
           >
-            <Button
-              label={`Remove applied expression ${applied}`}
-              title={`Applied expression: ${applied}. Click to remove it.`}
-              onClick={() => admin.filterCalculator.set('')}
-            >
-              <span
-                css={`
-                  ${type.data}
-                  ${truncate}
-                  max-width: 16rem;
-                `}
+            {pills.map((clause) => (
+              <Button
+                variant="ghost"
+                label={`Remove clause ${clause.source}`}
+                title={clause.source}
+                onClick={() => {
+                  const next = removeCalculatorClause(applied, clause.source)
+                  admin.filterCalculator.set(next)
+                  draft.set(next)
+                }}
               >
-                {`= ${applied}`}
-              </span>
-              <span aria-hidden="true">×</span>
-            </Button>
+                <span
+                  css={`
+                    ${type.data}
+                    ${truncate}
+                    max-width: 12rem;
+                  `}
+                >
+                  {clause.source}
+                </span>
+                <span aria-hidden="true">×</span>
+              </Button>
+            ))}
             {sentence ? (
               <span
                 css={`

@@ -26,6 +26,7 @@ import {
   isRootSpan,
   orderedRoots,
   rootTurnNumber,
+  sectionStickyTop,
   turnHairlineText,
   turnSection,
 } from '../../gantt/turns'
@@ -36,10 +37,18 @@ import {
 } from '../../gantt/writePreview'
 import type { GanttRecordSelection } from '../../gantt/selection'
 import { mcpCallLog } from '../../mcp/callLog'
-import type { AdminRecord, AdminRecordOutcome, AdminReatomKind, OtlpAdmin } from '../../otlp'
+import type {
+  AdminConnection,
+  AdminRecord,
+  AdminRecordOutcome,
+  AdminReatomKind,
+  OtlpAdmin,
+} from '../../otlp'
 import {
   durationThresholdMs,
   endedSpanPercentile,
+  explainRecordMatch,
+  formatMatchExplanation,
   isSlowDuration,
   kindShareColorVar,
   recordHasError,
@@ -57,7 +66,6 @@ import {
 } from '../../otlp/analytics'
 import {
   Button,
-  EmptyState,
   Icon,
   SelectField,
   StatusDot,
@@ -69,6 +77,7 @@ import {
   barHatch,
   barHollow,
   barTick,
+  causeThread,
   focusVisible,
   kindStripe,
   kindStripeWidth,
@@ -81,6 +90,7 @@ import {
   type,
   visuallyHidden,
 } from '../design-system'
+import { PathsEmptyState, TimelineEmptyState } from './emptyStates'
 import { GanttAxisMarkers, GanttTimeStrip } from './GanttTimeStrip'
 import { KindMark } from './KindMark'
 import {
@@ -94,7 +104,119 @@ const INDENT = 12
 const CHEVRON = 16
 
 const COLUMNS = `${LABEL_WIDTH}px minmax(0, 1fr)`
+const THREAD_GUTTER = 10
 let ganttUiCounter = 0
+
+function rowMatchTitle(
+  admin: OtlpAdmin,
+  row: AdminRecord,
+  label: string,
+): string {
+  const source = admin.filterCalculator().trim()
+  if (source === '') return label
+  const mode = admin.filterMode()
+  if (mode === 'hide' || mode === 'exclude') return label
+  if (mode === 'highlight' && !admin.highlightedIds().has(row.id)) return label
+  const lines = explainRecordMatch(row, source, admin.records())
+  if (lines === undefined) return label
+  return `${label}\n${formatMatchExplanation(lines)}`
+}
+
+const CauseThreadGutter = ({
+  admin,
+  row,
+}: {
+  admin: OtlpAdmin
+  row: AdminRecord
+}) => {
+  if (!adminSettings().causeThread()) return null
+  const selected = admin.selectedRecord()
+  const thread = admin.causeThread()
+  if (selected === null || selected.frameId === undefined) return null
+  const rows = admin.gantt.rows()
+  const selectedIndex = rows.findIndex((entry) => entry.id === selected.id)
+  const ancestorIndexes = thread.ancestorFrameIds.flatMap((frameId) => {
+    const index = rows.findIndex((entry) => entry.frameId === frameId)
+    return index === -1 ? [] : [index]
+  })
+  const marks = [selectedIndex, ...ancestorIndexes].filter((index) => index >= 0)
+  if (marks.length === 0) return null
+  const index = rows.findIndex((entry) => entry.id === row.id)
+  if (index === -1) return null
+  const lo = Math.min(...marks)
+  const hi = Math.max(...marks)
+  const onThread = index >= lo && index <= hi
+  const showDiamond =
+    row.frameId !== undefined && thread.diamondFrameIds.includes(row.frameId)
+  const showErrorMark = row.frameId === thread.errorAncestorFrameId
+  if (!onThread && !showDiamond && !showErrorMark) return null
+  const errorIndex =
+    thread.errorAncestorFrameId === undefined
+      ? -1
+      : rows.findIndex((entry) => entry.frameId === thread.errorAncestorFrameId)
+  const useError =
+    errorIndex >= 0 &&
+    selectedIndex >= 0 &&
+    index >= Math.min(selectedIndex, errorIndex) &&
+    index <= Math.max(selectedIndex, errorIndex)
+  const stroke = useError ? tokens.error : causeThread.color
+  return (
+    <span
+      data-testid="gantt-cause-thread"
+      data-error={useError ? 'true' : undefined}
+      css={`
+        position: relative;
+        flex: 0 0 ${THREAD_GUTTER}px;
+        align-self: stretch;
+        width: ${THREAD_GUTTER}px;
+        pointer-events: none;
+      `}
+    >
+      {onThread ? (
+        <span
+          css={`
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: 50%;
+            width: ${causeThread.width};
+            transform: translateX(-50%);
+            background: ${stroke};
+          `}
+        />
+      ) : null}
+      {showDiamond ? (
+        <span
+          css={`
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: ${causeThread.diamond};
+            height: ${causeThread.diamond};
+            box-sizing: border-box;
+            border: ${causeThread.width} solid ${stroke};
+            background: transparent;
+            transform: translate(-50%, -50%) rotate(45deg);
+          `}
+        />
+      ) : null}
+      {showErrorMark ? (
+        <span
+          css={`
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            ${type.meta}
+            color: ${tokens.error};
+          `}
+        >
+          !
+        </span>
+      ) : null}
+    </span>
+  )
+}
 
 export { formatAxisOffset } from '../../gantt'
 
@@ -372,6 +494,7 @@ export interface OtlpGanttChartProps<Node, Key = Node> {
   gantt: Gantt<Node, Key>
   admin: OtlpAdmin
   adapter: GanttRowAdapter<Node>
+  connection?: AdminConnection | null
   /** Opens the frame card for the row that was just selected. */
   onInspect?: () => void
 }
@@ -456,6 +579,7 @@ const GanttKindLegend = ({ admin }: { admin: OtlpAdmin }) => (
 export function recordRowAdapter(
   admin: OtlpAdmin,
   selection: GanttRecordSelection,
+  connection: AdminConnection | null = null,
 ): GanttRowAdapter<AdminRecord> {
   const colorBy = atom<GanttColorBy>(
     'kind',
@@ -490,35 +614,9 @@ export function recordRowAdapter(
       />
     ),
     toolbar: () => <GanttColorBySelect admin={admin} colorBy={colorBy} />,
-    empty: () => {
-      const filtered = admin.records().length > 0
-      return (
-        <EmptyState
-          title={filtered ? 'No matching records' : 'No records yet'}
-          description={
-            filtered
-              ? 'Reset filters to show the captured records again.'
-              : 'Nothing has been captured. OpenTelemetry may have been created after the app atoms, skipGlobalExtension may be on, a filter may be dropping every span, or consent and kill switches may be off.'
-          }
-          action={
-            filtered ? (
-              <Button label="Reset filters" onClick={() => admin.resetFilter()}>
-                Reset
-              </Button>
-            ) : (
-              <a
-                href="https://v1001.reatom.dev"
-                css={`
-                  color: ${tokens.accent};
-                `}
-              >
-                OpenTelemetry setup
-              </a>
-            )
-          }
-        />
-      )
-    },
+    empty: () => (
+      <TimelineEmptyState admin={admin} connection={connection} />
+    ),
     live: true,
   }
 }
@@ -625,12 +723,7 @@ export function pathRowAdapter(
       />
     ),
     toolbar: () => <PathsToolbar admin={admin} />,
-    empty: () => (
-      <EmptyState
-        title="No paths"
-        description="No sessions in this segment have the aligned step."
-      />
-    ),
+    empty: () => <PathsEmptyState />,
     live: false,
   }
 }
@@ -729,12 +822,23 @@ const GanttRow = ({
       aria-rowindex={rowIndex}
       aria-selected={isSelected}
       data-highlighted={() => (isHighlighted() ? 'true' : 'false')}
+      data-ghost={() => (admin.previewGhostIds().has(row.id) ? 'true' : 'false')}
       data-agent-read={() =>
         adminSettings().agentCallLog() && mcpCallLog().agentReadIds().has(row.id)
           ? 'true'
           : 'false'
       }
-      title={label}
+      title={() => rowMatchTitle(admin, row, label)}
+      style:top={() =>
+        isSection()
+          ? sectionStickyTop(
+              row,
+              gantt.rows(),
+              gantt.virtual.scrollOffset(),
+              ROW_HEIGHT,
+            )
+          : undefined
+      }
       css={`
         box-sizing: border-box;
         display: grid;
@@ -831,9 +935,20 @@ const GanttRow = ({
             ${tokens.canvas}
           );
         }
+        &[data-ghost='true']:not([aria-selected='true']) {
+          box-shadow: inset 0 0 0 1px color-mix(
+            in oklch,
+            ${tokens.accent} 45%,
+            transparent
+          );
+          background: color-mix(
+            in oklch,
+            ${tokens.accent} 8%,
+            ${tokens.canvas}
+          );
+        }
         &[data-section='true'] {
           position: sticky;
-          top: 0;
           z-index: 2;
         }
       `}
@@ -867,6 +982,7 @@ const GanttRow = ({
           padding-right: var(--admin-space-8);
         `}
       >
+        <CauseThreadGutter admin={admin} row={row} />
         {() => {
           const group = logGroupOf(row)
           if (
@@ -1682,6 +1798,7 @@ export const OtlpGanttChart = <Node, Key = Node>({
   gantt,
   admin,
   adapter,
+  connection = null,
   onInspect,
 }: OtlpGanttChartProps<Node, Key>) => {
   const uiId = ++ganttUiCounter
@@ -1993,6 +2110,10 @@ export const OtlpGanttChart = <Node, Key = Node>({
               <GanttTimeStrip
                 gantt={gantt as unknown as Gantt<AdminRecord>}
                 admin={admin}
+                paused={() =>
+                  connection ? connection.paused() : admin.paused()
+                }
+                dropped={() => connection?.olderRecordsDropped() ?? false}
               />
             </div>
           ) : null

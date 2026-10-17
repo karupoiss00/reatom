@@ -9,7 +9,7 @@ import { isUpdateLog, recordBarMark, colorByChoices, legendKinds } from './barMa
 import { foldLogRows, logGroupOf } from './logGroups'
 import { recordRowChips, rowChipDraft, visibleRowChips } from './rowChips'
 import { timeStripModel } from './timeStrip'
-import { isRootSpan, turnHairlineText, turnSection } from './turns'
+import { isRootSpan, sectionStickyTop, turnHairlineText, turnSection } from './turns'
 import { collapsedWriteTicks } from './writeTicks'
 import { formatWritePreview } from './writePreview'
 
@@ -249,6 +249,19 @@ test('turnSection describes a root and hairline copy', () => {
   expect(section.errorCount).toBe(0)
   expect(section.updateCount).toBe(1)
   expect(turnHairlineText(section)).toContain('Turn 1 · submit')
+})
+
+test('sectionStickyTop stays in its own trace', () => {
+  const first = record({ id: 'a', name: 'one', parentSpanId: undefined })
+  const child = record({
+    id: 'a-child',
+    name: 'child',
+    parentSpanId: 'span',
+  })
+  const second = record({ id: 'b', name: 'two', parentSpanId: undefined })
+  expect(sectionStickyTop(first, [first, child, second], 0, 26)).toBe('0px')
+  expect(sectionStickyTop(first, [first, child, second], 40, 26)).toBe('-14px')
+  expect(sectionStickyTop(second, [first, child, second], 0, 26)).toBe('0px')
 })
 
 test('timeStripModel stacks kinds, keeps off-viewport errors, and hatches the tail', () => {

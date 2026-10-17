@@ -55,7 +55,7 @@ export const RemoteThenClear: Story = {
     await userEvent.click(adminUi().getByRole('button', { name: 'Clear' }))
     await waitFor(() => {
       expect(getAdminRoot().textContent ?? '').not.toContain('tree.checked')
-      expect(getAdminRoot().textContent ?? '').toContain('No records yet')
+      expect(getAdminRoot().textContent ?? '').toContain('No tracer connected')
     })
   },
 }

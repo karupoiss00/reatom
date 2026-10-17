@@ -1,4 +1,5 @@
 import type { AdminConnection, AdminRecord, OtlpAdmin } from '../../otlp'
+import { explainEmptyClauses } from '../../otlp'
 import {
   Button,
   CodeChip,
@@ -137,6 +138,45 @@ export const NoMatchingEmpty = ({ admin }: { admin: OtlpAdmin }) => (
     }
     docsHref={DOCS_HREF}
     docsLabel="OpenTelemetry setup"
+    detail={
+      <div
+        data-testid="empty-clause-counts"
+        css={`
+          display: grid;
+          gap: var(--admin-space-4);
+          ${type.meta}
+          color: ${tokens.text3};
+        `}
+      >
+        {() => {
+          const clauses = explainEmptyClauses(
+            admin.filterCalculator(),
+            admin.records(),
+          )
+          if (clauses === undefined || clauses.length === 0) return null
+          const firstZero = clauses.find((clause) => clause.count === 0)
+          return clauses.map((clause) => (
+            <span
+              data-zero={
+                firstZero !== undefined && clause.clause === firstZero.clause
+                  ? 'true'
+                  : undefined
+              }
+              css={`
+                &[data-zero='true'] {
+                  color: ${tokens.warning};
+                }
+              `}
+            >
+              {`${clause.clause} ${clause.count}`}
+              {firstZero !== undefined && clause.clause === firstZero.clause
+                ? ' · first zero'
+                : ''}
+            </span>
+          ))
+        }}
+      </div>
+    }
   />
 )
 

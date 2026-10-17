@@ -60,7 +60,11 @@ export {
 export type { CauseListRow, CauseThread, TimeNeighbor } from './causeThread.ts'
 export {
   buildCalculatorIndex,
+  calculatorClauses,
   evaluateRecordExpression,
+  explainEmptyClauses,
+  explainRecordMatch,
+  formatMatchExplanation,
   highlightCalculator,
   describeCalculator,
   durationThresholdMs,
@@ -68,12 +72,17 @@ export {
   isSlowDuration,
   parseCalculator,
   parseFilterCalculator,
+  previewGhostRecordIds,
   quoteCalculatorValue,
   recordMatchesCalculator,
+  removeCalculatorClause,
+  savedFilterReason,
   stringifyCalculator,
   stringifyCalculatorNode,
+  wouldMatchHeadline,
 } from './calculator.ts'
 export type {
+  CalculatorClause,
   CalculatorCompareOp,
   CalculatorHighlightKind,
   CalculatorHighlightSpan,
@@ -81,6 +90,8 @@ export type {
   CalculatorParseErr,
   CalculatorParseOk,
   CalculatorRecordIndex,
+  ClauseMatchExplanation,
+  EmptyClauseCount,
 } from './calculator.ts'
 export {
   applyFilterMode,

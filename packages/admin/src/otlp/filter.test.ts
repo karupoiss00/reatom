@@ -476,3 +476,19 @@ test('endedSpanPercentile uses ended spans and hides below eight', () => {
   expect(endedSpanPercentile(withOpen as AdminRecord[], 0.5)).toBe(40)
   expect(endedSpanPercentile(withOpen as AdminRecord[], 0.95)).toBe(80)
 })
+
+test('previewGhostIds follows the unapplied draft and clears on apply', () => {
+  const { admin } = ingestAll()
+  ADMIN_FRAME.run(() => {
+    admin.filterDraft.set('name:explode')
+    expect(admin.filterCalculator()).toBe('')
+    expect(admin.previewGhostIds().size).toBe(1)
+    admin.filterCalculator.set('name:explode')
+    expect(admin.previewGhostIds().size).toBe(0)
+    admin.filterDraft.set('name:missing')
+    expect(admin.previewGhostIds().size).toBe(0)
+    admin.resetFilter()
+    expect(admin.filterDraft()).toBe('')
+    expect(admin.previewGhostIds().size).toBe(0)
+  })
+})

@@ -1058,3 +1058,204 @@ export function recordMatchesCalculator(
   if (!parsed.ok) return false
   return evaluateRecordExpression(record, parsed.expression, parsed.tags, index)
 }
+
+export type CalculatorClause = {
+  source: string
+}
+
+export function calculatorClauses(source: string): CalculatorClause[] {
+  const parsed = parseCalculator(source)
+  if (!parsed.ok) return []
+  return parsed.expression.children.map((child) => ({
+    source: stringifyCalculatorNode(child, parsed.tags),
+  }))
+}
+
+export function removeCalculatorClause(
+  source: string,
+  clauseSource: string,
+): string {
+  const parsed = parseCalculator(source)
+  if (!parsed.ok) return source
+  const remaining = parsed.expression.children.filter(
+    (child) => stringifyCalculatorNode(child, parsed.tags) !== clauseSource,
+  )
+  if (remaining.length === 0) return ''
+  return stringifyCalculator({
+    ...parsed,
+    expression: { ...parsed.expression, children: remaining },
+  })
+}
+
+export function previewGhostRecordIds(
+  records: readonly AdminRecord[],
+  draft: string,
+  applied: string,
+  hoveredClause: string | null = null,
+  index?: CalculatorRecordIndex | readonly AdminRecord[],
+): Set<string> {
+  const draftTrim = draft.trim()
+  const appliedTrim = applied.trim()
+  if (draftTrim === '' || draftTrim === appliedTrim) return new Set()
+  const source = hoveredClause?.trim() || draftTrim
+  const parsed = parseCalculator(source)
+  if (!parsed.ok || parsed.expression.children.length === 0) return new Set()
+  const resolved = asRecordIndex(index) ?? buildCalculatorIndex(records)
+  const ids = new Set<string>()
+  for (const record of records) {
+    if (recordMatchesCalculator(record, parsed, resolved)) ids.add(record.id)
+  }
+  return ids
+}
+
+export function wouldMatchHeadline(
+  mode: 'show' | 'hide' | 'highlight' | 'exclude',
+  matched: number,
+  total: number,
+  errors: number,
+): string {
+  const verb = mode === 'hide' || mode === 'exclude' ? 'Would hide' : 'Would show'
+  const matchedText = matched.toLocaleString('en-US')
+  const totalText = total.toLocaleString('en-US')
+  const errorNoun = errors === 1 ? 'error' : 'errors'
+  return `${verb} ${matchedText} of ${totalText} · ${errors.toLocaleString('en-US')} ${errorNoun}`
+}
+
+export type ClauseMatchExplanation = {
+  clause: string
+  matched: boolean
+  hops?: string[]
+}
+
+export type EmptyClauseCount = {
+  clause: string
+  count: number
+}
+
+function causeGreaterHops(
+  record: AdminRecord,
+  pattern: string,
+  index: CalculatorRecordIndex,
+): string[] | undefined {
+  type Walk = { key: string; path: string[] }
+  const visited = new Set<string>()
+  const queue: Walk[] = parentFrameKeys(record).map((key) => ({
+    key,
+    path: [],
+  }))
+  const selfName = recordLabel(record)
+  while (queue.length > 0) {
+    const { key, path } = queue.shift()!
+    if (visited.has(key)) continue
+    visited.add(key)
+    const ancestor = index.byFrame.get(key)
+    if (!ancestor) continue
+    const name = recordLabel(ancestor)
+    const nextPath = [...path, name]
+    if (matchNameField(ancestor, pattern, ':')) {
+      return [name, ...path, selfName]
+    }
+    for (const parentKey of parentFrameKeys(ancestor)) {
+      queue.push({ key: parentKey, path: nextPath })
+    }
+  }
+  return undefined
+}
+
+function clauseCauseHops(
+  record: AdminRecord,
+  node: FilterTagRef | FilterGroup,
+  tags: Map<string, FilterTag>,
+  index: CalculatorRecordIndex,
+): string[] | undefined {
+  if (!isTagRef(node)) return undefined
+  const tag = tags.get(node.tagId)
+  const predicate = tag?.predicates[0]
+  if (predicate?.type !== 'cause') return undefined
+  const cause = predicate as CausePredicate
+  if (cause.direction !== '>') return undefined
+  return causeGreaterHops(record, cause.referencePattern, index)
+}
+
+export function explainRecordMatch(
+  record: AdminRecord,
+  source: string,
+  records: readonly AdminRecord[],
+): ClauseMatchExplanation[] | undefined {
+  const parsed = parseCalculator(source)
+  if (!parsed.ok || parsed.expression.children.length === 0) return undefined
+  const index = buildCalculatorIndex(records)
+  const tags = new Map(parsed.tags.map((tag) => [tag.id, tag]))
+  return parsed.expression.children.map((child) => {
+    const clause = stringifyCalculatorNode(child, parsed.tags)
+    const matched = evaluateRecordExpression(
+      record,
+      { operator: 'AND', children: [child] },
+      parsed.tags,
+      index,
+    )
+    const hops = matched
+      ? clauseCauseHops(record, child, tags, index)
+      : undefined
+    return hops === undefined ? { clause, matched } : { clause, matched, hops }
+  })
+}
+
+export function explainEmptyClauses(
+  source: string,
+  records: readonly AdminRecord[],
+): EmptyClauseCount[] | undefined {
+  const parsed = parseCalculator(source)
+  if (!parsed.ok || parsed.expression.children.length === 0) return undefined
+  const index = buildCalculatorIndex(records)
+  return parsed.expression.children.map((child) => {
+    const clause = stringifyCalculatorNode(child, parsed.tags)
+    let count = 0
+    for (const record of records) {
+      if (
+        evaluateRecordExpression(
+          record,
+          { operator: 'AND', children: [child] },
+          parsed.tags,
+          index,
+        )
+      ) {
+        count += 1
+      }
+    }
+    return { clause, count }
+  })
+}
+
+export function formatMatchExplanation(
+  lines: readonly ClauseMatchExplanation[],
+): string {
+  return lines
+    .map((line) => {
+      const mark = line.matched ? '✓' : '✗'
+      if (line.hops && line.hops.length > 0) {
+        return `${line.clause} ${mark} via ${line.hops.join(' → ')}`
+      }
+      return `${line.clause} ${mark}`
+    })
+    .join('\n')
+}
+
+export function savedFilterReason(
+  source: string,
+  records: readonly AdminRecord[],
+): string | undefined {
+  const parsed = parseCalculator(source)
+  if (!parsed.ok) return undefined
+  const usesSession = parsed.tags.some((tag) => {
+    const predicate = tag.predicates[0]
+    if (predicate?.type !== 'compare') return false
+    return (predicate.value as CalculatorCompareValue).field === 'session'
+  })
+  if (!usesSession) return undefined
+  const hasSessionId = records.some(
+    (record) => record.attributes['session.id'] !== undefined,
+  )
+  if (hasSessionId) return undefined
+  return 'No session.id in this capture'
+}

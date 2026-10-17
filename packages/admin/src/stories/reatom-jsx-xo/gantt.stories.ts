@@ -486,7 +486,7 @@ export const FilterCalculatorNarrowsRows: Story = {
 
     expect(expression.value).toBe('name:makeMove OR kind=atom')
     await waitFor(() => {
-      expect(adminUi().getByText(/= \d+ of \d+ records match/)).toBeTruthy()
+      expect(adminUi().getByText(/Would show \d+ of [\d,]+ · \d+ errors?/)).toBeTruthy()
       expect(adminUi().getByText('Not applied. Enter or Apply.')).toBeTruthy()
     })
     const breakdown = adminUi().getByRole('region', {
@@ -506,11 +506,7 @@ export const FilterCalculatorNarrowsRows: Story = {
     })
     expect(summary.parentElement).toHaveProperty('open', true)
 
-    await userEvent.click(
-      adminUi().getByRole('button', {
-        name: 'Remove applied expression name:makeMove OR kind=atom',
-      }),
-    )
+    await userEvent.click(adminUi().getByRole('button', { name: 'Clear all' }))
     await waitFor(() => {
       expect(rowLabels()).toContain('resetGame')
     })
@@ -601,8 +597,8 @@ export const EmptyLiveSession: Story = {
     })
     await waitFor(() => {
       const text = getAdminRoot().textContent ?? ''
-      expect(text).toContain('No records yet')
-      expect(text).toContain('skipGlobalExtension')
+      expect(text).toContain('Capturing')
+      expect(text).toContain('Interact with the app')
       expect(text).toContain('OpenTelemetry setup')
     })
     expect(
