@@ -6,6 +6,7 @@ import {
   chipCountRecords,
   describeCalculator,
   hasActiveFilter,
+  parseCalculator,
   quoteCalculatorValue,
   topRecordNames,
 } from '../../otlp'
@@ -13,6 +14,7 @@ import type { AdminRecord, AdminRecordKind, AdminReatomKind } from '../../otlp'
 import {
   Button,
   Disclosure,
+  Hint,
   Popover,
   SearchField,
   tokens,
@@ -217,6 +219,11 @@ export const OtlpFilterBar = ({ admin }: { admin: OtlpAdmin }) => {
               testId="analytics-segment-include"
               pressed={() => admin.analytics.segmentMode() === 'include'}
               disabled={() => !hasActiveFilter(admin.filter())}
+              title={() =>
+                hasActiveFilter(admin.filter())
+                  ? 'Sessions that match stay in'
+                  : 'Add a name, value, chip, or expression first'
+              }
               onClick={() => admin.analytics.segmentMode.set('include')}
             >
               Include
@@ -227,10 +234,20 @@ export const OtlpFilterBar = ({ admin }: { admin: OtlpAdmin }) => {
               testId="analytics-segment-exclude"
               pressed={() => admin.analytics.segmentMode() === 'exclude'}
               disabled={() => !hasActiveFilter(admin.filter())}
+              title={() =>
+                hasActiveFilter(admin.filter())
+                  ? 'Sessions that match drop out'
+                  : 'Add a name, value, chip, or expression first'
+              }
               onClick={() => admin.analytics.segmentMode.set('exclude')}
             >
               Exclude
             </Button>
+            {() =>
+              hasActiveFilter(admin.filter()) ? null : (
+                <Hint>Include and Exclude need an active filter.</Hint>
+              )
+            }
           </span>
         ) : null
       }
@@ -393,7 +410,27 @@ export const OtlpFilterBar = ({ admin }: { admin: OtlpAdmin }) => {
           }
         `}
       >
-        <Disclosure label="Advanced filters">
+        <Disclosure
+          label="Advanced filters"
+          detail={() => {
+            const mode = admin.filterMode()
+            const modeLabel =
+              mode === 'highlight'
+                ? 'Highlight'
+                : mode === 'hide' || mode === 'exclude'
+                  ? 'Hide'
+                  : 'Show'
+            const parsed = parseCalculator(admin.filterCalculator())
+            const clauses = parsed.ok ? parsed.tags.length : 0
+            const matches = admin.matchedRecords().length
+            const parts = [modeLabel]
+            if (clauses > 0) {
+              parts.push(`${clauses} ${clauses === 1 ? 'clause' : 'clauses'}`)
+            }
+            parts.push(`${matches} ${matches === 1 ? 'match' : 'matches'}`)
+            return parts.join(' · ')
+          }}
+        >
           <div
             css={`
               display: grid;

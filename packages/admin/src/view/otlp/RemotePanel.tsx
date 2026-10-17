@@ -1,6 +1,7 @@
 import type { OtlpAdmin } from '../../otlp'
 import {
   Button,
+  Hint,
   controlBase,
   focusVisible,
   tokens,
@@ -55,6 +56,7 @@ export const OtlpRemotePanel = ({ admin }: OtlpRemotePanelProps) => {
           aria-label="ClickHouse URL"
           css={inputCss}
         />
+        <Hint>HTTP endpoint for this ClickHouse instance.</Hint>
       </label>
       <label css={fieldCss}>
         Database
@@ -67,6 +69,7 @@ export const OtlpRemotePanel = ({ admin }: OtlpRemotePanelProps) => {
           aria-label="ClickHouse database"
           css={inputCss}
         />
+        <Hint>Reads otel_traces and otel_logs.</Hint>
       </label>
       <label css={fieldCss}>
         User
@@ -79,6 +82,7 @@ export const OtlpRemotePanel = ({ admin }: OtlpRemotePanelProps) => {
           aria-label="ClickHouse user"
           css={inputCss}
         />
+        <Hint>ClickHouse user for those two tables.</Hint>
       </label>
       <label css={fieldCss}>
         Password
@@ -91,17 +95,26 @@ export const OtlpRemotePanel = ({ admin }: OtlpRemotePanelProps) => {
           aria-label="ClickHouse password"
           css={inputCss}
         />
+        <Hint>Stays in memory for this session. Nothing is saved.</Hint>
       </label>
-      <Button
-        type="submit"
-        variant="primary"
-        label="Connect ClickHouse"
-        testId="otlp-remote-connect"
-        disabled={() => !admin.remoteForm.submit.ready()}
-        onClick={() => {}}
+      <div
+        css={`
+          display: grid;
+          gap: var(--admin-space-4);
+        `}
       >
-        {() => (admin.remoteForm.submit.ready() ? 'Connect' : 'Connecting')}
-      </Button>
+        <Button
+          type="submit"
+          variant="primary"
+          label="Connect ClickHouse"
+          testId="otlp-remote-connect"
+          disabled={() => !admin.remoteForm.submit.ready()}
+          onClick={() => {}}
+        >
+          {() => (admin.remoteForm.submit.ready() ? 'Connect' : 'Connecting')}
+        </Button>
+        <Hint>Fetches the newest 500 spans and 500 logs.</Hint>
+      </div>
       <p
         data-testid="otlp-remote-error"
         css={`

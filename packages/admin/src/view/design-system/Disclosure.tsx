@@ -8,6 +8,7 @@ let disclosureCounter = 0
 export interface DisclosureProps {
   /** Summary shown when the section is collapsed or open. */
   label: string
+  detail?: string | (() => string)
   /**
    * Controlled open state. Omit it for an internal atom that starts closed.
    * When passed, this is the atom the summary writes.
@@ -20,6 +21,7 @@ export interface DisclosureProps {
 /** One collapsed section. Starts closed unless `open` is already true. */
 export const Disclosure = ({
   label,
+  detail,
   open,
   onToggle,
   children,
@@ -78,6 +80,17 @@ export const Disclosure = ({
           {() => (state() ? '▾' : '▸')}
         </span>
         {label}
+        {detail ? (
+          <span
+            css={`
+              ${type.meta}
+              color: ${tokens.text3};
+              font-weight: 500;
+            `}
+          >
+            {detail}
+          </span>
+        ) : null}
       </summary>
       <div
         css={`

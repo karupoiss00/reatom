@@ -65,6 +65,14 @@ export {
   visibleRecords,
 } from './filter.ts'
 export { reatomOtlpAdmin } from './chrome.ts'
+export {
+  attentionItems,
+  formatRecordAge,
+  freshnessLabel,
+  latestRecordTime,
+  loadedRecordWindow,
+} from './freshness.ts'
+export type { AttentionItem, FreshnessInput } from './freshness.ts'
 export type {
   OtlpAdmin,
   OtlpAdminOptions,

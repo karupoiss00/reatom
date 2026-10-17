@@ -189,3 +189,24 @@ export const NumberField = ({
     </label>
   )
 }
+
+export const Hint = ({
+  children,
+}: {
+  children: string | (() => string)
+}) => (
+  <p
+    css={`
+      ${type.meta}
+      margin: 0;
+      color: ${tokens.text3};
+      max-width: 36rem;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    `}
+  >
+    {children}
+  </p>
+)

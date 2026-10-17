@@ -9,7 +9,12 @@ import {
 import { mount } from '@reatom/jsx'
 
 import type { AdminConnection, OtlpAdmin, OtlpAdminOptions } from '../../otlp'
-import { ADMIN_CLEAR_UNDO_MS, reatomOtlpAdmin } from '../../otlp'
+import {
+  ADMIN_CLEAR_UNDO_MS,
+  attentionItems,
+  freshnessLabel,
+  reatomOtlpAdmin,
+} from '../../otlp'
 import { ADMIN_FRAME } from '../../root'
 import {
   Button,
@@ -84,23 +89,26 @@ const VIEWS = [
   { id: 'settings' as const, label: 'Settings' },
 ]
 
-function statusWords(
-  admin: OtlpAdmin,
-  connection: AdminConnection | null,
-): string {
-  if (admin.source() === 'remote') return 'ClickHouse'
-  if (admin.source() === 'replay') return 'Replay'
-  const paused = connection ? connection.paused() : admin.paused()
-  if (!paused) return 'Capturing'
-  const waiting = connection?.waiting() ?? 0
-  return waiting > 0 ? `Paused, ${waiting} waiting` : 'Paused'
-}
-
 function isCapturing(
   admin: OtlpAdmin,
   connection: AdminConnection | null,
 ): boolean {
-  return statusWords(admin, connection) === 'Capturing'
+  if (admin.source() === 'remote' || admin.source() === 'replay') return false
+  return !(connection ? connection.paused() : admin.paused())
+}
+
+function currentFreshness(
+  admin: OtlpAdmin,
+  connection: AdminConnection | null,
+  now: number,
+): string {
+  return freshnessLabel({
+    source: admin.source(),
+    paused: connection ? connection.paused() : admin.paused(),
+    waiting: connection?.waiting() ?? 0,
+    now,
+    records: admin.records(),
+  })
 }
 
 function serviceLabel(admin: OtlpAdmin): string {
@@ -127,6 +135,13 @@ export const OtlpApp = ({
   }, `_Admin.shell.frameCard.sync.${shellId}`)
   const undoOpen = atom(false, `_Admin.shell.undoOpen.${shellId}`)
   const undoGeneration = atom(0, `_Admin.shell.undoGeneration.${shellId}`)
+  const freshnessNow = atom(Date.now(), `_Admin.shell.freshness.${shellId}`)
+  effect(async () => {
+    while (true) {
+      freshnessNow.set(Date.now())
+      await wrap(sleep(1000))
+    }
+  }, `_Admin.shell.freshnessTick.${shellId}`)
   const minimized =
     sharedMinimized ?? atom(false, `_Admin.shell.minimized.${shellId}`)
   const closed = sharedClosed ?? atom(false, `_Admin.shell.closed.${shellId}`)
@@ -206,7 +221,9 @@ export const OtlpApp = ({
                 isCapturing(admin, connection) ? 'accent' : 'warning'
               }
               pulse={() => isCapturing(admin, connection)}
-              label={() => statusWords(admin, connection)}
+              label={() =>
+                currentFreshness(admin, connection, freshnessNow())
+              }
             />
           </span>
           <span
@@ -273,17 +290,53 @@ export const OtlpApp = ({
               >
                 Forward
               </Button>
-              <span>
+              <span
+                css={`
+                  display: inline-flex;
+                  align-items: center;
+                  gap: var(--admin-space-6);
+                `}
+              >
                 {() =>
                   (connection ? connection.paused() : admin.paused()) ? (
-                    <Button label="Resume" onClick={togglePause}>
+                    <Button
+                      label="Resume"
+                      disabled={() => admin.source() === 'remote'}
+                      title={() =>
+                        admin.source() === 'remote'
+                          ? 'Pause is for live capture, not ClickHouse'
+                          : 'Resume live capture'
+                      }
+                      onClick={togglePause}
+                    >
                       Resume
                     </Button>
                   ) : (
-                    <Button label="Pause" onClick={togglePause}>
+                    <Button
+                      label="Pause"
+                      disabled={() => admin.source() === 'remote'}
+                      title={() =>
+                        admin.source() === 'remote'
+                          ? 'Pause is for live capture, not ClickHouse'
+                          : 'Pause live capture'
+                      }
+                      onClick={togglePause}
+                    >
                       Pause
                     </Button>
                   )
+                }
+                {() =>
+                  admin.source() === 'remote' ? (
+                    <span
+                      css={`
+                        ${type.meta}
+                        color: ${tokens.text3};
+                      `}
+                    >
+                      Pause is for live capture
+                    </span>
+                  ) : null
                 }
               </span>
             </ToolbarGroup>
@@ -389,7 +442,9 @@ export const OtlpApp = ({
 
   const status = (
     <StatusBar>
-      <span role="status">{() => statusWords(admin, connection)}</span>
+      <span role="status">
+        {() => currentFreshness(admin, connection, freshnessNow())}
+      </span>
       <span>
         {() => {
           const analyst =
@@ -400,44 +455,127 @@ export const OtlpApp = ({
           return `${summary.visibleFrames} of ${summary.totalFrames}`
         }}
       </span>
-      <span>
-        {() => {
-          const hidden =
-            admin.hiddenAbortSuspenseCount() + admin.hiddenMountLogCount()
-          return hidden > 0 ? <span>{`${hidden} hidden`}</span> : null
-        }}
-      </span>
-      <span>
-        {() => {
-          const stats = connection?.stats()
-          if (!stats) return null
-          return `queued ${stats.queued} · in flight ${stats.inFlight} · exported ${stats.exported} · dropped ${stats.dropped}`
-        }}
-      </span>
-      <span>
-        {() =>
-          connection?.stats()?.transportQuarantined
-            ? 'Transport quarantined'
-            : null
-        }
-      </span>
-      <span>
-        {() =>
-          connection?.olderRecordsDropped() ? 'Older records dropped' : null
-        }
-      </span>
-      <Popover triggerLabel="Drop reasons" label="Dropped by reason">
-        <span>
-          {() => {
-            const reasons = connection?.stats()?.droppedByReason ?? {}
-            const entries = Object.entries(reasons)
-            if (entries.length === 0) return 'No dropped records'
-            return entries
-              .map(([reason, count]) => `${reason}: ${count}`)
-              .join(', ')
-          }}
-        </span>
-      </Popover>
+      {() => {
+        const errors = admin.errorCount()
+        if (errors === 0) return null
+        return (
+          <Button
+            variant="ghost"
+            label={`Errors ${errors}`}
+            onClick={() => {
+              admin.view.set('timeline')
+              admin.filterHasError.set(true)
+            }}
+          >
+            {`Errors ${errors}`}
+          </Button>
+        )
+      }}
+      {() => {
+        const openCount = admin.inProgress().length
+        if (openCount === 0) return null
+        return <span>{`Open ${openCount}`}</span>
+      }}
+      {() => {
+        const hidden =
+          admin.hiddenAbortSuspenseCount() + admin.hiddenMountLogCount()
+        if (hidden === 0) return null
+        return (
+          <Button
+            variant="ghost"
+            label={`Hidden ${hidden}`}
+            onClick={() => {
+              admin.showAbortAndSuspense.setTrue()
+              admin.showMountLogs.setTrue()
+            }}
+          >
+            {`Hidden ${hidden}`}
+          </Button>
+        )
+      }}
+      {() => {
+        const dropped = connection?.stats()?.dropped ?? 0
+        if (dropped === 0) return null
+        return <span>{`Dropped ${dropped}`}</span>
+      }}
+      {() => {
+        const stats = connection?.stats()
+        if (!stats) return null
+        const parts: string[] = []
+        if (stats.queued > 0) parts.push(`queued ${stats.queued}`)
+        if (stats.inFlight > 0) parts.push(`in flight ${stats.inFlight}`)
+        if (stats.exported > 0) parts.push(`exported ${stats.exported}`)
+        if (parts.length === 0) return null
+        return parts.join(' · ')
+      }}
+      {() =>
+        admin.localValuesTrimmed() ? (
+          <span>Live values trimmed to the store cap</span>
+        ) : null
+      }
+      {() =>
+        admin.inProgress().length > 0 ? (
+          <span>Hatched bars are still in progress</span>
+        ) : null
+      }
+      {() => {
+        const sessions = admin.analytics.sessions().length
+        return admin.view() === 'analytics' && sessions > 0 && sessions < 5 ? (
+          <span>Shares hide below 5 sessions</span>
+        ) : null
+      }}
+      {() => {
+        const items = attentionItems({
+          olderRecordsDropped: connection?.olderRecordsDropped() ?? false,
+          localValuesTrimmed: admin.localValuesTrimmed(),
+          transportQuarantined:
+            connection?.stats()?.transportQuarantined ?? false,
+          inProgressCount: admin.inProgress().length,
+          analyticsSessions: admin.analytics.sessions().length,
+        })
+        if (items.length === 0) return null
+        return (
+          <Popover triggerLabel="Needs attention" label="Needs attention">
+            <div
+              css={`
+                display: grid;
+                gap: var(--admin-space-8);
+                min-width: 14rem;
+              `}
+            >
+              {items.map((item) => (
+                <div
+                  css={`
+                    display: grid;
+                    gap: var(--admin-space-2);
+                  `}
+                >
+                  <span css={`${type.ui} color: ${tokens.text1};`}>
+                    {item.text}
+                  </span>
+                  <span css={`${type.meta} color: ${tokens.text3};`}>
+                    {item.next}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </Popover>
+        )
+      }}
+      {() => {
+        const reasons = connection?.stats()?.droppedByReason ?? {}
+        const entries = Object.entries(reasons)
+        if (entries.length === 0) return null
+        return (
+          <Popover triggerLabel="Drop reasons" label="Dropped by reason">
+            <span>
+              {entries
+                .map(([reason, count]) => `${reason}: ${count}`)
+                .join(', ')}
+            </span>
+          </Popover>
+        )
+      }}
       {() =>
         settings.agentCallLog() ? (
           <span data-testid="agent-read-chip">
@@ -513,6 +651,7 @@ export const OtlpApp = ({
             data-capturing={() =>
               isCapturing(admin, connection) ? 'true' : 'false'
             }
+            data-errors={() => (admin.errorCount() > 0 ? 'true' : 'false')}
             css:openPosition={() => (floating ? 'absolute' : 'fixed')}
             css:openTop={launcherEdge('top')}
             css:openRight={launcherEdge('right')}
@@ -548,18 +687,58 @@ export const OtlpApp = ({
               &[data-capturing='true'] {
                 ${capturingPulse}
               }
+              &[data-errors='true']::after {
+                content: '';
+                position: absolute;
+                top: 4px;
+                right: 4px;
+                width: 8px;
+                height: 8px;
+                border-radius: 999px;
+                background: ${tokens.error};
+              }
             `}
-            on:click={openPanel}
+            on:click={() => {
+              openPanel()
+              if (admin.errorCount() > 0) {
+                admin.view.set('timeline')
+                admin.filterHasError.set(true)
+              }
+            }}
           >
             R
           </button>
         ) : minimized() ? (
           <Toolbar>
             <ToolbarGroup>
-              <span role="status">{() => statusWords(admin, connection)}</span>
+              <span role="status">
+                {() => currentFreshness(admin, connection, freshnessNow())}
+              </span>
+              {() =>
+                admin.errorCount() > 0 ? (
+                  <span
+                    aria-label="Errors in capture"
+                    css={`
+                      width: 8px;
+                      height: 8px;
+                      border-radius: 999px;
+                      background: ${tokens.error};
+                    `}
+                  />
+                ) : null
+              }
             </ToolbarGroup>
             <ToolbarSpacer />
-            <Button label="Show admin" onClick={() => minimized.set(false)}>
+            <Button
+              label="Show admin"
+              onClick={() => {
+                minimized.set(false)
+                if (admin.errorCount() > 0) {
+                  admin.view.set('timeline')
+                  admin.filterHasError.set(true)
+                }
+              }}
+            >
               Show
             </Button>
           </Toolbar>

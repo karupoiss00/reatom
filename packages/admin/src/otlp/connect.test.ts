@@ -492,14 +492,14 @@ test('writes tracing options on connect from the instance, defaulting warn to on
       id: 'otel.warnContextLoss',
       label: 'Warn about lost trace context',
       description:
-        'Print one console warning when a callback without wrap starts a new trace.',
+        'Warn when a span starts without its parent, so a missing wrap is visible.',
       checked: unspecifiedConnection.warnContextLoss,
     }),
     expect.objectContaining({
       id: 'otel.splitLongTraces',
       label: 'Split long traces',
       description:
-        'Start a linked trace when one reaches the tracer span or age limit (1,000 spans or 60 seconds by default), so a poller does not grow one trace forever.',
+        'Break traces at the span or age limit so the gantt stays readable.',
       checked: unspecifiedConnection.splitLongTraces,
     }),
   ])

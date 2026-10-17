@@ -76,6 +76,20 @@ export const OtlpAnalyticsScreen = ({ admin }: { admin: OtlpAdmin }) => (
     >
       {() => analystStatusWords(admin)}
     </p>
+    {() => {
+      const sessions = admin.analytics.sessions().length
+      return sessions > 0 && sessions < 5 ? (
+        <p
+          css={`
+            ${type.meta}
+            margin: 0;
+            color: ${tokens.text3};
+          `}
+        >
+          Shares hide below 5 sessions
+        </p>
+      ) : null
+    }}
     {() =>
       admin.analytics.sessions().length === 0 ? (
         <EmptyState

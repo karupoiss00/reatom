@@ -1,6 +1,7 @@
 import type { Atom } from '@reatom/core'
 
 import {
+  Hint,
   focusVisible,
   reducedMotion,
   scrollable,
@@ -258,19 +259,26 @@ function AppearanceSection({ settings }: { settings: AdminSettings }) {
           ${type.title}
           margin: 0;
           color: ${tokens.text1};
+          display: flex;
+          flex-wrap: wrap;
+          align-items: baseline;
+          gap: var(--admin-space-8);
         `}
       >
         Appearance
+        <span
+          css={`
+            ${type.meta}
+            color: ${tokens.text3};
+            font-weight: 500;
+          `}
+        >
+          {() => `${settings.resolvedScheme()} · ${settings.accent()}`}
+        </span>
       </h2>
-      <p
-        css={`
-          ${type.body}
-          margin: 0;
-          color: ${tokens.text2};
-        `}
-      >
+      <Hint>
         Light, Dark, or the device scheme. The accent color builds the palette.
-      </p>
+      </Hint>
       <AppearanceRadios
         label="Theme"
         value={settings.scheme}
@@ -361,19 +369,24 @@ function WindowSection({ settings }: { settings: AdminSettings }) {
           ${type.title}
           margin: 0;
           color: ${tokens.text1};
+          display: flex;
+          flex-wrap: wrap;
+          align-items: baseline;
+          gap: var(--admin-space-8);
         `}
       >
         Window
+        <span
+          css={`
+            ${type.meta}
+            color: ${tokens.text3};
+            font-weight: 500;
+          `}
+        >
+          {() => settings.corner()}
+        </span>
       </h2>
-      <p
-        css={`
-          ${type.body}
-          margin: 0;
-          color: ${tokens.text2};
-        `}
-      >
-        Closing the panel leaves its icon in this corner.
-      </p>
+      <Hint>Closing the panel leaves its icon in this corner.</Hint>
       <AppearanceRadios
         label="Panel corner"
         value={settings.corner}
@@ -462,9 +475,26 @@ export const SettingsScreen = () => {
                   ${type.title}
                   margin: 0;
                   color: ${tokens.text1};
+                  display: flex;
+                  flex-wrap: wrap;
+                  align-items: baseline;
+                  gap: var(--admin-space-8);
                 `}
               >
                 {section.title}
+                {section.id === 'display' ? (
+                  <span
+                    css={`
+                      ${type.meta}
+                      color: ${tokens.text3};
+                      font-weight: 500;
+                    `}
+                  >
+                    {() =>
+                      `${settings.icons() ? 'Icons on' : 'Icons off'} · ${settings.colors() ? 'Colors on' : 'Colors off'}`
+                    }
+                  </span>
+                ) : null}
               </h2>
               {section.options.length === 0 ? (
                 <p

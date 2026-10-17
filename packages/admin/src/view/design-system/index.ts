@@ -7,7 +7,7 @@ export {
 export { Disclosure } from './Disclosure'
 export { Drawer } from './Drawer'
 export { EmptyState } from './EmptyState'
-export { NumberField, SearchField, SelectField } from './Field'
+export { Hint, NumberField, SearchField, SelectField } from './Field'
 export { Icon } from './Icon'
 export { Kbd } from './Kbd'
 export { INSPECTOR_TABS, InspectorTabs } from './InspectorTabs'

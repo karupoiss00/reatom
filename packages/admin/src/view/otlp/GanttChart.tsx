@@ -1367,17 +1367,49 @@ export const OtlpGanttChart = <Node, Key = Node>({
               </span>
             ) : null}
             {adapter.live ? (
-              <Button
-                variant="ghost"
-                label="Follow live"
-                pressed={() => admin.followLive()}
-                onClick={() => {
-                  if (admin.followLive()) admin.followLive.setFalse()
-                  else admin.followLive.setTrue()
-                }}
+              <span
+                css={`
+                  display: inline-flex;
+                  align-items: center;
+                  gap: var(--admin-space-6);
+                `}
               >
-                {() => (admin.followLive() ? 'Following' : 'Follow live')}
-              </Button>
+                <Button
+                  variant="ghost"
+                  label="Follow live"
+                  pressed={() => admin.followLive()}
+                  disabled={() => admin.source() !== 'live'}
+                  title={() => {
+                    if (admin.source() === 'replay') {
+                      return 'Follow live is for a live capture, not a replay'
+                    }
+                    if (admin.source() === 'remote') {
+                      return 'Follow live is for a live capture, not ClickHouse'
+                    }
+                    return 'Keep the timeline pinned to new records'
+                  }}
+                  onClick={() => {
+                    if (admin.followLive()) admin.followLive.setFalse()
+                    else admin.followLive.setTrue()
+                  }}
+                >
+                  {() => (admin.followLive() ? 'Following' : 'Follow live')}
+                </Button>
+                {() =>
+                  admin.source() === 'live' ? null : (
+                    <span
+                      css={`
+                        ${type.meta}
+                        color: ${tokens.text3};
+                      `}
+                    >
+                      {admin.source() === 'replay'
+                        ? 'Replay has no live tail'
+                        : 'ClickHouse has no live tail'}
+                    </span>
+                  )
+                }
+              </span>
             ) : null}
             <span
               data-testid="gantt-summary"
@@ -1390,6 +1422,18 @@ export const OtlpGanttChart = <Node, Key = Node>({
             >
               {() => adapter.summary()}
             </span>
+            {() =>
+              adapter.live && admin.inProgress().length > 0 ? (
+                <span
+                  css={`
+                    ${type.meta}
+                    color: ${tokens.text3};
+                  `}
+                >
+                  Hatched bars are still in progress
+                </span>
+              ) : null
+            }
           </Toolbar>
         </div>
       </div>
