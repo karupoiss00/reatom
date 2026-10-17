@@ -2,7 +2,10 @@ import { atom, computed, type AtomLike } from '@reatom/core'
 
 import type { OtlpAdmin } from '../../otlp'
 import {
+  copyForAgentMarkdown,
   firstExceptionMessageLine,
+  frameCalculatorExpression,
+  frameMcpSnippet,
   isStateWrite,
   recordErrorMessage,
   recordErrorStack,
@@ -10,6 +13,7 @@ import {
   recordHasError,
   recordLabel,
   recordReatomName,
+  resolveCauseChips,
   stackCulprit,
   toRailNode,
 } from '../../otlp'
@@ -18,6 +22,7 @@ import {
   Button,
   Disclosure,
   InspectorTabs,
+  Popover,
   RailGraph,
   kindPill,
   kindStripe,
@@ -27,7 +32,8 @@ import {
   type,
 } from '../design-system'
 import { Inspector, ParamList } from '../inspector'
-import { KindMark } from './KindMark'
+import { KindMark, KindSwatch } from './KindMark'
+import type { RecordKindName } from './recordKind'
 import { kindColorVar, recordKindIcon } from './recordKind'
 import {
   frameValueView,
@@ -50,6 +56,32 @@ function kindLabel(record: AdminRecord): string {
   if (record.outcome === 'abort') return 'abort'
   if (record.kind === 'log' && record.reatomKind === undefined) return 'LOG'
   return record.reatomKind ?? record.kind
+}
+
+function causeSwatchKind(kind: string): RecordKindName {
+  if (
+    kind === 'action' ||
+    kind === 'atom' ||
+    kind === 'computed' ||
+    kind === 'effect' ||
+    kind === 'log' ||
+    kind === 'route'
+  ) {
+    return kind
+  }
+  return 'framework'
+}
+
+function visibleCardRows(admin: OtlpAdmin): readonly AdminRecord[] {
+  const feed = admin.feedRecords()
+  if (admin.filterMode() !== 'highlight') return feed
+  const highlighted = admin.highlightedIds()
+  if (highlighted.size === 0) return feed
+  return feed.filter((entry) => highlighted.has(entry.id))
+}
+
+function writeClipboard(text: string) {
+  void navigator.clipboard.writeText(text)
 }
 
 function focusSelector(selector: string) {
@@ -199,9 +231,47 @@ export const OtlpFrameCard = ({ admin }: { admin: OtlpAdmin }) => {
                 >
                   {durationLabel(record)}
                 </span>
+                {() => {
+                  const rows = visibleCardRows(admin)
+                  const index = rows.findIndex((entry) => entry.id === record.id)
+                  if (index < 0) return null
+                  return (
+                    <span
+                      css={`
+                        display: inline-flex;
+                        align-items: center;
+                        gap: var(--admin-space-4);
+                        font-variant-numeric: tabular-nums;
+                      `}
+                    >
+                      {`${index + 1} of ${rows.length}`}
+                      <Button
+                        variant="ghost"
+                        label="Previous record"
+                        onClick={() => admin.ganttSelection.move(-1)}
+                      >
+                        Up
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        label="Next record"
+                        onClick={() => admin.ganttSelection.move(1)}
+                      >
+                        Down
+                      </Button>
+                    </span>
+                  )
+                }}
+                <CopyMenu admin={admin} record={record} />
               </p>
             </header>
-            <InspectorTabs value={admin.inspectorTab} />
+            <InspectorTabs
+              value={admin.inspectorTab}
+              causeCount={() =>
+                resolveCauseChips(record, admin.records()).length
+              }
+              historyCount={() => admin.historyForSelected().length}
+            />
             {() => {
               const tab = admin.inspectorTab()
               if (tab === 'causes')
@@ -381,6 +451,189 @@ const ErrorHero = ({
   )
 }
 
+const CopyMenu = ({
+  admin,
+  record,
+}: {
+  admin: OtlpAdmin
+  record: AdminRecord
+}) => (
+  <Popover triggerLabel="Copy" label="Copy frame">
+    <div
+      css={`
+        display: grid;
+        gap: var(--admin-space-4);
+      `}
+    >
+      <Button
+        variant="ghost"
+        label="Copy record id"
+        onClick={() => writeClipboard(record.id)}
+      >
+        Record id
+      </Button>
+      <Button
+        variant="ghost"
+        label="Copy calculator expression"
+        onClick={() => writeClipboard(frameCalculatorExpression(record))}
+      >
+        Calculator
+      </Button>
+      <Button
+        variant="ghost"
+        label="Copy MCP snippet"
+        onClick={() => writeClipboard(frameMcpSnippet(record))}
+      >
+        MCP snippet
+      </Button>
+      <Button
+        variant="ghost"
+        label="Copy for agent"
+        onClick={() =>
+          writeClipboard(
+            copyForAgentMarkdown(record, admin.records(), false),
+          )
+        }
+      >
+        Copy for agent
+      </Button>
+      <Button
+        variant="ghost"
+        label="Include live values"
+        onClick={() =>
+          writeClipboard(copyForAgentMarkdown(record, admin.records(), true))
+        }
+      >
+        <span css={`color: ${tokens.warning};`}>Include live values</span>
+      </Button>
+    </div>
+  </Popover>
+)
+
+const CauseChips = ({
+  admin,
+  record,
+}: {
+  admin: OtlpAdmin
+  record: AdminRecord
+}) => {
+  const chips = resolveCauseChips(record, admin.records())
+  if (chips.length === 0) return null
+  return (
+    <div
+      css={`
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--admin-space-6);
+        min-width: 0;
+      `}
+    >
+      {chips.map((chip) =>
+        chip.record === undefined ? (
+          <span
+            css={`
+              ${type.meta}
+              color: ${tokens.text3};
+              font-family: ${tokens.fontData};
+            `}
+          >
+            {chip.id}
+          </span>
+        ) : (
+          <Button
+            variant="ghost"
+            label={`Select cause ${chip.name}`}
+            onClick={() => {
+              if (chip.record?.frameId !== undefined) {
+                admin.selectFrame(chip.record.frameId)
+                admin.cardOpen.setTrue()
+              }
+            }}
+          >
+            <KindSwatch kind={causeSwatchKind(chip.kind)} />
+            {chip.name}
+          </Button>
+        ),
+      )}
+    </div>
+  )
+}
+
+const PositionMark = ({
+  admin,
+  record,
+}: {
+  admin: OtlpAdmin
+  record: AdminRecord
+}) => {
+  const trace = admin.byTrace(record.traceId)
+  if (trace.length === 0) return null
+  let minStart = Number.POSITIVE_INFINITY
+  let maxEnd = Number.NEGATIVE_INFINITY
+  for (const entry of trace) {
+    minStart = Math.min(minStart, entry.start)
+    maxEnd = Math.max(maxEnd, entry.end ?? entry.start)
+  }
+  const total = Math.max(1, maxEnd - minStart)
+  const offset = record.start - minStart
+  const duration = Math.max(0, (record.end ?? record.start) - record.start)
+  const left = Math.max(0, Math.min(1, offset / total))
+  const width = Math.max(0, Math.min(1 - left, duration / total))
+  return (
+    <div
+      css={`
+        display: grid;
+        gap: var(--admin-space-4);
+        min-width: 0;
+      `}
+    >
+      <div
+        css={`
+          position: relative;
+          height: 4px;
+          border-radius: var(--admin-radius-2);
+          background: ${tokens.surface3};
+        `}
+      >
+        {record.kind === 'log' ? (
+          <span
+            css={`
+              position: absolute;
+              top: 0;
+              bottom: 0;
+              left: ${left * 100}%;
+              width: 2px;
+              background: ${tokens.accent};
+            `}
+          />
+        ) : (
+          <span
+            css={`
+              position: absolute;
+              top: 0;
+              bottom: 0;
+              left: ${left * 100}%;
+              width: ${Math.max(width * 100, 1)}%;
+              background: ${tokens.accent};
+              border-radius: var(--admin-radius-2);
+            `}
+          />
+        )}
+      </div>
+      <p
+        css={`
+          ${type.meta}
+          margin: 0;
+          color: ${tokens.text3};
+          font-variant-numeric: tabular-nums;
+        `}
+      >
+        {`+${durationLabel({ ...record, start: minStart, end: record.start })} · ${durationLabel(record)} / ${durationLabel({ ...record, start: minStart, end: maxEnd })}`}
+      </p>
+    </div>
+  )
+}
+
 const Overview = ({
   admin,
   record,
@@ -402,6 +655,8 @@ const Overview = ({
       {recordHasError(record) ? (
         <ErrorHero admin={admin} record={record} />
       ) : null}
+      <CauseChips admin={admin} record={record} />
+      <PositionMark admin={admin} record={record} />
       {eventAttributes !== undefined ? (
         <SnapshotField value={eventAttributes} emptyLabel="" />
       ) : null}

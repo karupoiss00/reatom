@@ -13,13 +13,24 @@ export const INSPECTOR_TABS: Array<{ id: InspectorTabId; label: string }> = [
 
 export interface InspectorTabsProps {
   value: Atom<InspectorTabId>
+  causeCount?: () => number
+  historyCount?: () => number
 }
 
-export const InspectorTabs = ({ value }: InspectorTabsProps) => {
+export const InspectorTabs = ({
+  value,
+  causeCount,
+  historyCount,
+}: InspectorTabsProps) => {
   return (
     <Tabs
       value={value}
-      items={INSPECTOR_TABS}
+      items={[
+        { id: 'overview', label: 'Overview' },
+        { id: 'causes', label: 'Cause Chain', count: causeCount },
+        { id: 'history', label: 'History', count: historyCount },
+        { id: 'json', label: 'JSON' },
+      ]}
       ariaLabel="Frame details"
     />
   )

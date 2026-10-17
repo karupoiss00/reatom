@@ -6,6 +6,7 @@ import { size, tokens, type } from './tokens'
 export interface TabItem<T extends string> {
   id: T
   label: string
+  count?: number | (() => number)
 }
 
 export interface TabsProps<T extends string> {
@@ -100,7 +101,13 @@ export const Tabs = <T extends string>({
           `}
           on:click={() => value.set(item.id)}
         >
-          {item.label}
+          {() => {
+            const count =
+              typeof item.count === 'function' ? item.count() : item.count
+            return count !== undefined && count > 0
+              ? `${item.label} ${count}`
+              : item.label
+          }}
         </button>
       ))}
     </div>

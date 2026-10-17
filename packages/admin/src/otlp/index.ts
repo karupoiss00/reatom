@@ -93,6 +93,13 @@ export {
   recordReatomName,
   stackCulprit,
 } from './ingest.ts'
+export { resolveCauseChips } from './causeChips.ts'
+export type { CauseChipModel } from './causeChips.ts'
+export {
+  copyForAgentMarkdown,
+  frameCalculatorExpression,
+  frameMcpSnippet,
+} from './copyForAgent.ts'
 export {
   kindShareColorVar,
   shortenTraceId,
