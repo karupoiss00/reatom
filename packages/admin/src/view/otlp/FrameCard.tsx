@@ -1,21 +1,17 @@
-import { atom, computed, type AtomLike } from '@reatom/core'
-
 import type { OtlpAdmin } from '../../otlp'
 import {
   copyForAgentMarkdown,
   firstExceptionMessageLine,
+  formatRecordDuration,
   frameCalculatorExpression,
   frameMcpSnippet,
-  isStateWrite,
   recordErrorMessage,
   recordErrorStack,
   recordErrorType,
   recordHasError,
-  recordLabel,
   recordReatomName,
   resolveCauseChips,
   stackCulprit,
-  toRailNode,
 } from '../../otlp'
 import type { AdminRecord } from '../../otlp'
 import {
@@ -23,7 +19,6 @@ import {
   Disclosure,
   InspectorTabs,
   Popover,
-  RailGraph,
   kindPill,
   kindStripe,
   kindTokens,
@@ -31,45 +26,21 @@ import {
   tokens,
   type,
 } from '../design-system'
-import { Inspector, ParamList } from '../inspector'
-import { KindMark, KindSwatch } from './KindMark'
-import type { RecordKindName } from './recordKind'
+import { Inspector } from '../inspector'
+import { KindMark } from './KindMark'
 import { kindColorVar, recordKindIcon } from './recordKind'
-import {
-  frameValueView,
-  overviewDataValue,
-  overviewEventAttributes,
-  overviewParamsValue,
-  recordFieldValue,
-  type FrameValueTitle,
-} from './frameValues'
+import { FrameCauses } from './FrameCauses'
+import { FrameHistory } from './FrameHistory'
+import { FrameOverview, NameBreadcrumb } from './FrameOverview'
 
 function durationLabel(record: AdminRecord): string {
-  if (record.end === undefined) return 'open'
-  const ms = Math.max(0, record.end - record.start)
-  if (ms < 1000) return `${Math.round(ms)}ms`
-  const seconds = ms / 1000
-  return `${seconds < 10 ? seconds.toFixed(1) : Math.round(seconds)}s`
+  return formatRecordDuration(record)
 }
 
 function kindLabel(record: AdminRecord): string {
   if (record.outcome === 'abort') return 'abort'
   if (record.kind === 'log' && record.reatomKind === undefined) return 'LOG'
   return record.reatomKind ?? record.kind
-}
-
-function causeSwatchKind(kind: string): RecordKindName {
-  if (
-    kind === 'action' ||
-    kind === 'atom' ||
-    kind === 'computed' ||
-    kind === 'effect' ||
-    kind === 'log' ||
-    kind === 'route'
-  ) {
-    return kind
-  }
-  return 'framework'
 }
 
 function visibleCardRows(admin: OtlpAdmin): readonly AdminRecord[] {
@@ -115,26 +86,7 @@ export function closeFrameCard(admin: OtlpAdmin) {
   })
 }
 
-let frameSerial = 0
-
-function frameSources(admin: OtlpAdmin) {
-  frameSerial += 1
-  const name = `_Admin.frameCard.${frameSerial}`
-  const data = computed(() => {
-    const record = admin.selectedRecord()
-    if (!record) return undefined
-    return overviewDataValue(record)
-  }, `${name}.data`)
-  const params = computed(() => {
-    const record = admin.selectedRecord()
-    if (!record) return undefined
-    return overviewParamsValue(record)
-  }, `${name}.params`)
-  return { data, params }
-}
-
 export const OtlpFrameCard = ({ admin }: { admin: OtlpAdmin }) => {
-  const sources = frameSources(admin)
   return (
     <section
       data-reatom-name="FrameCard"
@@ -190,14 +142,7 @@ export const OtlpFrameCard = ({ admin }: { admin: OtlpAdmin }) => {
                 `}
               >
                 <KindMark kind={kind} />
-                <span
-                  css={`
-                    min-width: 0;
-                    overflow-wrap: anywhere;
-                  `}
-                >
-                  {recordLabel(record)}
-                </span>
+                <NameBreadcrumb admin={admin} record={record} />
               </h2>
               <p
                 css={`
@@ -275,15 +220,23 @@ export const OtlpFrameCard = ({ admin }: { admin: OtlpAdmin }) => {
             {() => {
               const tab = admin.inspectorTab()
               if (tab === 'causes')
-                return <Causes admin={admin} record={record} />
+                return <FrameCauses admin={admin} record={record} />
               if (tab === 'history')
-                return <History admin={admin} record={record} />
+                return <FrameHistory admin={admin} record={record} />
               if (tab === 'json')
                 return (
                   <Inspector value={admin.selectedRecord} defaultExpanded />
                 )
               return (
-                <Overview admin={admin} record={record} sources={sources} />
+                <FrameOverview
+                  admin={admin}
+                  record={record}
+                  errorHero={
+                    recordHasError(record) ? (
+                      <ErrorHero admin={admin} record={record} />
+                    ) : null
+                  }
+                />
               )
             }}
           </div>
@@ -291,56 +244,6 @@ export const OtlpFrameCard = ({ admin }: { admin: OtlpAdmin }) => {
       }}
     </section>
   )
-}
-
-function emptyFieldLabel(title: FrameValueTitle): string {
-  if (title === 'Payload') return 'No payload'
-  if (title === 'Params') return 'No params'
-  if (title === 'New state') return 'No new state'
-  return 'No earlier value'
-}
-
-const expandedValueHooks = {
-  initiallyExpanded: () => true,
-}
-
-const FrameField = ({
-  value,
-  emptyLabel,
-}: {
-  value: AtomLike<unknown>
-  emptyLabel: string
-}) => (
-  <>
-    {emptyLabel ? (
-      <p css={quiet} prop:hidden={() => frameValueView(value()) !== 'empty'}>
-        {emptyLabel}
-      </p>
-    ) : null}
-    <div prop:hidden={() => frameValueView(value()) === 'empty'}>
-      <Inspector value={value} defaultExpanded hooks={expandedValueHooks} />
-    </div>
-  </>
-)
-
-let snapshotSerial = 0
-
-const SnapshotInspector = ({ value }: { value: unknown }) => {
-  snapshotSerial += 1
-  const source = atom(value, `_Admin.frameCard.snapshot.${snapshotSerial}`)
-  return <Inspector value={source} defaultExpanded />
-}
-
-const SnapshotField = ({
-  value,
-  emptyLabel,
-}: {
-  value: unknown
-  emptyLabel: string
-}) => {
-  const view = frameValueView(value)
-  if (view === 'empty') return <p css={quiet}>{emptyLabel}</p>
-  return <SnapshotInspector value={value} />
 }
 
 function sameNameCount(admin: OtlpAdmin, record: AdminRecord): number {
@@ -510,261 +413,3 @@ const CopyMenu = ({
   </Popover>
 )
 
-const CauseChips = ({
-  admin,
-  record,
-}: {
-  admin: OtlpAdmin
-  record: AdminRecord
-}) => {
-  const chips = resolveCauseChips(record, admin.records())
-  if (chips.length === 0) return null
-  return (
-    <div
-      css={`
-        display: flex;
-        flex-wrap: wrap;
-        gap: var(--admin-space-6);
-        min-width: 0;
-      `}
-    >
-      {chips.map((chip) =>
-        chip.record === undefined ? (
-          <span
-            css={`
-              ${type.meta}
-              color: ${tokens.text3};
-              font-family: ${tokens.fontData};
-            `}
-          >
-            {chip.id}
-          </span>
-        ) : (
-          <Button
-            variant="ghost"
-            label={`Select cause ${chip.name}`}
-            onClick={() => {
-              if (chip.record?.frameId !== undefined) {
-                admin.selectFrame(chip.record.frameId)
-                admin.cardOpen.setTrue()
-              }
-            }}
-          >
-            <KindSwatch kind={causeSwatchKind(chip.kind)} />
-            {chip.name}
-          </Button>
-        ),
-      )}
-    </div>
-  )
-}
-
-const PositionMark = ({
-  admin,
-  record,
-}: {
-  admin: OtlpAdmin
-  record: AdminRecord
-}) => {
-  const trace = admin.byTrace(record.traceId)
-  if (trace.length === 0) return null
-  let minStart = Number.POSITIVE_INFINITY
-  let maxEnd = Number.NEGATIVE_INFINITY
-  for (const entry of trace) {
-    minStart = Math.min(minStart, entry.start)
-    maxEnd = Math.max(maxEnd, entry.end ?? entry.start)
-  }
-  const total = Math.max(1, maxEnd - minStart)
-  const offset = record.start - minStart
-  const duration = Math.max(0, (record.end ?? record.start) - record.start)
-  const left = Math.max(0, Math.min(1, offset / total))
-  const width = Math.max(0, Math.min(1 - left, duration / total))
-  return (
-    <div
-      css={`
-        display: grid;
-        gap: var(--admin-space-4);
-        min-width: 0;
-      `}
-    >
-      <div
-        css={`
-          position: relative;
-          height: 4px;
-          border-radius: var(--admin-radius-2);
-          background: ${tokens.surface3};
-        `}
-      >
-        {record.kind === 'log' ? (
-          <span
-            css={`
-              position: absolute;
-              top: 0;
-              bottom: 0;
-              left: ${left * 100}%;
-              width: 2px;
-              background: ${tokens.accent};
-            `}
-          />
-        ) : (
-          <span
-            css={`
-              position: absolute;
-              top: 0;
-              bottom: 0;
-              left: ${left * 100}%;
-              width: ${Math.max(width * 100, 1)}%;
-              background: ${tokens.accent};
-              border-radius: var(--admin-radius-2);
-            `}
-          />
-        )}
-      </div>
-      <p
-        css={`
-          ${type.meta}
-          margin: 0;
-          color: ${tokens.text3};
-          font-variant-numeric: tabular-nums;
-        `}
-      >
-        {`+${durationLabel({ ...record, start: minStart, end: record.start })} · ${durationLabel(record)} / ${durationLabel({ ...record, start: minStart, end: maxEnd })}`}
-      </p>
-    </div>
-  )
-}
-
-const Overview = ({
-  admin,
-  record,
-  sources,
-}: {
-  admin: OtlpAdmin
-  record: AdminRecord
-  sources: ReturnType<typeof frameSources>
-}) => {
-  const eventAttributes = overviewEventAttributes(record)
-  return (
-    <div
-      css={`
-        display: grid;
-        gap: var(--admin-space-12);
-        min-width: 0;
-      `}
-    >
-      {recordHasError(record) ? (
-        <ErrorHero admin={admin} record={record} />
-      ) : null}
-      <CauseChips admin={admin} record={record} />
-      <PositionMark admin={admin} record={record} />
-      {eventAttributes !== undefined ? (
-        <SnapshotField value={eventAttributes} emptyLabel="" />
-      ) : null}
-      <FrameField value={sources.data} emptyLabel="" />
-      <ParamList value={sources.params} />
-    </div>
-  )
-}
-
-const Causes = ({
-  admin,
-  record,
-}: {
-  admin: OtlpAdmin
-  record: AdminRecord
-}) => {
-  const nodes = causeNodes(admin, record)
-  return (
-    <div
-      css={`
-        display: grid;
-        gap: var(--admin-space-8);
-        min-width: 0;
-      `}
-    >
-      {nodes.length === 0 ? (
-        <p css={quiet}>No causes</p>
-      ) : (
-        <RailGraph
-          nodes={nodes}
-          selectedId={Number(record.frameId)}
-          onSelect={(nodeId) => admin.selectFrame(nodeId)}
-          onReroot={(nodeId) => admin.selectFrame(nodeId)}
-        />
-      )}
-      <Button label="Open in Graph" onClick={() => admin.view.set('graph')}>
-        Open in Graph
-      </Button>
-    </div>
-  )
-}
-
-const History = ({
-  admin,
-  record,
-}: {
-  admin: OtlpAdmin
-  record: AdminRecord
-}) => {
-  const history = admin.historyForSelected()
-  if (history.length === 0) return <p css={quiet}>No earlier value</p>
-  const currentTitle = isStateWrite(record) ? 'New state' : 'Payload'
-  return (
-    <div
-      css={`
-        display: grid;
-        gap: var(--admin-space-8);
-      `}
-    >
-      <section
-        css={`
-          display: grid;
-          gap: var(--admin-space-4);
-        `}
-      >
-        <h3 css={sectionTitle}>{currentTitle}</h3>
-        <SnapshotField
-          value={recordFieldValue(record)}
-          emptyLabel={emptyFieldLabel(currentTitle)}
-        />
-      </section>
-      {history.map((entry) => (
-        <section
-          css={`
-            display: grid;
-            gap: var(--admin-space-4);
-          `}
-        >
-          <h3 css={sectionTitle}>Previous state</h3>
-          <SnapshotField
-            value={recordFieldValue(entry)}
-            emptyLabel="No earlier value"
-          />
-        </section>
-      ))}
-    </div>
-  )
-}
-
-function causeNodes(admin: OtlpAdmin, record: AdminRecord) {
-  const ids = new Set(record.causeIds)
-  const related = admin.records().filter((entry) => {
-    if (entry.id === record.id) return true
-    return entry.frameId !== undefined && ids.has(entry.frameId)
-  })
-  return related.flatMap((entry) => {
-    const node = toRailNode(entry)
-    return node ? [node] : []
-  })
-}
-
-const sectionTitle = `
-  ${type.ui}
-  margin: 0;
-`
-
-const quiet = `
-  ${type.meta}
-  margin: 0;
-  color: ${tokens.text2};
-`

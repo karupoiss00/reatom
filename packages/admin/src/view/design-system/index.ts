@@ -50,6 +50,7 @@ export {
   barHatch,
   barHollow,
   barTick,
+  causeThread,
   DEFAULT_ACCENT,
   hueDistance,
   isAdminAccent,

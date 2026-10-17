@@ -163,6 +163,14 @@ test('toRailNode skips records without frameId and links computed.dependency', (
   expect(diamond?.parentIds).toEqual(expect.arrayContaining([3, 5, 4]))
 })
 
+test('cause rail 1-hop is the selection plus direct parents and children', () => {
+  const store = createStore()
+  ingest(store, [atomUpdate.span, atomUpdate.log])
+  const records = listRecords(store)
+  const oneHop = causeRailNodes(records, '1', 'full', undefined, 1)
+  expect(oneHop.map((node) => node.id).sort((a, b) => a - b)).toEqual([1, 2])
+})
+
 test('cause rail walks causeIds from a selected frame root', () => {
   const store = createStore()
   ingest(store, [atomUpdate.span, atomUpdate.log])
@@ -264,6 +272,13 @@ test('state last-write is per atomName+sourceId and does not drop actions from b
   const labels = tree.flatMap(function walk(node): string[] {
     return [node.label, ...node.children.flatMap(walk)]
   })
+  const checkedLeaf = tree
+    .flatMap(function walk(node): OtlpStateNode[] {
+      return [node, ...node.children.flatMap(walk)]
+    })
+    .find((node) => node.atomName === 'tree.checked')
+  expect(checkedLeaf?.writeCount).toBe(2)
+  expect(checkedLeaf?.reatomKind).toBe('atom')
   expect(labels).toContain('checked')
   expect(labels).not.toContain('toggle')
   expect(labels).not.toContain('ping')

@@ -5,13 +5,21 @@ export const FEED_RENDER_LIMIT = 200
 
 export type OtlpGraphDirection = 'ancestors' | 'descendants' | 'full'
 
+export type OtlpGraphDepth = 1 | 2 | 'all'
+
 export interface OtlpRailNode {
   id: number
   label: string
   kind: 'action' | 'state'
+  recordKind: string
   timestamp: number
   parentIds: Array<number>
+  causeParentIds: Array<number>
+  dependencyParentIds: Array<number>
   hasError: boolean
+  durationMs: number | undefined
+  outcome: string | undefined
+  shortId: string
 }
 
 export interface OtlpActivityRow {
@@ -33,6 +41,9 @@ export interface OtlpStateNode {
   recordId?: string
   frameId?: string
   value?: unknown
+  writeCount?: number
+  lastWriteAt?: number
+  reatomKind?: 'atom' | 'computed'
   children: Array<OtlpStateNode>
 }
 
@@ -106,26 +117,48 @@ export function frameRecordKey(traceId: string, frameId: string): string {
   return `${traceId}:${frameId}`
 }
 
+export function formatRecordDuration(record: AdminRecord): string {
+  if (record.end === undefined) return 'open'
+  const ms = Math.max(0, record.end - record.start)
+  if (ms < 1000) return `${Math.round(ms)}ms`
+  const seconds = ms / 1000
+  return `${seconds < 10 ? seconds.toFixed(1) : Math.round(seconds)}s`
+}
+
 export function toRailNode(record: AdminRecord): OtlpRailNode | undefined {
   if (record.frameId === undefined) return undefined
   const id = Number(record.frameId)
   if (!Number.isFinite(id)) return undefined
-  const parentIds = record.causeIds
+  const causeParentIds = record.causeIds
     .map((causeId) => Number(causeId))
     .filter((n) => Number.isFinite(n))
+  const dependencyParentIds: number[] = []
   for (const link of record.links) {
     if (link.reason === 'computed.dependency' && link.frameId) {
       const linked = Number(link.frameId)
-      if (Number.isFinite(linked)) parentIds.push(linked)
+      if (Number.isFinite(linked) && !dependencyParentIds.includes(linked)) {
+        dependencyParentIds.push(linked)
+      }
     }
+  }
+  const parentIds = [...causeParentIds]
+  for (const linked of dependencyParentIds) {
+    if (!parentIds.includes(linked)) parentIds.push(linked)
   }
   return {
     id,
     label: recordLabel(record),
     kind: record.reatomKind === 'action' ? 'action' : 'state',
+    recordKind: record.reatomKind ?? record.kind,
     timestamp: record.start,
     parentIds,
+    causeParentIds,
+    dependencyParentIds,
     hasError: recordHasError(record),
+    durationMs:
+      record.end === undefined ? undefined : Math.max(0, record.end - record.start),
+    outcome: record.outcome,
+    shortId: String(id),
   }
 }
 
@@ -235,11 +268,45 @@ function resolveRootKey(
   return undefined
 }
 
+function collectWithinHops(
+  rootKey: string,
+  byFrame: Map<string, AdminRecord>,
+  hops: number,
+  direction: OtlpGraphDirection,
+): Set<string> {
+  const children = childrenIndex(byFrame)
+  const kept = new Set<string>([rootKey])
+  let frontier = [rootKey]
+  for (let depth = 0; depth < hops; depth += 1) {
+    const next: string[] = []
+    for (const key of frontier) {
+      const record = byFrame.get(key)
+      if (direction !== 'descendants') {
+        for (const parentKey of record ? parentKeysOf(record) : []) {
+          if (kept.has(parentKey) || !byFrame.has(parentKey)) continue
+          kept.add(parentKey)
+          next.push(parentKey)
+        }
+      }
+      if (direction !== 'ancestors') {
+        for (const childKey of children.get(key) ?? []) {
+          if (kept.has(childKey) || !byFrame.has(childKey)) continue
+          kept.add(childKey)
+          next.push(childKey)
+        }
+      }
+    }
+    frontier = next
+  }
+  return kept
+}
+
 export function causeRailNodes(
   records: readonly AdminRecord[],
   rootFrameId: string | null,
   direction: OtlpGraphDirection,
   rootTraceId?: string | null,
+  depth: OtlpGraphDepth = 'all',
 ): OtlpRailNode[] {
   if (rootFrameId === null) return []
   const rootId = Number(rootFrameId)
@@ -253,14 +320,16 @@ export function causeRailNodes(
   if (rootKey === undefined) return []
 
   const keys =
-    direction === 'ancestors'
-      ? collectAncestors(rootKey, byFrame)
-      : direction === 'descendants'
-        ? collectDescendants(rootKey, byFrame)
-        : new Set([
-            ...collectAncestors(rootKey, byFrame),
-            ...collectDescendants(rootKey, byFrame),
-          ])
+    depth === 'all'
+      ? direction === 'ancestors'
+        ? collectAncestors(rootKey, byFrame)
+        : direction === 'descendants'
+          ? collectDescendants(rootKey, byFrame)
+          : new Set([
+              ...collectAncestors(rootKey, byFrame),
+              ...collectDescendants(rootKey, byFrame),
+            ])
+      : collectWithinHops(rootKey, byFrame, depth, direction)
 
   const nodes: OtlpRailNode[] = []
   for (const key of keys) {
@@ -357,6 +426,12 @@ export function buildLastWriteStateTree(
   records: readonly AdminRecord[],
 ): OtlpStateNode[] {
   const latest = lastWriteByAtom(records)
+  const writeCounts = new Map<string, number>()
+  for (const record of records) {
+    if (!isStateWrite(record) || record.atomName === undefined) continue
+    const key = `${record.sourceId}:${record.atomName}`
+    writeCounts.set(key, (writeCounts.get(key) ?? 0) + 1)
+  }
   const rootGroups = new Map<string, StateTreeGroupNode>()
 
   for (const record of latest.values()) {
@@ -404,6 +479,9 @@ export function buildLastWriteStateTree(
       recordId: record.id,
       frameId: record.frameId,
       value: recordValuePreview(record),
+      writeCount: writeCounts.get(`${record.sourceId}:${atomName}`) ?? 1,
+      lastWriteAt: record.start,
+      reatomKind: record.reatomKind === 'computed' ? 'computed' : 'atom',
       children: [],
     }
 

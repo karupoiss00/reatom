@@ -1,6 +1,27 @@
-import type { OtlpAdmin, OtlpStateNode } from '../../otlp'
-import { EmptyState, scrollable, tokens, type } from '../design-system'
+import { atom, computed, effect, wrap, sleep } from '@reatom/core'
+
+import {
+  atomWriteSeries,
+  formatRecordAge,
+  numericWriteValue,
+  valueShapeLabel,
+  writtenBySelection,
+  type OtlpAdmin,
+  type OtlpStateNode,
+} from '../../otlp'
+import {
+  EmptyState,
+  focusVisible,
+  Icon,
+  kindStripe,
+  scrollable,
+  tokens,
+  type,
+  visuallyHidden,
+} from '../design-system'
 import { Inspector, type InspectorHooks } from '../inspector'
+import { KindSwatch } from './KindMark'
+import { TickSparkline } from './WriteChart'
 import { focusAtomOnTimeline } from './focusAtom'
 
 const stateNodes = Symbol('otlp.stateNodes')
@@ -37,6 +58,18 @@ function nodesFrom(value: unknown): readonly OtlpStateNode[] | undefined {
     value.every(isOtlpStateNode)
   ) {
     return value
+  }
+  return undefined
+}
+
+function findStateNode(
+  nodes: readonly OtlpStateNode[],
+  id: string,
+): OtlpStateNode | undefined {
+  for (const node of nodes) {
+    if (node.id === id) return node
+    const nested = findStateNode(node.children, id)
+    if (nested) return nested
   }
   return undefined
 }
@@ -82,8 +115,260 @@ export function stateInspectorHooks(admin: OtlpAdmin): InspectorHooks {
   }
 }
 
+let serial = 0
+
+const AtomRow = ({
+  admin,
+  node,
+  now,
+  highlighted,
+}: {
+  admin: OtlpAdmin
+  node: OtlpStateNode
+  now: () => number
+  highlighted: boolean
+}) => {
+  const visible = atom(false, `_Admin.state.visible.${++serial}`)
+  const source = computed(() => {
+    return findStateNode(admin.stateTree(), node.id)?.value
+  }, `_Admin.state.value.${serial}`)
+  const series = () => {
+    if (!visible() || node.atomName === undefined || node.sourceId === undefined) {
+      return []
+    }
+    return atomWriteSeries(admin.records(), node.atomName, node.sourceId)
+  }
+  const kind = node.reatomKind === 'computed' ? 'computed' : 'atom'
+  return (
+    <div
+      data-inspector-key={node.label}
+      data-highlighted={highlighted ? '' : undefined}
+      css={`
+        display: grid;
+        gap: var(--admin-space-4);
+        min-width: 0;
+        padding: var(--admin-space-4) 0 var(--admin-space-4) var(--admin-space-8);
+        box-shadow: ${kindStripe(
+          kind === 'computed' ? 'var(--admin-kind-computed)' : 'var(--admin-kind-atom)',
+        )};
+        &[data-highlighted] {
+          background: color-mix(in oklch, ${tokens.accent} 10%, transparent);
+        }
+      `}
+      ref={(element) => {
+        if (!(element instanceof HTMLElement)) return
+        const observer = new IntersectionObserver(
+          (entries) => {
+            visible.set(entries.some((entry) => entry.isIntersecting))
+          },
+          { threshold: 0.01 },
+        )
+        observer.observe(element)
+        visible.set(true)
+        return () => observer.disconnect()
+      }}
+    >
+      <div
+        css={`
+          display: flex;
+          flex-wrap: nowrap;
+          align-items: center;
+          gap: var(--admin-space-6);
+          min-width: 0;
+        `}
+      >
+        <KindSwatch kind={kind} />
+        <span
+          css={`
+            ${type.data}
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          `}
+        >
+          {node.label}
+        </span>
+        {node.atomName ? (
+          <button
+            type="button"
+            aria-label={`Show ${node.atomName} on the timeline`}
+            title={`Show ${node.atomName} on the timeline`}
+            data-testid="inspector-atom-link"
+            css={`
+              ${focusVisible}
+              display: inline-flex;
+              flex: none;
+              align-items: center;
+              justify-content: center;
+              width: 16px;
+              height: 16px;
+              margin-inline: 0.25em;
+              padding: 0;
+              border: 0;
+              border-radius: var(--admin-radius-2);
+              background: transparent;
+              color: ${tokens.accent};
+              cursor: pointer;
+            `}
+            on:click={(event: MouseEvent) => {
+              event.stopPropagation()
+              focusAtomOnTimeline(admin, {
+                atomName: node.atomName!,
+                recordId: node.recordId,
+                sourceId: node.sourceId,
+              })
+            }}
+          >
+            <Icon name="timeline" />
+            <span css={visuallyHidden}>
+              {`Show ${node.atomName} on the timeline`}
+            </span>
+          </button>
+        ) : null}
+        <span
+          css={`
+            ${type.meta}
+            flex: none;
+            padding-inline: var(--admin-space-4);
+            border-radius: var(--admin-radius-2);
+            background: ${tokens.surface3};
+            color: ${tokens.text3};
+            white-space: nowrap;
+          `}
+        >
+          {valueShapeLabel(node.value)}
+        </span>
+        <span
+          css={`
+            ${type.meta}
+            color: ${tokens.text3};
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+          `}
+        >
+          {node.writeCount ?? 1}
+        </span>
+        <span
+          css={`
+            ${type.meta}
+            color: ${tokens.text3};
+            white-space: nowrap;
+          `}
+        >
+          {() =>
+            node.lastWriteAt === undefined
+              ? ''
+              : formatRecordAge(now(), node.lastWriteAt)
+          }
+        </span>
+        {() => {
+          const points = series()
+          if (points.length === 0) return null
+          const mode = points.every((point) => numericWriteValue(point.value) !== undefined)
+            ? 'step'
+            : 'ticks'
+          return <TickSparkline points={points} mode={mode} />
+        }}
+      </div>
+      <Inspector value={source} />
+    </div>
+  )
+}
+
+const GroupRow = ({
+  admin,
+  node,
+  now,
+  written,
+}: {
+  admin: OtlpAdmin
+  node: OtlpStateNode
+  now: () => number
+  written: Set<string>
+}) => {
+  const open = atom(true, `_Admin.state.group.${++serial}`)
+  const toggleOpen = () => open.set(!open())
+  return (
+    <div
+      data-inspector-key={node.label}
+      css={`
+        display: grid;
+        gap: var(--admin-space-4);
+        min-width: 0;
+      `}
+    >
+      <button
+        type="button"
+        aria-expanded={() => open()}
+        css={`
+          ${type.ui}
+          display: flex;
+          align-items: center;
+          gap: var(--admin-space-6);
+          margin: 0;
+          padding: 0;
+          border: 0;
+          background: transparent;
+          color: ${tokens.text2};
+          cursor: pointer;
+        `}
+        on:click={toggleOpen}
+      >
+        {node.label}
+      </button>
+      {() =>
+        open()
+          ? node.children.map((child) => (
+              <StateNode
+                admin={admin}
+                node={child}
+                now={now}
+                written={written}
+              />
+            ))
+          : null
+      }
+    </div>
+  )
+}
+
+const StateNode = ({
+  admin,
+  node,
+  now,
+  written,
+}: {
+  admin: OtlpAdmin
+  node: OtlpStateNode
+  now: () => number
+  written: Set<string>
+}) => {
+  if (node.kind === 'group') {
+    return <GroupRow admin={admin} node={node} now={now} written={written} />
+  }
+  const key =
+    node.sourceId && node.atomName
+      ? `${node.sourceId}:${node.atomName}`
+      : undefined
+  return (
+    <AtomRow
+      admin={admin}
+      node={node}
+      now={now}
+      highlighted={key !== undefined && written.has(key)}
+    />
+  )
+}
+
 export const StateInspector = ({ admin }: { admin: OtlpAdmin }) => {
-  const hooks = stateInspectorHooks(admin)
+  const now = atom(Date.now(), `_Admin.state.now.${++serial}`)
+  effect(async () => {
+    while (true) {
+      now.set(Date.now())
+      await wrap(sleep(1000))
+    }
+  }, `_Admin.state.tick.${serial}`)
   return (
     <section
       css={`
@@ -140,7 +425,20 @@ export const StateInspector = ({ admin }: { admin: OtlpAdmin }) => {
           padding: var(--admin-space-8);
         `}
       >
-        <Inspector value={admin.stateTree} hooks={hooks} defaultExpanded />
+        {() => {
+          const written = writtenBySelection(
+            admin.records(),
+            admin.selectedRecord(),
+          )
+          return admin.stateTree().map((node) => (
+            <StateNode
+              admin={admin}
+              node={node}
+              now={now}
+              written={written}
+            />
+          ))
+        }}
       </div>
     </section>
   )

@@ -66,6 +66,9 @@ export const adminThemeVars = `
   --admin-motion-hover: 80ms;
   --admin-motion-select: 120ms;
   --admin-motion-overlay: 160ms;
+  --admin-cause-thread-width: 1.5px;
+  --admin-cause-thread-color: var(--admin-accent);
+  --admin-cause-diamond-size: 6px;
 `
 
 export const tokens = {
@@ -236,6 +239,12 @@ export function kindPill(kind: string): string {
     text-transform: uppercase;
   `
 }
+
+export const causeThread = {
+  width: 'var(--admin-cause-thread-width)',
+  color: 'var(--admin-cause-thread-color)',
+  diamond: 'var(--admin-cause-diamond-size)',
+} as const
 
 export const MAX_RAIL_LANES = 5
 export const RAIL_LANE_GAP = 18

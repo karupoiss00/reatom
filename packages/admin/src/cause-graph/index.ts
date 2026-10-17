@@ -254,3 +254,8 @@ export function createCauseGraph(deps: CauseGraphDeps) {
 export function createCauseGraphManager(deps: CauseGraphDeps) {
   return ADMIN_FRAME.run(() => createCauseGraph(deps))
 }
+
+export {
+  selectedAncestorFrameIds,
+  selectedCauseThreadModel,
+} from './otlpThread.ts'

@@ -3,6 +3,7 @@ export {
   buildRecordBuckets,
   causeRailNodes,
   FEED_RENDER_LIMIT,
+  formatRecordDuration,
   framedByFrameId,
   groupRecordsByStart,
   isStateWrite,
@@ -21,12 +22,42 @@ export {
 } from './bind.ts'
 export type {
   OtlpActivityRow,
+  OtlpGraphDepth,
   OtlpGraphDirection,
   OtlpRailNode,
   OtlpRecordGroup,
   OtlpStateNode,
   OtlpTimeBucket,
 } from './bind.ts'
+export {
+  atomWriteSeries,
+  formatWriteChangeText,
+  groupWriteCounts,
+  numericWriteValue,
+  writeCountByAtom,
+  writeSeriesHeader,
+} from './writeSeries.ts'
+export type { HistoryGroupBar, HistoryGroupBy, WritePoint } from './writeSeries.ts'
+export { valueShapeLabel } from './valueShape.ts'
+export {
+  filterByValueDraft,
+  groupedOverviewAttributes,
+  isMaskedOtlpValue,
+  nameSegments,
+} from './overviewAttributes.ts'
+export type { AttributeGroup, NameSegment } from './overviewAttributes.ts'
+export {
+  causeReads,
+  causeTriggers,
+  collectAncestorRecords,
+  findCausePathIds,
+  focusKeepIds,
+  hopSet,
+  selectedCauseThread,
+  timeNeighbors,
+  writtenBySelection,
+} from './causeThread.ts'
+export type { CauseListRow, CauseThread, TimeNeighbor } from './causeThread.ts'
 export {
   buildCalculatorIndex,
   evaluateRecordExpression,
