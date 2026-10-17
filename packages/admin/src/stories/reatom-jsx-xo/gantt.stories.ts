@@ -477,8 +477,11 @@ export const FilterCalculatorNarrowsRows: Story = {
     await userEvent.click(
       keys.getByRole('button', { name: 'Insert equals (=)' }),
     )
+    const values = within(
+      adminUi().getByRole('group', { name: 'Value keys' }),
+    )
     await userEvent.click(
-      await keys.findByRole('button', { name: 'Insert atom' }),
+      await values.findByRole('button', { name: /^Insert atom$/ }),
     )
 
     expect(expression.value).toBe('name:makeMove OR kind=atom')

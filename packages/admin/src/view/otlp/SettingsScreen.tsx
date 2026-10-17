@@ -254,28 +254,32 @@ function AppearanceSection({ settings }: { settings: AdminSettings }) {
         gap: var(--admin-space-12);
       `}
     >
-      <h2
+      <div
         css={`
-          ${type.title}
-          margin: 0;
-          color: ${tokens.text1};
           display: flex;
           flex-wrap: wrap;
           align-items: baseline;
           gap: var(--admin-space-8);
         `}
       >
-        Appearance
+        <h2
+          css={`
+            ${type.title}
+            margin: 0;
+            color: ${tokens.text1};
+          `}
+        >
+          Appearance
+        </h2>
         <span
           css={`
             ${type.meta}
             color: ${tokens.text3};
-            font-weight: 500;
           `}
         >
           {() => `${settings.resolvedScheme()} · ${settings.accent()}`}
         </span>
-      </h2>
+      </div>
       <Hint>
         Light, Dark, or the device scheme. The accent color builds the palette.
       </Hint>
@@ -364,28 +368,32 @@ function WindowSection({ settings }: { settings: AdminSettings }) {
         gap: var(--admin-space-12);
       `}
     >
-      <h2
+      <div
         css={`
-          ${type.title}
-          margin: 0;
-          color: ${tokens.text1};
           display: flex;
           flex-wrap: wrap;
           align-items: baseline;
           gap: var(--admin-space-8);
         `}
       >
-        Window
+        <h2
+          css={`
+            ${type.title}
+            margin: 0;
+            color: ${tokens.text1};
+          `}
+        >
+          Window
+        </h2>
         <span
           css={`
             ${type.meta}
             color: ${tokens.text3};
-            font-weight: 500;
           `}
         >
           {() => settings.corner()}
         </span>
-      </h2>
+      </div>
       <Hint>Closing the panel leaves its icon in this corner.</Hint>
       <AppearanceRadios
         label="Panel corner"
@@ -470,24 +478,28 @@ export const SettingsScreen = () => {
                 }
               `}
             >
-              <h2
+              <div
                 css={`
-                  ${type.title}
-                  margin: 0;
-                  color: ${tokens.text1};
                   display: flex;
                   flex-wrap: wrap;
                   align-items: baseline;
                   gap: var(--admin-space-8);
                 `}
               >
-                {section.title}
+                <h2
+                  css={`
+                    ${type.title}
+                    margin: 0;
+                    color: ${tokens.text1};
+                  `}
+                >
+                  {section.title}
+                </h2>
                 {section.id === 'display' ? (
                   <span
                     css={`
                       ${type.meta}
                       color: ${tokens.text3};
-                      font-weight: 500;
                     `}
                   >
                     {() =>
@@ -495,7 +507,7 @@ export const SettingsScreen = () => {
                     }
                   </span>
                 ) : null}
-              </h2>
+              </div>
               {section.options.length === 0 ? (
                 <p
                   css={`
