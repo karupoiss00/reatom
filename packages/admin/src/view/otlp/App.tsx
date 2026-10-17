@@ -212,6 +212,7 @@ export const OtlpApp = ({
       <Toolbar height={size.tabs}>
         <ToolbarGroup>
           <span
+            data-compact-hide=""
             css={`
               ${type.ui}
               color: ${tokens.text1};
@@ -241,6 +242,7 @@ export const OtlpApp = ({
             />
           </span>
           <span
+            data-compact-hide=""
             css={`
               ${type.meta}
               ${truncate}
@@ -252,6 +254,7 @@ export const OtlpApp = ({
           </span>
           <span
             data-testid="summary-metrics"
+            data-compact-hide=""
             css={`
               ${type.meta}
               ${truncate}
@@ -268,9 +271,30 @@ export const OtlpApp = ({
           css={`
             flex: none;
             display: flex;
+            min-width: 0;
           `}
         >
           <Tabs value={admin.view} items={VIEWS} ariaLabel="Views" />
+        </div>
+        <div
+          css={`
+            flex: none;
+          `}
+        >
+          <ToolbarGroup>
+            <Button
+              label="Close"
+              onClick={() => {
+                minimized.set(false)
+                closed.set(true)
+              }}
+            >
+              Close
+            </Button>
+            <Button label="Minimize" onClick={() => minimized.set(true)}>
+              Minimize
+            </Button>
+          </ToolbarGroup>
         </div>
       </Toolbar>
       <div
@@ -282,28 +306,37 @@ export const OtlpApp = ({
       >
         <div
           css={`
-            width: max-content;
-            min-width: 100%;
+            min-width: 0;
+            width: 100%;
           `}
         >
           <Toolbar>
             <ToolbarGroup>
-              <Button
-                label="Back"
-                title="Back (Alt+Left)"
-                disabled={() => !admin.canSelectionBack()}
-                onClick={() => admin.selectionBack()}
+              <span
+                data-compact-hide=""
+                css={`
+                  display: inline-flex;
+                  align-items: center;
+                  gap: var(--admin-space-4);
+                `}
               >
-                Back
-              </Button>
-              <Button
-                label="Forward"
-                title="Forward (Alt+Right)"
-                disabled={() => !admin.canSelectionForward()}
-                onClick={() => admin.selectionForward()}
-              >
-                Forward
-              </Button>
+                <Button
+                  label="Back"
+                  title="Back (Alt+Left)"
+                  disabled={() => !admin.canSelectionBack()}
+                  onClick={() => admin.selectionBack()}
+                >
+                  Back
+                </Button>
+                <Button
+                  label="Forward"
+                  title="Forward (Alt+Right)"
+                  disabled={() => !admin.canSelectionForward()}
+                  onClick={() => admin.selectionForward()}
+                >
+                  Forward
+                </Button>
+              </span>
               <span
                 css={`
                   display: inline-flex;
@@ -343,6 +376,7 @@ export const OtlpApp = ({
                 {() =>
                   admin.source() === 'remote' ? (
                     <span
+                      data-compact-hide=""
                       css={`
                         ${type.meta}
                         color: ${tokens.text3};
@@ -359,24 +393,33 @@ export const OtlpApp = ({
               <Button variant="danger" label="Clear" onClick={clearWorkspace}>
                 Clear
               </Button>
-              <Button
-                label="Export"
-                onClick={() => downloadRecords(admin.records())}
+              <span
+                data-compact-hide=""
+                css={`
+                  display: inline-flex;
+                  align-items: center;
+                  gap: var(--admin-space-4);
+                `}
               >
-                Export
-              </Button>
-              <ImportRecords admin={admin} />
-              <Button
-                label="Remote ClickHouse source"
-                testId="otlp-remote-toggle"
-                pressed={() => admin.remoteOpen()}
-                onClick={() => admin.remoteOpen.toggle()}
-              >
-                ClickHouse
-              </Button>
+                <Button
+                  label="Export"
+                  onClick={() => downloadRecords(admin.records())}
+                >
+                  Export
+                </Button>
+                <ImportRecords admin={admin} />
+                <Button
+                  label="Remote ClickHouse source"
+                  testId="otlp-remote-toggle"
+                  pressed={() => admin.remoteOpen()}
+                  onClick={() => admin.remoteOpen.toggle()}
+                >
+                  ClickHouse
+                </Button>
+              </span>
             </ToolbarGroup>
             <ToolbarSpacer />
-            <ToolbarGroup>
+            <span data-compact-hide="">
               <Button
                 label="Help"
                 title="Help (?)"
@@ -384,19 +427,7 @@ export const OtlpApp = ({
               >
                 Help
               </Button>
-              <Button
-                label="Close"
-                onClick={() => {
-                  minimized.set(false)
-                  closed.set(true)
-                }}
-              >
-                Close
-              </Button>
-              <Button label="Minimize" onClick={() => minimized.set(true)}>
-                Minimize
-              </Button>
-            </ToolbarGroup>
+            </span>
           </Toolbar>
         </div>
       </div>
@@ -547,7 +578,7 @@ export const OtlpApp = ({
         if (stats.inFlight > 0) parts.push(`in flight ${stats.inFlight}`)
         if (stats.exported > 0) parts.push(`exported ${stats.exported}`)
         if (parts.length === 0) return null
-        return <span>{parts.join(' · ')}</span>
+        return <span data-compact-hide="">{parts.join(' · ')}</span>
       }}
       {() =>
         admin.localValuesTrimmed() ? (
@@ -566,6 +597,7 @@ export const OtlpApp = ({
         ) : null
       }}
       <span
+        data-compact-hide=""
         prop:hidden={() =>
           attentionItems({
             olderRecordsDropped: connection?.olderRecordsDropped() ?? false,

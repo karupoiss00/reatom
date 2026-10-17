@@ -104,6 +104,9 @@ export const Drawer = ({ open, label, onClose, children }: DrawerProps) => {
                 position: relative;
                 z-index: 1;
                 max-height: 70%;
+                @container admin-shell (max-width: 679px) {
+                  max-height: 45%;
+                }
                 padding: var(--admin-space-12);
                 background: ${tokens.surface1};
                 border-top: 1px solid ${tokens.border1};

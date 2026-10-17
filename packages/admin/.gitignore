@@ -2,3 +2,4 @@ test-results
 storybook-static
 .vitest-attachments
 .vitest/attachments
+src/stories/**/__screenshots__/**/*-1.png

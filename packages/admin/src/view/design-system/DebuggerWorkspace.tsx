@@ -95,6 +95,18 @@ export const DebuggerWorkspace = ({
         position: relative;
         background: ${tokens.canvas};
         color: ${tokens.text1};
+        [data-compact-hide] {
+          display: contents;
+        }
+        @container admin-shell (max-width: 679px) {
+          [data-compact-hide] {
+            display: none !important;
+          }
+          & > header,
+          & > section[aria-label='Filters'] {
+            padding: 0;
+          }
+        }
       `}
       ref={(shell) => {
         const syncWidth = () => {
