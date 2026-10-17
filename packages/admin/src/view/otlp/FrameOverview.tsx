@@ -3,7 +3,8 @@ import { atom, type AtomLike } from '@reatom/core'
 import {
   explainRecordMatch,
   filterByValueDraft,
-  formatRecordAge,
+  captureClockNow,
+  formatCaptureAge,
   formatRecordDuration,
   formatWriteChangeText,
   groupedOverviewAttributes,
@@ -85,6 +86,7 @@ const ValuePane = ({
             gap: var(--admin-space-4);
           `}
         >
+          {view === 'empty' ? null : (
           <Button
             variant="ghost"
             label={`Show ${title} as tree`}
@@ -93,6 +95,8 @@ const ValuePane = ({
           >
             JSON
           </Button>
+          )}
+          {view === 'empty' ? null : (
           <Button
             variant="ghost"
             label={`Show ${title} as text`}
@@ -101,6 +105,8 @@ const ValuePane = ({
           >
             Raw
           </Button>
+          )}
+          {view === 'empty' ? null : (
           <Button
             variant="ghost"
             label={`Copy ${title}`}
@@ -120,6 +126,7 @@ const ValuePane = ({
           >
             Copy
           </Button>
+          )}
         </span>
       </div>
       {masked ? (
@@ -175,7 +182,8 @@ const AttributeRow = ({
         grid-template-columns: minmax(0, 1fr) auto;
         gap: var(--admin-space-6);
         align-items: start;
-        &:hover [data-copy] {
+        &:hover [data-copy],
+        &:focus-within [data-copy] {
           opacity: 1;
         }
       `}
@@ -200,14 +208,17 @@ const AttributeRow = ({
           {text}
         </p>
       </div>
-      <span
-        data-copy
-        css={`
-          display: inline-flex;
-          gap: var(--admin-space-4);
-          opacity: 0;
-        `}
-      >
+        <span
+          data-copy
+          css={`
+            display: inline-flex;
+            gap: var(--admin-space-4);
+            opacity: 0;
+            &:focus-within {
+              opacity: 1;
+            }
+          `}
+        >
         <Button
           variant="ghost"
           label={`Copy ${entry.key}`}
@@ -282,6 +293,14 @@ export const PositionMark = ({
   for (const entry of trace) {
     minStart = Math.min(minStart, entry.start)
     maxEnd = Math.max(maxEnd, entry.end ?? entry.start)
+  }
+  const RANGE_CAP_MS = 365 * 86_400_000
+  if (maxEnd - minStart > RANGE_CAP_MS) {
+    maxEnd = minStart
+    for (const entry of trace) {
+      const end = entry.end ?? entry.start
+      if (end - minStart <= RANGE_CAP_MS) maxEnd = Math.max(maxEnd, end)
+    }
   }
   const total = Math.max(1, maxEnd - minStart)
   const offset = record.start - minStart
@@ -420,7 +439,14 @@ export const FrameOverview = ({
                   color: ${tokens.text2};
                 `}
               >
-                {`${line.clause} ${line.matched ? '✓' : '✗'}`}
+                <span
+                  css={`
+                    color: ${line.matched ? tokens.success : tokens.error};
+                  `}
+                >
+                  {line.matched ? '✓' : '✗'}
+                </span>
+                {` ${line.clause}`}
                 {line.hops && line.hops.length > 0
                   ? ` via ${line.hops.join(' → ')}`
                   : ''}
@@ -464,7 +490,21 @@ export const FrameOverview = ({
             font-variant-numeric: tabular-nums;
           `}
         >
-          {`${writes.length} writes in view · ${firstWrite ? formatRecordAge(Date.now(), firstWrite.start) : '—'} · ${lastWrite ? formatRecordAge(Date.now(), lastWrite.start) : '—'}`}
+          {(() => {
+            const clock = captureClockNow(admin.records(), Date.now())
+            const firstAge = firstWrite
+              ? formatCaptureAge(clock, firstWrite.start)
+              : undefined
+            const lastAge = lastWrite
+              ? formatCaptureAge(clock, lastWrite.start)
+              : undefined
+            const noun = writes.length === 1 ? 'write' : 'writes'
+            const ages =
+              firstAge || lastAge
+                ? ` · first ${firstAge ?? '—'} · last ${lastAge ?? '—'}`
+                : ''
+            return `${writes.length} ${noun} in view${ages}`
+          })()}
         </p>
       ) : null}
       <PositionMark admin={admin} record={record} />

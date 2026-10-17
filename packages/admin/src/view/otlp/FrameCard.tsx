@@ -323,7 +323,7 @@ const ErrorHero = ({
             font-variant-numeric: tabular-nums;
           `}
         >
-          {`×${repeats} in session`}
+          {`same name ×${repeats}`}
         </p>
       ) : null}
       {stack ? (
@@ -340,13 +340,38 @@ const ErrorHero = ({
           </pre>
         </Disclosure>
       ) : null}
-      <Button
-        variant="ghost"
-        label="Show cause chain"
-        onClick={() => admin.inspectorTab.set('causes')}
+      <div
+        css={`
+          display: flex;
+          flex-wrap: wrap;
+          gap: var(--admin-space-8);
+        `}
       >
-        Show cause chain
-      </Button>
+        <Button
+          variant="ghost"
+          label="Show cause chain"
+          onClick={() => {
+            admin.inspectorTab.set('causes')
+            queueMicrotask(() => {
+              focusSelector(
+                '[aria-label="Frame details"] [aria-label="Cause Chain"]',
+              )
+            })
+          }}
+        >
+          Show cause chain
+        </Button>
+        <Button
+          variant="ghost"
+          label="Copy for agent"
+          testId="error-hero-copy"
+          onClick={() =>
+            writeClipboard(copyForAgentMarkdown(record, admin.records(), false))
+          }
+        >
+          Copy for agent
+        </Button>
+      </div>
     </div>
   )
 }

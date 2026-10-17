@@ -57,9 +57,6 @@ export function analystStatusWords(admin: OtlpAdmin): string {
   return `${shown} of ${total} consented sessions · ${source}${partial}`
 }
 
-const sessionCaption = (sessions: number) =>
-  `Of ${sessions} consented sessions`
-
 const showErrorSessions = (admin: OtlpAdmin) => {
   admin.filterHasError.set(true)
   admin.view.set('timeline')
@@ -172,7 +169,6 @@ const AnalyticsKpis = ({ admin }: { admin: OtlpAdmin }) => (
             id="visitors"
             label="Visitors"
             value={String(totals.visitors)}
-            caption={sessionCaption(sessions)}
             delta={deltaOf((item) => item.visitors)}
             onClick={() => setMetric('visitors')}
           />
@@ -180,7 +176,6 @@ const AnalyticsKpis = ({ admin }: { admin: OtlpAdmin }) => (
             id="sessions"
             label="Sessions"
             value={String(totals.sessions)}
-            caption={sessionCaption(sessions)}
             delta={deltaOf((item) => item.sessions)}
             onClick={() => setMetric('sessions')}
           />
@@ -188,7 +183,6 @@ const AnalyticsKpis = ({ admin }: { admin: OtlpAdmin }) => (
             id="pageViews"
             label="Page views"
             value={String(totals.pageViews)}
-            caption={sessionCaption(sessions)}
             delta={deltaOf((item) => item.pageViews)}
             onClick={() => setMetric('pageViews')}
           />
@@ -204,7 +198,6 @@ const AnalyticsKpis = ({ admin }: { admin: OtlpAdmin }) => (
             id="bounce"
             label="Bounce"
             value={analyticsPercentText(totals.bounceRate, sessions)}
-            caption={sessionCaption(sessions)}
             tone={
               totals.bounceRate > ANALYTICS_BOUNCE_WARNING
                 ? 'warning'
@@ -216,14 +209,12 @@ const AnalyticsKpis = ({ admin }: { admin: OtlpAdmin }) => (
             id="activeTime"
             label="Median active"
             value={formatAxisOffset(totals.activeMsPerSession.median)}
-            caption={sessionCaption(sessions)}
             onClick={() => setMetric('sessions')}
           />
           <KpiCell
             id="errors"
             label="Errors"
             value={String(errorCount)}
-            caption={sessionCaption(sessions)}
             tone={errorCount > 0 ? 'error' : 'muted'}
             delta={deltaOf((item) => item.sessionsWithErrors)}
             onClick={

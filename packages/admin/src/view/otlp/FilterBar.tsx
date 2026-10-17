@@ -346,6 +346,22 @@ export const OtlpFilterBar = ({ admin }: { admin: OtlpAdmin }) => {
       </Button>
       <NamesPopover admin={admin} draft={draft} />
       {() => {
+        const pending = draft().trim()
+        const applied = admin.filterCalculator().trim()
+        if (pending === '' || pending === applied) return null
+        return (
+          <span
+            data-testid="filter-draft-hint"
+            css={`
+              ${type.meta}
+              color: ${tokens.warning};
+            `}
+          >
+            Calculator draft not applied
+          </span>
+        )
+      }}
+      {() => {
         const applied = admin.filterCalculator().trim()
         if (applied === '') return null
         const sentence = describeCalculator(applied, admin.filterMode())

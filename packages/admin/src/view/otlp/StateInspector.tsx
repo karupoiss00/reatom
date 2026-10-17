@@ -2,7 +2,8 @@ import { atom, computed, effect, wrap, sleep } from '@reatom/core'
 
 import {
   atomWriteSeries,
-  formatRecordAge,
+  captureClockNow,
+  formatCaptureAge,
   numericWriteValue,
   valueShapeLabel,
   type OtlpAdmin,
@@ -260,11 +261,15 @@ const AtomRow = ({
             white-space: nowrap;
           `}
         >
-          {() =>
-            node.lastWriteAt === undefined
-              ? ''
-              : formatRecordAge(now(), node.lastWriteAt)
-          }
+          {() => {
+            if (node.lastWriteAt === undefined) return ''
+            return (
+              formatCaptureAge(
+                captureClockNow(admin.records(), now()),
+                node.lastWriteAt,
+              ) ?? ''
+            )
+          }}
         </span>
         {() => {
           const points = series()

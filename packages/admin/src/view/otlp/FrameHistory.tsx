@@ -2,7 +2,8 @@ import { atom } from '@reatom/core'
 
 import {
   atomWriteSeries,
-  formatRecordAge,
+  captureClockNow,
+  formatCaptureAge,
   groupWriteCounts,
   numericWriteValue,
   writeSeriesHeader,
@@ -116,7 +117,20 @@ export const FrameHistory = ({
           font-variant-numeric: tabular-nums;
         `}
       >
-        {`${header.first === undefined ? '—' : formatRecordAge(Date.now(), header.first)} · ${header.last === undefined ? '—' : formatRecordAge(Date.now(), header.last)} · ${header.count}`}
+        {(() => {
+          const clock = captureClockNow(admin.records(), Date.now())
+          const first =
+            header.first === undefined
+              ? undefined
+              : formatCaptureAge(clock, header.first)
+          const last =
+            header.last === undefined
+              ? undefined
+              : formatCaptureAge(clock, header.last)
+          const ages =
+            first || last ? `first ${first ?? '—'} · last ${last ?? '—'} · ` : ''
+          return `${ages}${header.count}`
+        })()}
       </p>
       {numeric ? (
         <HistoryStepChart points={points} onSelect={selectPoint} />

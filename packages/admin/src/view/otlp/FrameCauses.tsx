@@ -130,7 +130,11 @@ export const FrameCauses = ({
           }}
         />
       )}
-      <Button label="Open in Graph" onClick={() => admin.view.set('graph')}>
+      <Button
+        label="Open in Graph"
+        testId="open-in-graph"
+        onClick={() => admin.view.set('graph')}
+      >
         Open in Graph
       </Button>
       {reads.length > 0 ? (
