@@ -94,7 +94,12 @@ export function stackCulprit(stack: string | undefined): string | undefined {
   for (const line of stack.split(/\r?\n/)) {
     const trimmed = line.trim()
     if (trimmed === '') continue
-    if (trimmed.includes('node_modules') || trimmed.startsWith('node:')) {
+    if (
+      trimmed.includes('node_modules') ||
+      trimmed.startsWith('node:') ||
+      trimmed.includes('@reatom/') ||
+      /[/\\]reatom[/\\]/.test(trimmed)
+    ) {
       continue
     }
     if (/^[\w$]*Error:/.test(trimmed)) continue

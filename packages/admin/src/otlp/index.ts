@@ -84,7 +84,15 @@ export {
 } from './clickhouse.ts'
 export type { ClickHouseCredentials } from './clickhouse.ts'
 export { reatomOtlpStore } from './ingest.ts'
-export { errorGroupKey, stackCulprit } from './ingest.ts'
+export {
+  errorGroupKey,
+  firstExceptionMessageLine,
+  recordErrorMessage,
+  recordErrorStack,
+  recordErrorType,
+  recordReatomName,
+  stackCulprit,
+} from './ingest.ts'
 export {
   kindShareColorVar,
   shortenTraceId,

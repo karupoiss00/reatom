@@ -2,14 +2,21 @@ import { atom, computed, type AtomLike } from '@reatom/core'
 
 import type { OtlpAdmin } from '../../otlp'
 import {
+  firstExceptionMessageLine,
   isStateWrite,
+  recordErrorMessage,
+  recordErrorStack,
+  recordErrorType,
   recordHasError,
   recordLabel,
+  recordReatomName,
+  stackCulprit,
   toRailNode,
 } from '../../otlp'
 import type { AdminRecord } from '../../otlp'
 import {
   Button,
+  Disclosure,
   InspectorTabs,
   RailGraph,
   kindPill,
@@ -205,7 +212,9 @@ export const OtlpFrameCard = ({ admin }: { admin: OtlpAdmin }) => {
                 return (
                   <Inspector value={admin.selectedRecord} defaultExpanded />
                 )
-              return <Overview record={record} sources={sources} />
+              return (
+                <Overview admin={admin} record={record} sources={sources} />
+              )
             }}
           </div>
         )
@@ -264,10 +273,120 @@ const SnapshotField = ({
   return <SnapshotInspector value={value} />
 }
 
+function sameNameCount(admin: OtlpAdmin, record: AdminRecord): number {
+  const name = recordReatomName(record)
+  let count = 0
+  for (const entry of admin.feedRecords()) {
+    if (recordReatomName(entry) === name) count += 1
+  }
+  return count
+}
+
+const ErrorHero = ({
+  admin,
+  record,
+}: {
+  admin: OtlpAdmin
+  record: AdminRecord
+}) => {
+  const errorType = recordErrorType(record)
+  const message =
+    firstExceptionMessageLine(recordErrorMessage(record)) ||
+    record.outcome ||
+    'error'
+  const stack = recordErrorStack(record)
+  const culprit = stackCulprit(stack)
+  const repeats = sameNameCount(admin, record)
+  return (
+    <div
+      role="alert"
+      css={`
+        display: grid;
+        gap: var(--admin-space-8);
+        min-width: 0;
+        padding: var(--admin-space-8);
+        padding-left: var(--admin-space-12);
+        background: ${tokens.errorWash};
+        box-shadow: ${kindStripe(tokens.error)};
+      `}
+    >
+      <p
+        css={`
+          ${type.ui}
+          margin: 0;
+          color: ${tokens.error};
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+        `}
+      >
+        {errorType === '' ? 'Error' : errorType}
+      </p>
+      <p
+        css={`
+          ${type.body}
+          margin: 0;
+          font-family: ${tokens.fontData};
+          font-size: 13px;
+          line-height: 20px;
+          color: ${tokens.text1};
+        `}
+      >
+        {message}
+      </p>
+      {culprit ? (
+        <p
+          css={`
+            ${type.meta}
+            margin: 0;
+            color: ${tokens.text2};
+          `}
+        >
+          Culprit {culprit}
+        </p>
+      ) : null}
+      {repeats > 1 ? (
+        <p
+          css={`
+            ${type.meta}
+            margin: 0;
+            color: ${tokens.text3};
+            font-variant-numeric: tabular-nums;
+          `}
+        >
+          {`×${repeats} in session`}
+        </p>
+      ) : null}
+      {stack ? (
+        <Disclosure label="Stack">
+          <pre
+            css={`
+              ${type.data}
+              margin: 0;
+              white-space: pre-wrap;
+              color: ${tokens.text2};
+            `}
+          >
+            {stack}
+          </pre>
+        </Disclosure>
+      ) : null}
+      <Button
+        variant="ghost"
+        label="Show cause chain"
+        onClick={() => admin.inspectorTab.set('causes')}
+      >
+        Show cause chain
+      </Button>
+    </div>
+  )
+}
+
 const Overview = ({
+  admin,
   record,
   sources,
 }: {
+  admin: OtlpAdmin
   record: AdminRecord
   sources: ReturnType<typeof frameSources>
 }) => {
@@ -281,16 +400,7 @@ const Overview = ({
       `}
     >
       {recordHasError(record) ? (
-        <p
-          role="alert"
-          css={`
-            ${type.body}
-            margin: 0;
-            color: ${tokens.error};
-          `}
-        >
-          {record.error?.message ?? record.outcome ?? 'error'}
-        </p>
+        <ErrorHero admin={admin} record={record} />
       ) : null}
       {eventAttributes !== undefined ? (
         <SnapshotField value={eventAttributes} emptyLabel="" />

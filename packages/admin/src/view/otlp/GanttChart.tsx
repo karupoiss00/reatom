@@ -575,6 +575,7 @@ const GanttRow = ({
       data-row-kind={() => kindName()}
       data-outcome={row.outcome ?? ''}
       data-status={statusName ?? ''}
+      data-error={recordHasError(row) ? 'true' : 'false'}
       data-band={() =>
         kindName() === 'action' && hasChildren() ? 'true' : 'false'
       }
@@ -645,6 +646,45 @@ const GanttRow = ({
         &[aria-selected='true'] {
           ${selectedRow}
           box-shadow: inset 2px 0 0 ${tokens.accent},
+            inset calc(2px + ${kindStripeWidth}) 0 0 var(--row-kind);
+        }
+        &[data-error='true'] {
+          background: ${tokens.errorWash};
+          box-shadow: inset 2px 0 0 ${tokens.error},
+            inset calc(2px + ${kindStripeWidth}) 0 0 var(--row-kind);
+        }
+        &[data-error='true'][aria-selected='true'] {
+          background: color-mix(
+            in oklch,
+            ${tokens.errorWash},
+            ${tokens.surface2}
+          );
+          box-shadow: inset 2px 0 0 ${tokens.accent},
+            inset 4px 0 0 ${tokens.error},
+            inset calc(4px + ${kindStripeWidth}) 0 0 var(--row-kind);
+        }
+        &[data-outcome='abort'] {
+          background: color-mix(
+            in oklch,
+            ${tokens.warning} 8%,
+            ${tokens.canvas}
+          );
+          background-image: repeating-linear-gradient(
+            to bottom,
+            ${tokens.warning} 0 3px,
+            transparent 3px 6px
+          );
+          background-size: 2px 100%;
+          background-repeat: no-repeat;
+        }
+        &[data-outcome='abort'][aria-selected='true'] {
+          background-color: ${tokens.surface2};
+          box-shadow: inset 2px 0 0 ${tokens.accent},
+            inset calc(2px + ${kindStripeWidth}) 0 0 var(--row-kind);
+        }
+        &[data-outcome='suspense']:not([data-error='true']) {
+          background: color-mix(in oklch, ${tokens.info} 8%, ${tokens.canvas});
+          box-shadow: inset 2px 0 0 ${tokens.info},
             inset calc(2px + ${kindStripeWidth}) 0 0 var(--row-kind);
         }
         &[data-highlighted='true']:not([aria-selected='true']) {
@@ -846,6 +886,28 @@ const GanttRow = ({
             }
           `}
         />
+        {recordHasError(row) ? (
+          <span
+            aria-hidden="true"
+            style:left={() => {
+              const geometry = gantt.bar(row)
+              if (geometry === null) return '0%'
+              return `calc(${(geometry.left + Math.max(geometry.width, 0)) * 100}% + 2px)`
+            }}
+            css={`
+              position: absolute;
+              top: 50%;
+              transform: translateY(-50%);
+              color: ${tokens.error};
+              font-weight: 700;
+              font-size: 10px;
+              line-height: 10px;
+              pointer-events: none;
+            `}
+          >
+            !
+          </span>
+        ) : null}
       </div>
     </div>
   )
