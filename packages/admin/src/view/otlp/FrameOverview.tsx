@@ -7,6 +7,7 @@ import {
   formatRecordDuration,
   formatWriteChangeText,
   groupedOverviewAttributes,
+  writeClipboard,
   isMaskedOtlpValue,
   isStateWrite,
   nameSegments,
@@ -114,7 +115,7 @@ const ValuePane = ({
                         return String(value)
                       }
                     })()
-              void navigator.clipboard.writeText(text)
+              writeClipboard(text)
             }}
           >
             Copy
@@ -210,7 +211,7 @@ const AttributeRow = ({
         <Button
           variant="ghost"
           label={`Copy ${entry.key}`}
-          onClick={() => void navigator.clipboard.writeText(text)}
+          onClick={() => writeClipboard(text)}
         >
           Copy
         </Button>

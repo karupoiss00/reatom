@@ -101,18 +101,35 @@ export function traceHeaderStats(
   let maxEnd = Number.NEGATIVE_INFINITY
   let spanCount = 0
   let logCount = 0
-  let atomCount = 0
+  const atomNames = new Set<string>()
+  const childDurationBySpan = new Map<string, number>()
   const durationByKind = new Map<string, number>()
   for (const record of records) {
     minStart = Math.min(minStart, record.start)
     maxEnd = Math.max(maxEnd, record.end ?? record.start)
     if (record.kind === 'span') spanCount += 1
     if (record.kind === 'log') logCount += 1
-    if (record.reatomKind === 'atom') atomCount += 1
+    if (record.atomName !== undefined) atomNames.add(record.atomName)
+    else if (record.reatomKind === 'atom') atomNames.add(record.name)
     const duration = spanDurationMs(record)
     if (duration === undefined) continue
+    if (record.parentSpanId !== undefined) {
+      childDurationBySpan.set(
+        record.parentSpanId,
+        (childDurationBySpan.get(record.parentSpanId) ?? 0) + duration,
+      )
+    }
+  }
+  for (const record of records) {
+    const duration = spanDurationMs(record)
+    if (duration === undefined) continue
+    const selfTime = Math.max(
+      0,
+      duration - (childDurationBySpan.get(record.spanId) ?? 0),
+    )
+    if (selfTime <= 0) continue
     const kind = recordKindName(record)
-    durationByKind.set(kind, (durationByKind.get(kind) ?? 0) + duration)
+    durationByKind.set(kind, (durationByKind.get(kind) ?? 0) + selfTime)
   }
   const totalKindMs = [...durationByKind.values()].reduce(
     (sum, duration) => sum + duration,
@@ -134,7 +151,7 @@ export function traceHeaderStats(
       : 0,
     spanCount,
     logCount,
-    atomCount,
+    atomCount: atomNames.size,
     outcome: traceOutcome(records),
     kindShare,
   }

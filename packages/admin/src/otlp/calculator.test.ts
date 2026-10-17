@@ -5,6 +5,7 @@ import { LOCAL_VALUES } from './ingest.ts'
 import {
   appendCalculatorClause,
   calculatorClauses,
+  mergePendingCalculatorDraft,
   describeCalculator,
   durationThresholdMs,
   evaluateRecordExpression,
@@ -538,6 +539,14 @@ test('appendCalculatorClause joins with AND and wraps NOT', () => {
   expect(appendCalculatorClause('kind:action', 'outcome:error', true)).toBe(
     'kind:action AND NOT (outcome:error)',
   )
+})
+
+test('mergePendingCalculatorDraft appends a clause instead of substring-replacing', () => {
+  expect(mergePendingCalculatorDraft('name:ab', 'name:a')).toBe(
+    'name:ab AND name:a',
+  )
+  expect(mergePendingCalculatorDraft('name:a', 'name:a')).toBe('name:a')
+  expect(mergePendingCalculatorDraft('', 'kind:action')).toBe('kind:action')
 })
 
 test('describeCalculator restates kind, duration, and cause', () => {

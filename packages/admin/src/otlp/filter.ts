@@ -114,11 +114,6 @@ export function filteredRecords(
   )
 }
 
-/**
- * Match predicates that Hide / Highlight / Exclude invert or mark. `traceId` is
- * a candidate-set scope, not a match — a trace-only Hide must not empty the
- * scoped trace.
- */
 export function withoutChipToggles(
   filter: AdminMcpFilter | undefined,
 ): AdminMcpFilter | undefined {
@@ -127,6 +122,15 @@ export function withoutChipToggles(
   delete next.hasError
   delete next.reatomKind
   delete next.kind
+  return next
+}
+
+export function withoutCalculator(
+  filter: AdminMcpFilter | undefined,
+): AdminMcpFilter | undefined {
+  if (!filter) return filter
+  const next = { ...filter }
+  delete next.calculator
   return next
 }
 
@@ -153,24 +157,70 @@ export function topRecordNames(
     .slice(0, limit)
 }
 
-export function endedSpanPercentile(
+export type ChipKindCounts = {
+  errors: number
+  action: number
+  atom: number
+  computed: number
+  log: number
+}
+
+export function countChipKinds(
   records: readonly AdminRecord[],
-  ratio: number,
-): number | undefined {
+): ChipKindCounts {
+  const counts: ChipKindCounts = {
+    errors: 0,
+    action: 0,
+    atom: 0,
+    computed: 0,
+    log: 0,
+  }
+  for (const record of records) {
+    if (record.error != null || record.outcome === 'error') counts.errors += 1
+    if (record.reatomKind === 'action') counts.action += 1
+    if (record.reatomKind === 'atom') counts.atom += 1
+    if (record.reatomKind === 'computed') counts.computed += 1
+    if (record.kind === 'log') counts.log += 1
+  }
+  return counts
+}
+
+export function sortedEndedSpanDurations(
+  records: readonly AdminRecord[],
+): number[] {
   const durations: number[] = []
   for (const record of records) {
     if (record.kind !== 'span' || record.end === undefined) continue
     durations.push(Math.max(0, record.end - record.start))
   }
-  if (durations.length < 8) return undefined
   durations.sort((left, right) => left - right)
-  const index = Math.min(
-    durations.length - 1,
-    Math.max(0, Math.ceil(ratio * durations.length) - 1),
-  )
-  return durations[index]
+  return durations
 }
 
+export function percentileOfSorted(
+  sorted: readonly number[],
+  ratio: number,
+): number | undefined {
+  if (sorted.length < 8) return undefined
+  const index = Math.min(
+    sorted.length - 1,
+    Math.max(0, Math.ceil(ratio * sorted.length) - 1),
+  )
+  return sorted[index]
+}
+
+export function endedSpanPercentile(
+  records: readonly AdminRecord[],
+  ratio: number,
+): number | undefined {
+  return percentileOfSorted(sortedEndedSpanDurations(records), ratio)
+}
+
+/**
+ * Match predicates that Hide / Highlight / Exclude invert or mark. `traceId` is
+ * a candidate-set scope, not a match — a trace-only Hide must not empty the
+ * scoped trace.
+ */
 export function hasActiveFilter(filter: AdminMcpFilter | undefined): boolean {
   if (!filter) return false
   return (

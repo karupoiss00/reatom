@@ -1,11 +1,9 @@
 import { atom, effect, peek, type Atom } from '@reatom/core'
 
-import { mcpCallLog } from '../../mcp/callLog'
 import type { OtlpAdmin } from '../../otlp'
 import {
-  appendCalculatorClause,
   calculatorClauses,
-  chipCountRecords,
+  mergePendingCalculatorDraft,
   describeCalculator,
   hasActiveFilter,
   parseCalculator,
@@ -13,7 +11,7 @@ import {
   removeCalculatorClause,
   topRecordNames,
 } from '../../otlp'
-import type { AdminRecord, AdminRecordKind, AdminReatomKind } from '../../otlp'
+import type { AdminRecordKind, AdminReatomKind } from '../../otlp'
 import {
   Button,
   Disclosure,
@@ -32,24 +30,13 @@ let filterBarCounter = 0
 
 const CHIP_KINDS: Array<{
   label: string
-  reatomKind: AdminReatomKind
+  reatomKind: 'action' | 'atom' | 'computed'
   icon: RecordKindName
 }> = [
   { label: 'Actions', reatomKind: 'action', icon: 'action' },
   { label: 'Atoms', reatomKind: 'atom', icon: 'atom' },
   { label: 'Computed', reatomKind: 'computed', icon: 'computed' },
 ]
-
-function countRecords(
-  records: readonly AdminRecord[],
-  match: (record: AdminRecord) => boolean,
-): number {
-  let count = 0
-  for (const record of records) {
-    if (match(record)) count += 1
-  }
-  return count
-}
 
 let namesPopoverCounter = 0
 
@@ -86,10 +73,7 @@ const NamesPopover = ({
         >
           {() => {
             const needle = query().trim().toLowerCase()
-            const names = topRecordNames(
-              chipCountRecords(admin, admin.filter()),
-              20,
-            ).filter(
+            const names = topRecordNames(admin.chipCountRecords(), 20).filter(
               (entry) =>
                 needle === '' || entry.name.toLowerCase().includes(needle),
             )
@@ -140,21 +124,14 @@ export const OtlpFilterBar = ({ admin }: { admin: OtlpAdmin }) => {
   )
   const advancedOpen = atom(false, `_Admin.filter.advancedOpen.${barId}`)
   effect(() => {
-    const pending =
-      admin.pendingCalculatorDraft() ?? mcpCallLog().pendingCalculatorDraft()
+    const pending = admin.pendingCalculatorDraft()
     if (pending === null) return
     admin.pendingCalculatorDraft.set(null)
-    mcpCallLog().pendingCalculatorDraft.set(null)
     advancedOpen.set(true)
-    const current = draft().trim()
-    const isClause = /^(NOT \(.+\)|[A-Za-z.][A-Za-z0-9.]*\s*[=:<>]+)/.test(
-      pending,
-    )
-    if (isClause && current !== '' && !current.includes(pending)) {
-      draft.set(appendCalculatorClause(current, pending))
-      return
-    }
-    draft.set(pending)
+    const current = peek(draft)
+    const next = mergePendingCalculatorDraft(current, pending)
+    if (next === current) return
+    draft.set(next)
   }, `_Admin.filter.pendingDraft.${barId}`)
   effect(() => {
     admin.filterDraft.set(draft())
@@ -288,10 +265,7 @@ export const OtlpFilterBar = ({ admin }: { admin: OtlpAdmin }) => {
           `}
         >
           {() => {
-            const count = countRecords(
-              chipCountRecords(admin, admin.filter()),
-              (record) => record.error != null || record.outcome === 'error',
-            )
+            const count = admin.chipCounts().errors
             return (
               <span
                 css={`
@@ -322,10 +296,7 @@ export const OtlpFilterBar = ({ admin }: { admin: OtlpAdmin }) => {
             `}
           >
             {() => {
-              const count = countRecords(
-                chipCountRecords(admin, admin.filter()),
-                (record) => record.reatomKind === chip.reatomKind,
-              )
+              const count = admin.chipCounts()[chip.reatomKind]
               return (
                 <span
                   css={`
@@ -360,10 +331,7 @@ export const OtlpFilterBar = ({ admin }: { admin: OtlpAdmin }) => {
           `}
         >
           {() => {
-            const count = countRecords(
-              chipCountRecords(admin, admin.filter()),
-              (record) => record.kind === 'log',
-            )
+            const count = admin.chipCounts().log
             return (
               <span
                 css={`

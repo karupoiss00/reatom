@@ -49,6 +49,7 @@ export type { AttributeGroup, NameSegment } from './overviewAttributes.ts'
 export {
   causeReads,
   causeTriggers,
+  causeThreadRowSpan,
   collectAncestorRecords,
   findCausePathIds,
   focusKeepIds,
@@ -57,7 +58,12 @@ export {
   timeNeighbors,
   writtenBySelection,
 } from './causeThread.ts'
-export type { CauseListRow, CauseThread, TimeNeighbor } from './causeThread.ts'
+export type {
+  CauseListRow,
+  CauseThread,
+  CauseThreadRowSpan,
+  TimeNeighbor,
+} from './causeThread.ts'
 export {
   buildCalculatorIndex,
   calculatorClauses,
@@ -69,6 +75,7 @@ export {
   describeCalculator,
   durationThresholdMs,
   appendCalculatorClause,
+  mergePendingCalculatorDraft,
   isSlowDuration,
   parseCalculator,
   parseFilterCalculator,
@@ -97,11 +104,15 @@ export {
   applyFilterMode,
   candidateRecords,
   chipCountRecords,
+  countChipKinds,
   endedSpanPercentile,
   filterMode,
   filteredRecords,
   hasActiveFilter,
+  percentileOfSorted,
+  sortedEndedSpanDurations,
   topRecordNames,
+  withoutCalculator,
   withoutChipToggles,
   highlightedRecordIds,
   matchesQuery,
@@ -109,11 +120,14 @@ export {
   recordsForFilter,
   visibleRecords,
 } from './filter.ts'
+export type { ChipKindCounts } from './filter.ts'
 export { reatomOtlpAdmin } from './chrome.ts'
 export {
   attentionItems,
   formatRecordAge,
+  freshnessAgeLabel,
   freshnessLabel,
+  freshnessStateLabel,
   latestRecordTime,
   loadedRecordWindow,
 } from './freshness.ts'
@@ -135,6 +149,7 @@ export type {
 export { IN_PROGRESS_NAME, isInProgressRecord } from './inProgress.ts'
 export { mountLogIds } from './mount.ts'
 export {
+  CLICKHOUSE_FETCH_LIMIT,
   CLICKHOUSE_LOG_SQL,
   CLICKHOUSE_SPAN_SQL,
   clickhouseExportToOtlp,
@@ -158,6 +173,7 @@ export {
   frameCalculatorExpression,
   frameMcpSnippet,
 } from './copyForAgent.ts'
+export { writeClipboard } from './clipboard.ts'
 export {
   kindShareColorVar,
   shortenTraceId,

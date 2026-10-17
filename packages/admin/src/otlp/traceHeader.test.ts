@@ -89,7 +89,7 @@ test('trace header names the root, counts kinds, and shares ended span time', ()
     'action',
     'computed',
   ])
-  expect(stats?.kindShare[0]?.durationMs).toBe(400)
+  expect(stats?.kindShare[0]?.durationMs).toBe(300)
   expect(stats?.kindShare[1]?.durationMs).toBe(100)
   const shareSum = stats!.kindShare.reduce((sum, share) => sum + share.share, 0)
   expect(shareSum).toBeCloseTo(1)
@@ -176,4 +176,20 @@ test('triage omits the error segment when no span failed', () => {
 test('triage name filter quotes calculator values', () => {
   expect(triageNameFilter('makeMove')).toBe('name=makeMove')
   expect(triageNameFilter('user session')).toBe('name="user session"')
+})
+
+test('trace header counts every record of a single trace, not a 200 window', () => {
+  const records = Array.from({ length: 201 }, (_, index) =>
+    record({
+      id: `r${index}`,
+      spanId: `s${index}`,
+      parentSpanId: index === 0 ? undefined : 's0',
+      name: index === 0 ? 'checkout' : 'child',
+      start: index,
+      end: index + 1,
+    }),
+  )
+  const stats = traceHeaderStats(records)
+  expect(stats?.rootName).toBe('checkout')
+  expect(stats?.spanCount).toBe(201)
 })

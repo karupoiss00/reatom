@@ -5,7 +5,6 @@ import {
   formatRecordAge,
   numericWriteValue,
   valueShapeLabel,
-  writtenBySelection,
   type OtlpAdmin,
   type OtlpStateNode,
 } from '../../otlp'
@@ -121,12 +120,10 @@ const AtomRow = ({
   admin,
   node,
   now,
-  highlighted,
 }: {
   admin: OtlpAdmin
   node: OtlpStateNode
   now: () => number
-  highlighted: boolean
 }) => {
   const visible = atom(false, `_Admin.state.visible.${++serial}`)
   const source = computed(() => {
@@ -142,7 +139,15 @@ const AtomRow = ({
   return (
     <div
       data-inspector-key={node.label}
-      data-highlighted={highlighted ? '' : undefined}
+      data-highlighted={() => {
+        const key =
+          node.sourceId && node.atomName
+            ? `${node.sourceId}:${node.atomName}`
+            : undefined
+        return key !== undefined && admin.writtenNames().has(key)
+          ? ''
+          : undefined
+      }}
       css={`
         display: grid;
         gap: var(--admin-space-4);
@@ -164,7 +169,6 @@ const AtomRow = ({
           { threshold: 0.01 },
         )
         observer.observe(element)
-        visible.set(true)
         return () => observer.disconnect()
       }}
     >
@@ -280,12 +284,10 @@ const GroupRow = ({
   admin,
   node,
   now,
-  written,
 }: {
   admin: OtlpAdmin
   node: OtlpStateNode
   now: () => number
-  written: Set<string>
 }) => {
   const open = atom(true, `_Admin.state.group.${++serial}`)
   const toggleOpen = () => open.set(!open())
@@ -320,12 +322,7 @@ const GroupRow = ({
       {() =>
         open()
           ? node.children.map((child) => (
-              <StateNode
-                admin={admin}
-                node={child}
-                now={now}
-                written={written}
-              />
+              <StateNode admin={admin} node={child} now={now} />
             ))
           : null
       }
@@ -337,28 +334,15 @@ const StateNode = ({
   admin,
   node,
   now,
-  written,
 }: {
   admin: OtlpAdmin
   node: OtlpStateNode
   now: () => number
-  written: Set<string>
 }) => {
   if (node.kind === 'group') {
-    return <GroupRow admin={admin} node={node} now={now} written={written} />
+    return <GroupRow admin={admin} node={node} now={now} />
   }
-  const key =
-    node.sourceId && node.atomName
-      ? `${node.sourceId}:${node.atomName}`
-      : undefined
-  return (
-    <AtomRow
-      admin={admin}
-      node={node}
-      now={now}
-      highlighted={key !== undefined && written.has(key)}
-    />
-  )
+  return <AtomRow admin={admin} node={node} now={now} />
 }
 
 export const StateInspector = ({ admin }: { admin: OtlpAdmin }) => {
@@ -425,20 +409,11 @@ export const StateInspector = ({ admin }: { admin: OtlpAdmin }) => {
           padding: var(--admin-space-8);
         `}
       >
-        {() => {
-          const written = writtenBySelection(
-            admin.records(),
-            admin.selectedRecord(),
-          )
-          return admin.stateTree().map((node) => (
-            <StateNode
-              admin={admin}
-              node={node}
-              now={now}
-              written={written}
-            />
+        {() =>
+          admin.stateTree().map((node) => (
+            <StateNode admin={admin} node={node} now={now} />
           ))
-        }}
+        }
       </div>
     </section>
   )

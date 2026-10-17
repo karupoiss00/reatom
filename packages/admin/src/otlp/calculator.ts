@@ -1071,6 +1071,17 @@ export function calculatorClauses(source: string): CalculatorClause[] {
   }))
 }
 
+export function mergePendingCalculatorDraft(
+  current: string,
+  pending: string,
+): string {
+  const trimmed = current.trim()
+  const clauses = calculatorClauses(trimmed).map((clause) => clause.source)
+  if (clauses.includes(pending)) return current
+  if (trimmed === '') return pending
+  return appendCalculatorClause(current, pending)
+}
+
 export function removeCalculatorClause(
   source: string,
   clauseSource: string,

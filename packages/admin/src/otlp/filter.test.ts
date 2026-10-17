@@ -477,6 +477,19 @@ test('endedSpanPercentile uses ended spans and hides below eight', () => {
   expect(endedSpanPercentile(withOpen as AdminRecord[], 0.95)).toBe(80)
 })
 
+test('kind chip toggle clears without writing a calculator clause', () => {
+  const { admin } = ingestAll()
+  ADMIN_FRAME.run(() => {
+    admin.filterReatomKind.set('action')
+    expect(admin.filterCalculator()).toBe('')
+    expect(admin.filter().reatomKind).toBe('action')
+    admin.filterReatomKind.set(undefined)
+    expect(admin.filter().reatomKind).toBeUndefined()
+    expect(admin.filterCalculator()).toBe('')
+    expect(admin.feedRecords()).toHaveLength(5)
+  })
+})
+
 test('previewGhostIds follows the unapplied draft and clears on apply', () => {
   const { admin } = ingestAll()
   ADMIN_FRAME.run(() => {

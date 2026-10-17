@@ -1,6 +1,7 @@
 import type { OtlpAdmin } from '../../otlp'
 import {
   copyForAgentMarkdown,
+  writeClipboard,
   firstExceptionMessageLine,
   formatRecordDuration,
   frameCalculatorExpression,
@@ -44,15 +45,11 @@ function kindLabel(record: AdminRecord): string {
 }
 
 function visibleCardRows(admin: OtlpAdmin): readonly AdminRecord[] {
-  const feed = admin.feedRecords()
-  if (admin.filterMode() !== 'highlight') return feed
+  const rows = admin.visibleRecords()
+  if (admin.filterMode() !== 'highlight') return rows
   const highlighted = admin.highlightedIds()
-  if (highlighted.size === 0) return feed
-  return feed.filter((entry) => highlighted.has(entry.id))
-}
-
-function writeClipboard(text: string) {
-  void navigator.clipboard.writeText(text)
+  if (highlighted.size === 0) return rows
+  return rows.filter((entry) => highlighted.has(entry.id))
 }
 
 function focusSelector(selector: string) {
@@ -249,7 +246,7 @@ export const OtlpFrameCard = ({ admin }: { admin: OtlpAdmin }) => {
 function sameNameCount(admin: OtlpAdmin, record: AdminRecord): number {
   const name = recordReatomName(record)
   let count = 0
-  for (const entry of admin.feedRecords()) {
+  for (const entry of admin.visibleRecords()) {
     if (recordReatomName(entry) === name) count += 1
   }
   return count

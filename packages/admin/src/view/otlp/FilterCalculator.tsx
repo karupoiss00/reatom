@@ -3,8 +3,7 @@ import { atom, computed, withLocalStorage, type Atom } from '@reatom/core'
 import { canPersistToLocalStorage } from '../../filters/persistence'
 import {
   buildCalculatorIndex,
-  chipCountRecords,
-  endedSpanPercentile,
+  percentileOfSorted,
   highlightCalculator,
   parseCalculator,
   recordHasError,
@@ -462,9 +461,9 @@ export const FilterCalculator = ({ admin, draft }: FilterCalculatorProps) => {
               )
             }
             const ghostIds = admin.previewGhostIds()
-            const visible = admin.visibleRecords()
+            const candidates = admin.chipCountRecords()
             let errors = 0
-            for (const record of visible) {
+            for (const record of candidates) {
               if (ghostIds.has(record.id) && recordHasError(record)) errors += 1
             }
             return (
@@ -473,7 +472,7 @@ export const FilterCalculator = ({ admin, draft }: FilterCalculatorProps) => {
                   {wouldMatchHeadline(
                     admin.filterMode(),
                     ghostIds.size,
-                    visible.length,
+                    candidates.length,
                     errors,
                   )}
                 </span>
@@ -525,9 +524,9 @@ export const FilterCalculator = ({ admin, draft }: FilterCalculatorProps) => {
         <span css={keyRowLabel}>Duration</span>
         <div role="group" aria-label="Duration presets" css={keyRow}>
           {() => {
-            const candidates = chipCountRecords(admin, admin.filter())
-            const p50 = endedSpanPercentile(candidates, 0.5)
-            const p95 = endedSpanPercentile(candidates, 0.95)
+            const durations = admin.chipSpanDurations()
+            const p50 = percentileOfSorted(durations, 0.5)
+            const p95 = percentileOfSorted(durations, 0.95)
             const chips: Array<{ label: string; expression: string }> = []
             if (p50 !== undefined) {
               const ms = Math.round(p50)

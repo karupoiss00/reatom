@@ -1,3 +1,5 @@
+import { computed } from '@reatom/core'
+
 import type { AdminConnection, AdminRecord, OtlpAdmin } from '../../otlp'
 import { explainEmptyClauses } from '../../otlp'
 import {
@@ -180,6 +182,8 @@ export const NoMatchingEmpty = ({ admin }: { admin: OtlpAdmin }) => (
   />
 )
 
+let emptyKindSerial = 0
+
 export const TimelineEmptyState = ({
   admin,
   connection = null,
@@ -187,9 +191,22 @@ export const TimelineEmptyState = ({
   admin: OtlpAdmin
   connection?: AdminConnection | null
 }) => {
-  if (admin.records().length > 0) return <NoMatchingEmpty admin={admin} />
-  if (connection) return <CapturingEmpty connection={connection} />
-  return <NoTracerEmpty admin={admin} />
+  const kind = computed(() => {
+    if (admin.records().length > 0) return 'noMatch' as const
+    return connection ? ('capturing' as const) : ('noTracer' as const)
+  }, `_Admin.empty.kind.${++emptyKindSerial}`)
+  return (
+    <>
+      {() => {
+        const current = kind()
+        if (current === 'noMatch') return <NoMatchingEmpty admin={admin} />
+        if (current === 'capturing' && connection) {
+          return <CapturingEmpty connection={connection} />
+        }
+        return <NoTracerEmpty admin={admin} />
+      }}
+    </>
+  )
 }
 
 export const PathsEmptyState = () => (

@@ -459,6 +459,31 @@ test('chrome feed cap, pause gate, unique ids, and selection write frame root', 
   })
 })
 
+test('trace header counts the full visible set, not the 200-record feed', () => {
+  const admin = reatomOtlpAdmin({
+    sourceId: 'local',
+    resource: INSTANCE_RESOURCE,
+  })
+  const traceId = 'c'.repeat(32)
+  ADMIN_FRAME.run(() => {
+    admin.ingest(
+      Array.from({ length: FEED_RENDER_LIMIT + 10 }, (_, index) => ({
+        name: index === 0 ? 'checkout' : `child-${index}`,
+        traceId,
+        spanId: index.toString(16).padStart(16, '0'),
+        parentSpanId:
+          index === 0 ? undefined : (0).toString(16).padStart(16, '0'),
+        startTimeUnixNano: String(1791352144731000000n + BigInt(index)),
+        endTimeUnixNano: String(1791352144731000000n + BigInt(index) + 1n),
+        attributes: { 'reatom.kind': index === 0 ? 'action' : 'computed' },
+      })),
+    )
+    expect(admin.feedRecords()).toHaveLength(FEED_RENDER_LIMIT)
+    expect(admin.traceHeader()?.spanCount).toBe(FEED_RENDER_LIMIT + 10)
+    expect(admin.traceHeader()?.rootName).toBe('checkout')
+  })
+})
+
 test('visibleFeed keeps the last 200 records', () => {
   const records = Array.from({ length: 205 }, (_, index) => ({
     id: String(index),
