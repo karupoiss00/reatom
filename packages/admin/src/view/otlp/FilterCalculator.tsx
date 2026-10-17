@@ -530,17 +530,21 @@ export const FilterCalculator = ({ admin, draft }: FilterCalculatorProps) => {
             const chips: Array<{ label: string; expression: string }> = []
             if (p50 !== undefined) {
               const ms = Math.round(p50)
-              chips.push({
-                label: `> p50 ${ms}ms`,
-                expression: `duration>${ms}ms`,
-              })
+              if (ms > 0) {
+                chips.push({
+                  label: `> p50 ${ms}ms`,
+                  expression: `duration>${ms}ms`,
+                })
+              }
             }
             if (p95 !== undefined) {
               const ms = Math.round(p95)
-              chips.push({
-                label: `> p95 ${ms}ms`,
-                expression: `duration>${ms}ms`,
-              })
+              if (ms > 0) {
+                chips.push({
+                  label: `> p95 ${ms}ms`,
+                  expression: `duration>${ms}ms`,
+                })
+              }
             }
             chips.push({ label: '> 16ms', expression: 'duration>16ms' })
             return chips.map((chip) => (

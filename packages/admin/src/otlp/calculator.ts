@@ -691,8 +691,9 @@ export function isSlowDuration(
   p95Ms: number | undefined,
   thresholdMs: number | undefined,
 ): boolean {
-  if (thresholdMs !== undefined && durationMs >= thresholdMs) return true
-  if (p95Ms !== undefined && durationMs >= p95Ms) return true
+  if (thresholdMs !== undefined && thresholdMs > 0 && durationMs >= thresholdMs)
+    return true
+  if (p95Ms !== undefined && p95Ms > 0 && durationMs >= p95Ms) return true
   return false
 }
 

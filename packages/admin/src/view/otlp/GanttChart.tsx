@@ -127,26 +127,29 @@ const CauseThreadGutter = ({
       if (!adminSettings().causeThread()) return null
       const span = admin.causeThreadRowSpan()
       if (span === null) return null
-      const index = span.indexById.get(row.id)
-      if (index === undefined) return null
-      const onThread = span.lo >= 0 && index >= span.lo && index <= span.hi
+      const onThread = span.threadIds.has(row.id)
       const showDiamond =
-        row.frameId !== undefined && span.diamondIds.has(row.frameId)
-      const showErrorMark = row.frameId === span.errorAncestorFrameId
+        row.frameId !== undefined &&
+        span.diamondIds.has(row.frameId) &&
+        onThread
+      const showErrorMark = row.id === span.errorMarkId
       if (!onThread && !showDiamond && !showErrorMark) return null
-      const useError =
-        span.errorLo >= 0 && index >= span.errorLo && index <= span.errorHi
+      const useError = span.errorPathIds.has(row.id)
       const stroke = useError ? tokens.error : causeThread.color
       return (
         <span
           data-testid="gantt-cause-thread"
           data-error={useError ? 'true' : undefined}
+          data-diamond={showDiamond ? 'true' : undefined}
+          data-error-mark={showErrorMark ? 'true' : undefined}
           css={`
-            position: relative;
-            flex: 0 0 ${THREAD_GUTTER}px;
-            align-self: stretch;
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: ${kindStripeWidth};
             width: ${THREAD_GUTTER}px;
             pointer-events: none;
+            z-index: 1;
           `}
         >
           {onThread ? (
@@ -173,6 +176,7 @@ const CauseThreadGutter = ({
                 box-sizing: border-box;
                 border: ${causeThread.width} solid ${stroke};
                 background: transparent;
+                z-index: 1;
                 transform: translate(-50%, -50%) rotate(45deg);
               `}
             />
@@ -184,6 +188,7 @@ const CauseThreadGutter = ({
                 top: 50%;
                 left: 50%;
                 transform: translate(-50%, -50%);
+                z-index: 2;
                 ${type.meta}
                 color: ${tokens.error};
               `}
@@ -811,6 +816,7 @@ const GanttRow = ({
       }
       css={`
         box-sizing: border-box;
+        position: relative;
         display: grid;
         grid-template-columns: ${COLUMNS};
         align-items: center;
@@ -942,9 +948,12 @@ const GanttRow = ({
         }
       }}
     >
+      <CauseThreadGutter admin={admin} row={row} />
       <div
         data-gantt-label=""
-        style:padding-left={() => `${depth() * INDENT + 8}px`}
+        style:padding-left={() =>
+          `${THREAD_GUTTER + depth() * INDENT + 8}px`
+        }
         css={`
           display: flex;
           align-items: center;
@@ -954,11 +963,6 @@ const GanttRow = ({
           padding-right: var(--admin-space-8);
         `}
       >
-        {() =>
-          adminSettings().causeThread() ? (
-            <CauseThreadGutter admin={admin} row={row} />
-          ) : null
-        }
         {() => {
           const group = admin.logGroupOf(row)
           if (
@@ -1362,7 +1366,8 @@ const GanttRow = ({
                     justify-content: space-between;
                     gap: var(--admin-space-4);
                     padding-inline: var(--admin-space-4);
-                    color: ${quiet ? tokens.text3 : tokens.text1};
+                    color: ${quiet ? tokens.text3 : tokens.barInk};
+                    text-shadow: 0 0 6px ${tokens.canvas};
                     font-variant-numeric: tabular-nums;
                     line-height: 14px;
                     ${truncate}
@@ -1477,18 +1482,19 @@ const GanttRow = ({
         {recordHasError(row) ? (
           <span
             aria-hidden="true"
+            data-testid="gantt-error-mark"
             style:left={() => {
               const geometry = gantt.bar(row)
               if (geometry === null) return '0%'
-              return `calc(${(geometry.left + Math.max(geometry.width, 0)) * 100}% + 2px)`
+              return `calc(${geometry.left * 100}% + 2px)`
             }}
             css={`
               position: absolute;
-              top: 50%;
-              transform: translateY(-50%);
+              top: 2px;
               ${type.meta}
               color: ${tokens.error};
               pointer-events: none;
+              line-height: 1;
             `}
           >
             !
@@ -1866,13 +1872,15 @@ export const OtlpGanttChart = <Node, Key = Node>({
         }
         {() =>
           adapter.live && admin.traceTriage() ? (
-            <TraceTriageLine admin={admin} />
+            <div data-compact-hide="">
+              <TraceTriageLine admin={admin} />
+            </div>
           ) : null
         }
         <div
           css={`
-            width: max-content;
-            min-width: 100%;
+            min-width: 0;
+            width: 100%;
           `}
         >
           <Toolbar>
@@ -1905,25 +1913,27 @@ export const OtlpGanttChart = <Node, Key = Node>({
                 −
               </Button>
             </ToolbarGroup>
-            <ToolbarSeparator />
-            <ToolbarGroup>
-              <Button
-                variant="secondary"
-                label="Expand all"
-                testId="gantt-expand-all"
-                onClick={() => gantt.expandAll()}
-              >
-                Expand
-              </Button>
-              <Button
-                variant="secondary"
-                label="Collapse all"
-                testId="gantt-collapse-all"
-                onClick={() => gantt.collapseAll()}
-              >
-                Collapse
-              </Button>
-            </ToolbarGroup>
+            <span data-compact-hide="">
+              <ToolbarSeparator />
+              <ToolbarGroup>
+                <Button
+                  variant="secondary"
+                  label="Expand all"
+                  testId="gantt-expand-all"
+                  onClick={() => gantt.expandAll()}
+                >
+                  Expand
+                </Button>
+                <Button
+                  variant="secondary"
+                  label="Collapse all"
+                  testId="gantt-collapse-all"
+                  onClick={() => gantt.collapseAll()}
+                >
+                  Collapse
+                </Button>
+              </ToolbarGroup>
+            </span>
             <ToolbarSeparator />
             <ToolbarGroup>
               <Button
@@ -1966,7 +1976,7 @@ export const OtlpGanttChart = <Node, Key = Node>({
                 Paths
               </Button>
             </ToolbarGroup>
-            {adapter.toolbar?.() ?? null}
+            <span data-compact-hide="">{adapter.toolbar?.() ?? null}</span>
             <ToolbarSpacer />
             {adapter.live ? (
               <span>
@@ -1985,6 +1995,7 @@ export const OtlpGanttChart = <Node, Key = Node>({
             ) : null}
             {adapter.live ? (
               <span
+                data-compact-hide=""
                 css={`
                   display: inline-flex;
                   align-items: center;
@@ -2015,6 +2026,7 @@ export const OtlpGanttChart = <Node, Key = Node>({
                 {() =>
                   admin.source() === 'live' ? null : (
                     <span
+                      data-compact-hide=""
                       css={`
                         ${type.meta}
                         color: ${tokens.text3};
@@ -2030,6 +2042,7 @@ export const OtlpGanttChart = <Node, Key = Node>({
             ) : null}
             <span
               data-testid="gantt-summary"
+              data-compact-hide=""
               css={`
                 ${type.meta}
                 color: ${tokens.text3};

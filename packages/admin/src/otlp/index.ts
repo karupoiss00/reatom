@@ -124,6 +124,8 @@ export type { ChipKindCounts } from './filter.ts'
 export { reatomOtlpAdmin } from './chrome.ts'
 export {
   attentionItems,
+  captureClockNow,
+  formatCaptureAge,
   formatRecordAge,
   freshnessAgeLabel,
   freshnessLabel,

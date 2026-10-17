@@ -182,6 +182,20 @@ export const WinningGameTimeline: Story = {
     )
     await userEvent.click(adminUi().getByRole('tab', { name: 'Timeline' }))
     await waitFor(() => {
+      expect(
+        getAdminRoot().querySelector('[data-testid="gantt-scroller"]'),
+      ).toBeInstanceOf(HTMLElement)
+    })
+    const scrollerAfter = getAdminRoot().querySelector(
+      '[data-testid="gantt-scroller"]',
+    )
+    if (scrollerAfter instanceof HTMLElement) {
+      scrollerAfter.scrollTop = scrollerAfter.scrollHeight
+      scrollerAfter.dispatchEvent(new Event('scroll'))
+    }
+    await clickRow('makeMove')
+    await waitFor(() => {
+      expect(selectedLabel()).toBe('makeMove')
       const selected = getAdminRoot().querySelector(
         '[role="row"][aria-selected="true"]',
       )

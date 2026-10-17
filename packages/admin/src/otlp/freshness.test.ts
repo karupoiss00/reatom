@@ -3,7 +3,10 @@ import { expect, test } from 'test'
 import type { AdminRecord } from './ingest.ts'
 import {
   attentionItems,
+  captureClockNow,
+  formatCaptureAge,
   formatRecordAge,
+  freshnessAgeLabel,
   freshnessLabel,
   latestRecordTime,
   loadedRecordWindow,
@@ -16,6 +19,33 @@ test('formatRecordAge ticks in whole seconds', () => {
   expect(formatRecordAge(2_000, 2_000)).toBe('just now')
   expect(formatRecordAge(4_200, 2_000)).toBe('2s ago')
   expect(formatRecordAge(125_000, 2_000)).toBe('2m ago')
+})
+
+test('captureClockNow stays in the record time domain', () => {
+  const wall = 1_776_000_000_000
+  expect(captureClockNow([span(1_000, 3_000)], 5_000)).toBe(5_000)
+  expect(captureClockNow([span(1_000, 3_000)], wall)).toBe(3_000)
+  expect(captureClockNow([span(wall - 4_000, wall - 2_000)], wall)).toBe(wall)
+  expect(formatCaptureAge(wall, 0)).toBeUndefined()
+  expect(formatCaptureAge(5_000, 2_000)).toBe('3s ago')
+  expect(
+    freshnessAgeLabel({
+      source: 'live',
+      paused: false,
+      waiting: 0,
+      now: wall,
+      records: [span(0, 0)],
+    }),
+  ).toBe('last record just now')
+  expect(
+    freshnessAgeLabel({
+      source: 'replay',
+      paused: false,
+      waiting: 0,
+      now: wall,
+      records: [span(0, 0)],
+    }),
+  ).toBeUndefined()
 })
 
 test('freshnessLabel names live, paused, and ClickHouse windows', () => {

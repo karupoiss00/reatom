@@ -67,7 +67,10 @@ import {
   withoutCalculator,
   withoutChipToggles,
 } from './filter.ts'
-import { latestRecordTime as latestRecordTimeOf } from './freshness.ts'
+import {
+  captureClockNow,
+  latestRecordTime as latestRecordTimeOf,
+} from './freshness.ts'
 import {
   traceHeaderStats,
   traceTriageStats,
@@ -596,7 +599,10 @@ function reatomOtlpAdminModel(options: OtlpAdminOptions) {
     ganttRecords,
     {
       ...adminRecordTiming,
-      end: (record) => (isInProgressRecord(record) ? ganttNow() : record.end),
+      end: (record) =>
+        isInProgressRecord(record)
+          ? Math.max(record.start, captureClockNow(store.records(), ganttNow()))
+          : record.end,
       foldLogRows: () => logFold().rows,
       virtual: {
         itemSize: ADMIN_GANTT_ROW_HEIGHT,
@@ -633,7 +639,12 @@ function reatomOtlpAdminModel(options: OtlpAdminOptions) {
     ganttColorBy.set('kind')
   }, `${PREFIX}.ganttColorBy.fallback`)
   const causeThreadRowSpanComputed = computed(() => {
-    return causeThreadRowSpan(gantt.rows(), selectedRecord(), causeThread())
+    return causeThreadRowSpan(
+      gantt.rows(),
+      selectedRecord(),
+      causeThread(),
+      store.records(),
+    )
   }, `${PREFIX}.causeThreadRowSpan`)
   const chipCountRecordsComputed = computed(() => {
     return filteredRecords(store, withoutChipToggles(filter()))

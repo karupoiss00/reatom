@@ -199,6 +199,9 @@ test('durationThresholdMs reads duration>X and isSlowDuration uses p95', () => {
   expect(isSlowDuration(20, 18, undefined)).toBe(true)
   expect(isSlowDuration(10, 18, undefined)).toBe(false)
   expect(isSlowDuration(16, undefined, 16)).toBe(true)
+  expect(isSlowDuration(0, 0, undefined)).toBe(false)
+  expect(isSlowDuration(8, 0, undefined)).toBe(false)
+  expect(isSlowDuration(0, undefined, 0)).toBe(false)
 })
 
 test('foldLogRows collapses consecutive repeats and groups errors by errorGroupKey', () => {

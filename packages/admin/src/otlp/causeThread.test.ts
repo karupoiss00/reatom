@@ -80,10 +80,15 @@ test('selectedCauseThread walks ancestors, diamonds, and the earliest error', ()
   const records = [route, cart, purchase, total]
   const thread = selectedCauseThread(records, total)
   expect(thread.ancestorFrameIds).toEqual(expect.arrayContaining(['1', '2', '3']))
+  expect(thread.ancestorRecordIds).toEqual(
+    expect.arrayContaining(['route', 'cart', 'purchase']),
+  )
   expect(thread.diamondFrameIds).toContain('4')
   expect(thread.errorAncestorFrameId).toBe('3')
+  expect(thread.errorAncestorRecordId).toBe('purchase')
   expect(selectedAncestorFrameIds(records, total)).toEqual(thread.ancestorFrameIds)
   expect(selectedCauseThread(records, null).ancestorFrameIds).toEqual([])
+  expect(selectedCauseThread(records, cart).errorAncestorRecordId).toBeUndefined()
 
   expect(causeReads(total, records).map((row) => row.name)).toEqual(['cartAtom'])
   expect(causeTriggers(purchase, records).map((row) => row.name)).toEqual(['total'])
@@ -128,5 +133,87 @@ test('causeThreadRowSpan maps rows by id so later selection only compares indexe
   expect(span!.indexById.get('child')).toBe(1)
   expect(span!.lo).toBe(0)
   expect(span!.hi).toBe(1)
+  expect(span!.threadIds.has('other')).toBe(false)
   expect(causeThreadRowSpan([parent, child, other], null, thread)).toBeNull()
+})
+
+test('cause thread is ancestor-only with diamonds and error color up to the earliest error', () => {
+  const route = record({
+    id: 'route',
+    frameId: '1',
+    name: 'route',
+    start: 1,
+  })
+  const okLog = record({
+    id: 'session-log',
+    frameId: '1',
+    kind: 'log',
+    name: 'app.session',
+    start: 1.5,
+    outcome: 'ok',
+  })
+  const cart = record({
+    id: 'cart',
+    frameId: '2',
+    name: 'cartAtom',
+    reatomKind: 'atom',
+    start: 2,
+  })
+  const purchase = record({
+    id: 'purchase',
+    frameId: '3',
+    name: 'checkout.purchase',
+    reatomKind: 'action',
+    causeIds: ['1'],
+    start: 3,
+    outcome: 'error',
+  })
+  const winner = record({
+    id: 'winner',
+    frameId: '8',
+    name: 'winner',
+    start: 4,
+  })
+  const total = record({
+    id: 'total',
+    frameId: '4',
+    name: 'total',
+    reatomKind: 'computed',
+    causeIds: ['3', '2'],
+    links: [
+      {
+        traceId: 'trace',
+        spanId: 's',
+        reason: 'computed.dependency',
+        frameId: '2',
+      },
+    ],
+    start: 5,
+    outcome: 'error',
+  })
+  const rows = [route, okLog, cart, purchase, winner, total]
+  const thread = selectedCauseThread(rows, total)
+  const span = causeThreadRowSpan(rows, total, thread, rows)
+  expect(span).not.toBeNull()
+  expect([...span!.threadIds].sort()).toEqual(
+    ['cart', 'purchase', 'route', 'total'].sort(),
+  )
+  expect(span!.threadIds.has('winner')).toBe(false)
+  expect(span!.threadIds.has('session-log')).toBe(false)
+  expect(span!.diamondIds.has('4')).toBe(true)
+  expect(span!.errorMarkId).toBe('purchase')
+  expect(span!.errorPathIds.has('total')).toBe(true)
+  expect(span!.errorPathIds.has('purchase')).toBe(true)
+  expect(span!.errorPathIds.has('cart')).toBe(false)
+  expect(span!.errorPathIds.has('session-log')).toBe(false)
+
+  const okSpan = causeThreadRowSpan(
+    rows,
+    cart,
+    selectedCauseThread(rows, cart),
+    rows,
+  )
+  expect(okSpan!.errorMarkId).toBeUndefined()
+  expect(okSpan!.errorPathIds.size).toBe(0)
+  expect(okSpan!.threadIds.has('session-log')).toBe(false)
 })

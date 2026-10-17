@@ -21,6 +21,9 @@ const timeFormat = new Intl.DateTimeFormat(undefined, {
   minute: '2-digit',
 })
 
+const UNIX_MS_FLOOR = 1_000_000_000_000
+const MEANINGLESS_AGE_MS = 365 * 86_400_000
+
 export function formatRecordAge(now: number, then: number): string {
   const seconds = Math.max(0, Math.floor((now - then) / 1000))
   if (seconds < 1) return 'just now'
@@ -30,6 +33,29 @@ export function formatRecordAge(now: number, then: number): string {
   const hours = Math.floor(minutes / 60)
   if (hours < 48) return `${hours}h ago`
   return `${Math.floor(hours / 24)}d ago`
+}
+
+export function captureClockNow(
+  records: readonly AdminRecord[],
+  wallNow: number,
+): number {
+  const latest = latestRecordTime(records)
+  if (latest === undefined) return wallNow
+  const latestIsUnix = latest >= UNIX_MS_FLOOR
+  const nowIsUnix = wallNow >= UNIX_MS_FLOOR
+  if (latestIsUnix === nowIsUnix) return Math.max(wallNow, latest)
+  return latest
+}
+
+export function formatCaptureAge(
+  now: number,
+  then: number,
+): string | undefined {
+  if (!Number.isFinite(now) || !Number.isFinite(then) || now < then) {
+    return undefined
+  }
+  if (now - then > MEANINGLESS_AGE_MS) return undefined
+  return formatRecordAge(now, then)
 }
 
 export function latestRecordTime(
@@ -86,7 +112,10 @@ export function freshnessAgeLabel(
 ): string | undefined {
   if (input.source !== 'live' || input.paused) return undefined
   if (latest === undefined) return undefined
-  return `last record ${formatRecordAge(input.now, latest)}`
+  const now = captureClockNow(input.records, input.now)
+  const age = formatCaptureAge(now, latest)
+  if (age === undefined) return undefined
+  return `last record ${age}`
 }
 
 export function freshnessLabel(input: FreshnessInput): string {
