@@ -3,6 +3,7 @@ import { expect, test } from 'test'
 import type { AdminRecord } from './ingest.ts'
 import { LOCAL_VALUES } from './ingest.ts'
 import {
+  describeCalculator,
   evaluateRecordExpression,
   highlightCalculator,
   parseCalculator,
@@ -472,4 +473,56 @@ test('session matches session.id or service.instance.id', () => {
   })
   expect(matches(analyticsLog, 'session:sess')).toBe(true)
   expect(matches(analyticsLog, 'session:inst')).toBe(false)
+})
+
+test('error.type and error.message match joined exceptions', () => {
+  const failed = record({
+    outcome: 'error',
+    error: { type: 'TypeError', message: 'boom at pay' },
+  })
+  const parsedType = parseCalculator('error.type:TypeError')
+  expect(parsedType.ok).toBe(true)
+  if (!parsedType.ok) return
+  expect(
+    evaluateRecordExpression(failed, parsedType.expression, parsedType.tags),
+  ).toBe(true)
+  expect(
+    evaluateRecordExpression(
+      record({ name: 'ok' }),
+      parsedType.expression,
+      parsedType.tags,
+    ),
+  ).toBe(false)
+  const parsedMessage = parseCalculator('error.message:pay')
+  expect(parsedMessage.ok).toBe(true)
+  if (!parsedMessage.ok) return
+  expect(
+    evaluateRecordExpression(
+      failed,
+      parsedMessage.expression,
+      parsedMessage.tags,
+    ),
+  ).toBe(true)
+  expect(parseCalculator('error.message:').ok).toBe(false)
+  const anyMessage = parseCalculator('error.message:boom')
+  expect(anyMessage.ok).toBe(true)
+  if (!anyMessage.ok) return
+  expect(
+    evaluateRecordExpression(
+      record({ name: 'ok' }),
+      anyMessage.expression,
+      anyMessage.tags,
+    ),
+  ).toBe(false)
+})
+
+test('describeCalculator restates kind, duration, and cause', () => {
+  expect(describeCalculator('kind:action duration>100ms')).toBe(
+    'Actions, slower than 100ms',
+  )
+  expect(describeCalculator('cause>submit')).toBe('Caused by submit')
+  expect(describeCalculator('errors:true', 'highlight')).toBe(
+    'errors, highlighted',
+  )
+  expect(describeCalculator('')).toBeUndefined()
 })

@@ -444,11 +444,18 @@ export const FilterCalculatorNarrowsRows: Story = {
       expect(rowLabels()).toContain('resetGame')
     })
 
+    expect(adminUi().getByRole('button', { name: 'Names' })).toBeTruthy()
+    expect(
+      adminUi().getByRole('button', { name: 'Errors' }).textContent,
+    ).toMatch(/\d/)
+
     const summary = [...getAdminRoot().querySelectorAll('summary')].find(
       (element) => element.textContent?.includes('Advanced filters'),
     )
     if (!(summary instanceof HTMLElement)) throw new Error('Missing summary')
     await userEvent.click(summary)
+    expect(adminUi().getByRole('button', { name: 'Errors only' })).toBeTruthy()
+    expect(adminUi().getByRole('button', { name: '> 16ms' })).toBeTruthy()
 
     const keys = within(
       adminUi().getByRole('group', { name: 'Calculator keys' }),

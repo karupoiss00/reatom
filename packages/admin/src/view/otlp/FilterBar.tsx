@@ -1,12 +1,19 @@
-import { atom, effect, peek } from '@reatom/core'
+import { atom, effect, peek, type Atom } from '@reatom/core'
 
 import { mcpCallLog } from '../../mcp/callLog'
 import type { OtlpAdmin } from '../../otlp'
-import { hasActiveFilter } from '../../otlp'
+import {
+  chipCountRecords,
+  describeCalculator,
+  hasActiveFilter,
+  quoteCalculatorValue,
+  topRecordNames,
+} from '../../otlp'
 import type { AdminRecord, AdminRecordKind, AdminReatomKind } from '../../otlp'
 import {
   Button,
   Disclosure,
+  Popover,
   SearchField,
   tokens,
   truncate,
@@ -37,6 +44,87 @@ function countRecords(
     if (match(record)) count += 1
   }
   return count
+}
+
+let namesPopoverCounter = 0
+
+const NamesPopover = ({
+  admin,
+  draft,
+}: {
+  admin: OtlpAdmin
+  draft: Atom<string>
+}) => {
+  const popoverId = ++namesPopoverCounter
+  const query = atom('', `_Admin.filter.namesQuery.${popoverId}`)
+  const expanded = atom(false, `_Admin.filter.namesExpanded.${popoverId}`)
+  return (
+    <Popover triggerLabel="Names" label="Top names">
+      <div
+        css={`
+          display: grid;
+          gap: var(--admin-space-8);
+          min-width: 12rem;
+        `}
+      >
+        <SearchField
+          value={query}
+          label="Search names"
+          placeholder="Search names"
+          shortcut=""
+        />
+        <div
+          css={`
+            display: grid;
+            gap: var(--admin-space-4);
+          `}
+        >
+          {() => {
+            const needle = query().trim().toLowerCase()
+            const names = topRecordNames(
+              chipCountRecords(admin, admin.filter()),
+              20,
+            ).filter(
+              (entry) =>
+                needle === '' || entry.name.toLowerCase().includes(needle),
+            )
+            const visible = names.slice(0, expanded() ? 20 : 8)
+            return visible.map((entry) => (
+              <Button
+                variant="ghost"
+                label={`Draft filter ${entry.name}`}
+                onClick={() => {
+                  draft.set(`name:${quoteCalculatorValue(entry.name)}`)
+                }}
+              >
+                <span>{entry.name}</span>
+                <span
+                  css={`
+                    ${type.meta}
+                    color: ${tokens.text3};
+                    font-variant-numeric: tabular-nums;
+                  `}
+                >
+                  {entry.count}
+                </span>
+              </Button>
+            ))
+          }}
+        </div>
+        {() =>
+          expanded() ? null : (
+            <Button
+              variant="ghost"
+              label="Show more names"
+              onClick={() => expanded.set(true)}
+            >
+              Show more
+            </Button>
+          )
+        }
+      </div>
+    </Popover>
+  )
 }
 
 export const OtlpFilterBar = ({ admin }: { admin: OtlpAdmin }) => {
@@ -160,17 +248,25 @@ export const OtlpFilterBar = ({ admin }: { admin: OtlpAdmin }) => {
         <span
           css={`
             ${type.meta}
-            color: ${tokens.text3};
             font-variant-numeric: tabular-nums;
           `}
         >
-          {() =>
-            countRecords(
-              admin.records(),
-              (record) =>
-                record.error != null || record.outcome === 'error',
+          {() => {
+            const count = countRecords(
+              chipCountRecords(admin, admin.filter()),
+              (record) => record.error != null || record.outcome === 'error',
             )
-          }
+            return (
+              <span
+                css={`
+                  color: ${count > 0 ? tokens.error : tokens.text3};
+                  opacity: ${count === 0 ? 0.55 : 1};
+                `}
+              >
+                {count}
+              </span>
+            )
+          }}
         </span>
       </Button>
       {CHIP_KINDS.map((chip) => (
@@ -189,12 +285,21 @@ export const OtlpFilterBar = ({ admin }: { admin: OtlpAdmin }) => {
               font-variant-numeric: tabular-nums;
             `}
           >
-            {() =>
-              countRecords(
-                admin.records(),
+            {() => {
+              const count = countRecords(
+                chipCountRecords(admin, admin.filter()),
                 (record) => record.reatomKind === chip.reatomKind,
               )
-            }
+              return (
+                <span
+                  css={`
+                    opacity: ${count === 0 ? 0.55 : 1};
+                  `}
+                >
+                  {count}
+                </span>
+              )
+            }}
           </span>
         </Button>
       ))}
@@ -218,60 +323,65 @@ export const OtlpFilterBar = ({ admin }: { admin: OtlpAdmin }) => {
             font-variant-numeric: tabular-nums;
           `}
         >
-          {() =>
-            countRecords(admin.records(), (record) => record.kind === 'log')
-          }
+          {() => {
+            const count = countRecords(
+              chipCountRecords(admin, admin.filter()),
+              (record) => record.kind === 'log',
+            )
+            return (
+              <span
+                css={`
+                  opacity: ${count === 0 ? 0.55 : 1};
+                `}
+              >
+                {count}
+              </span>
+            )
+          }}
         </span>
       </Button>
-      <Button
-        variant="ghost"
-        label="Aborted and suspense"
-        pressed={() => admin.showAbortAndSuspense()}
-        onClick={() => admin.showAbortAndSuspense.toggle()}
-      >
-        {() => {
-          const count = admin.showAbortAndSuspense()
-            ? admin.abortSuspenseCount()
-            : admin.hiddenAbortSuspenseCount()
-          return count > 0
-            ? `Aborted and suspense ${count}`
-            : 'Aborted and suspense'
-        }}
-      </Button>
-      <Button
-        variant="ghost"
-        label="Mount logs"
-        title="Logs from the first read or connect of an atom"
-        pressed={() => admin.showMountLogs()}
-        onClick={() => admin.showMountLogs.toggle()}
-      >
-        {() => {
-          const count = admin.showMountLogs()
-            ? admin.mountLogCount()
-            : admin.hiddenMountLogCount()
-          return count > 0 ? `Mount logs ${count}` : 'Mount logs'
-        }}
-      </Button>
+      <NamesPopover admin={admin} draft={draft} />
       {() => {
         const applied = admin.filterCalculator().trim()
         if (applied === '') return null
+        const sentence = describeCalculator(applied, admin.filterMode())
         return (
-          <Button
-            label={`Remove applied expression ${applied}`}
-            title={`Applied expression: ${applied}. Click to remove it.`}
-            onClick={() => admin.filterCalculator.set('')}
+          <span
+            css={`
+              display: inline-flex;
+              flex-wrap: wrap;
+              align-items: center;
+              gap: var(--admin-space-6);
+              min-width: 0;
+            `}
           >
-            <span
-              css={`
-                ${type.data}
-                ${truncate}
-                max-width: 16rem;
-              `}
+            <Button
+              label={`Remove applied expression ${applied}`}
+              title={`Applied expression: ${applied}. Click to remove it.`}
+              onClick={() => admin.filterCalculator.set('')}
             >
-              {`= ${applied}`}
-            </span>
-            <span aria-hidden="true">×</span>
-          </Button>
+              <span
+                css={`
+                  ${type.data}
+                  ${truncate}
+                  max-width: 16rem;
+                `}
+              >
+                {`= ${applied}`}
+              </span>
+              <span aria-hidden="true">×</span>
+            </Button>
+            {sentence ? (
+              <span
+                css={`
+                  ${type.meta}
+                  color: ${tokens.text3};
+                `}
+              >
+                {sentence}
+              </span>
+            ) : null}
+          </span>
         )
       }}
       <div
@@ -284,15 +394,68 @@ export const OtlpFilterBar = ({ admin }: { admin: OtlpAdmin }) => {
         `}
       >
         <Disclosure label="Advanced filters">
-          <FilterCalculator admin={admin} draft={draft} />
+          <div
+            css={`
+              display: grid;
+              gap: var(--admin-space-8);
+            `}
+          >
+            <Button
+              variant="ghost"
+              label="Aborted and suspense"
+              pressed={() => admin.showAbortAndSuspense()}
+              onClick={() => admin.showAbortAndSuspense.toggle()}
+            >
+              {() => {
+                const count = admin.showAbortAndSuspense()
+                  ? admin.abortSuspenseCount()
+                  : admin.hiddenAbortSuspenseCount()
+                return count > 0
+                  ? `Aborted and suspense ${count}`
+                  : 'Aborted and suspense'
+              }}
+            </Button>
+            <Button
+              variant="ghost"
+              label="Mount logs"
+              title="Logs from the first read or connect of an atom"
+              pressed={() => admin.showMountLogs()}
+              onClick={() => admin.showMountLogs.toggle()}
+            >
+              {() => {
+                const count = admin.showMountLogs()
+                  ? admin.mountLogCount()
+                  : admin.hiddenMountLogCount()
+                return count > 0 ? `Mount logs ${count}` : 'Mount logs'
+              }}
+            </Button>
+            <Button
+              variant="ghost"
+              label="Edit as expression"
+              onClick={() => {
+                const parts: string[] = []
+                if (admin.filterHasError() === true) parts.push('errors:true')
+                if (admin.filterReatomKind() === 'action')
+                  parts.push('kind:action')
+                if (admin.filterReatomKind() === 'atom') parts.push('kind:atom')
+                if (admin.filterReatomKind() === 'computed')
+                  parts.push('kind:computed')
+                if (admin.filterKind() === 'log') parts.push('kind:log')
+                if (parts.length > 0) draft.set(parts.join(' '))
+              }}
+            >
+              Edit as expression
+            </Button>
+            <FilterCalculator admin={admin} draft={draft} />
+          </div>
         </Disclosure>
       </div>
       {() =>
         hasActiveFilter(admin.filter()) ||
         admin.showAbortAndSuspense() ||
         admin.showMountLogs() ? (
-          <Button label="Reset filters" onClick={reset}>
-            Reset
+          <Button label="Clear all" onClick={reset}>
+            Clear all
           </Button>
         ) : null
       }

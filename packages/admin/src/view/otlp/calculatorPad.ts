@@ -34,10 +34,57 @@ export interface CalculatorFieldKey {
   hint: string
 }
 
+export const CALCULATOR_TEMPLATES: ReadonlyArray<{
+  title: string
+  line: string
+  expression: string
+}> = [
+  { title: 'Errors only', line: 'Failed records', expression: 'errors:true' },
+  {
+    title: 'Slow actions',
+    line: 'Actions over 100ms',
+    expression: 'kind:action duration>100ms',
+  },
+  {
+    title: 'Frame budget',
+    line: 'Longer than one frame',
+    expression: 'duration>16ms',
+  },
+  {
+    title: 'Writes',
+    line: 'Atom updates',
+    expression: 'event=reatom.atom.update',
+  },
+  {
+    title: 'Why did this happen',
+    line: 'Walk cause ancestors',
+    expression: 'cause>',
+  },
+  {
+    title: 'What did this trigger',
+    line: 'Direct cause children',
+    expression: 'cause<',
+  },
+  {
+    title: 'Aborted or suspense',
+    line: 'Canceled or waiting',
+    expression: 'outcome:abort OR outcome:suspense',
+  },
+  { title: 'Big traces', line: 'Busy traces', expression: 'spans>50' },
+]
+
 export const CALCULATOR_FIELD_KEYS: readonly CalculatorFieldKey[] = [
   { field: 'name', hint: 'Span, atom, or action name' },
   { field: 'kind', hint: 'action, atom, computed, route, log' },
   { field: 'errors', hint: 'true for failed records, false for the rest' },
+  {
+    field: 'error.type',
+    hint: 'Exception type, substring',
+  },
+  {
+    field: 'error.message',
+    hint: 'Exception message, substring',
+  },
   { field: 'duration', hint: 'Milliseconds, or a unit: 10ms, 1s' },
   { field: 'outcome', hint: 'ok, error, or abort' },
   { field: 'event', hint: 'Log event name' },

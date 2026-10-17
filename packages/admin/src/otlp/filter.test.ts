@@ -8,7 +8,12 @@ import { ADMIN_FRAME } from '../root'
 import { reatomOtlpMcp } from '../mcp/index.ts'
 import { reatomOtlpAdmin } from './chrome.ts'
 import { LOCAL_VALUES, type AdminRecord } from './ingest.ts'
-import { matchesQuery } from './filter.ts'
+import {
+  chipCountRecords,
+  endedSpanPercentile,
+  matchesQuery,
+  topRecordNames,
+} from './filter.ts'
 
 const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), 'fixtures')
 
@@ -416,4 +421,58 @@ test('free text matches masked attributes and local value text', () => {
   expect(matchesQuery(entry, 'live-secret-token')).toBe(true)
   expect(matchesQuery(entry, '***')).toBe(true)
   expect(matchesQuery(entry, 'missing-token')).toBe(false)
+})
+
+test('chip counts ignore the chip toggles themselves', () => {
+  const { admin } = ingestAll()
+  ADMIN_FRAME.run(() => {
+    const before = chipCountRecords(admin, admin.filter())
+    const errorCount = before.filter(
+      (record) => record.error != null || record.outcome === 'error',
+    ).length
+    expect(errorCount).toBeGreaterThan(0)
+    admin.filterHasError.set(true)
+    const after = chipCountRecords(admin, admin.filter())
+    expect(after).toHaveLength(before.length)
+    expect(
+      after.filter(
+        (record) => record.error != null || record.outcome === 'error',
+      ),
+    ).toHaveLength(errorCount)
+    expect(admin.feedRecords()).toHaveLength(errorCount)
+  })
+})
+
+test('topRecordNames sorts by count then name', () => {
+  const records = [
+    { name: 'beta' },
+    { name: 'alpha' },
+    { name: 'beta' },
+    { name: 'gamma' },
+  ] as AdminRecord[]
+  expect(topRecordNames(records, 8)).toEqual([
+    { name: 'beta', count: 2 },
+    { name: 'alpha', count: 1 },
+    { name: 'gamma', count: 1 },
+  ])
+})
+
+test('endedSpanPercentile uses ended spans and hides below eight', () => {
+  const short = Array.from({ length: 7 }, (_, index) => ({
+    kind: 'span' as const,
+    start: 0,
+    end: 10 + index,
+  }))
+  expect(endedSpanPercentile(short as AdminRecord[], 0.95)).toBeUndefined()
+  const ended = Array.from({ length: 8 }, (_, index) => ({
+    kind: 'span' as const,
+    start: 0,
+    end: (index + 1) * 10,
+  }))
+  const withOpen = [
+    ...ended,
+    { kind: 'span' as const, start: 0, end: undefined },
+  ]
+  expect(endedSpanPercentile(withOpen as AdminRecord[], 0.5)).toBe(40)
+  expect(endedSpanPercentile(withOpen as AdminRecord[], 0.95)).toBe(80)
 })

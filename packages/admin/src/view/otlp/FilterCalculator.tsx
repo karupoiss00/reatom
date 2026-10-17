@@ -3,6 +3,8 @@ import { atom, computed, withLocalStorage, type Atom } from '@reatom/core'
 import { canPersistToLocalStorage } from '../../filters/persistence'
 import {
   buildCalculatorIndex,
+  chipCountRecords,
+  endedSpanPercentile,
   highlightCalculator,
   parseCalculator,
   recordMatches,
@@ -22,6 +24,7 @@ import {
 import {
   CALCULATOR_FIELD_KEYS,
   CALCULATOR_OP_KEYS,
+  CALCULATOR_TEMPLATES,
   appendCalculatorKey,
   backspaceCalculator,
   calculatorBreakdown,
@@ -198,6 +201,56 @@ export const FilterCalculator = ({ admin, draft }: FilterCalculatorProps) => {
         color: ${tokens.text2};
       `}
     >
+      {() =>
+        draft().trim() === '' ? (
+          <div
+            css={`
+              display: grid;
+              grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+              gap: var(--admin-space-8);
+            `}
+          >
+            {CALCULATOR_TEMPLATES.map((template) => (
+              <Button
+                variant="ghost"
+                label={template.title}
+                onClick={() => {
+                  draft.set(template.expression)
+                  focusDisplayEnd()
+                }}
+              >
+                <span
+                  css={`
+                    display: grid;
+                    gap: var(--admin-space-4);
+                    text-align: start;
+                  `}
+                >
+                  <span css={`${type.ui} color: ${tokens.text1};`}>
+                    {template.title}
+                  </span>
+                  <span css={`${type.meta} color: ${tokens.text3};`}>
+                    {template.line}
+                  </span>
+                  <span css={`${type.data} color: ${tokens.text2};`}>
+                    {template.expression}
+                  </span>
+                </span>
+              </Button>
+            ))}
+            <Button
+              variant="ghost"
+              label="Start blank"
+              onClick={() => {
+                draft.set('')
+                focusDisplayEnd()
+              }}
+            >
+              Start blank
+            </Button>
+          </div>
+        ) : null
+      }
       <section
         aria-label="Calculator display"
         css={`
@@ -413,6 +466,43 @@ export const FilterCalculator = ({ admin, draft }: FilterCalculatorProps) => {
             text=")"
             hint="close the group"
           />
+        </div>
+
+        <span css={keyRowLabel}>Duration</span>
+        <div role="group" aria-label="Duration presets" css={keyRow}>
+          {() => {
+            const candidates = chipCountRecords(admin, admin.filter())
+            const p50 = endedSpanPercentile(candidates, 0.5)
+            const p95 = endedSpanPercentile(candidates, 0.95)
+            const chips: Array<{ label: string; expression: string }> = []
+            if (p50 !== undefined) {
+              const ms = Math.round(p50)
+              chips.push({
+                label: `> p50 ${ms}ms`,
+                expression: `duration>${ms}ms`,
+              })
+            }
+            if (p95 !== undefined) {
+              const ms = Math.round(p95)
+              chips.push({
+                label: `> p95 ${ms}ms`,
+                expression: `duration>${ms}ms`,
+              })
+            }
+            chips.push({ label: '> 16ms', expression: 'duration>16ms' })
+            return chips.map((chip) => (
+              <Button
+                variant="ghost"
+                label={chip.label}
+                onClick={() => {
+                  draft.set(chip.expression)
+                  focusDisplayEnd()
+                }}
+              >
+                {chip.label}
+              </Button>
+            ))
+          }}
         </div>
 
         <span css={keyRowLabel}>Field</span>

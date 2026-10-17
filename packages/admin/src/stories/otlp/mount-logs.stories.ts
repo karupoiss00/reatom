@@ -77,6 +77,12 @@ function adminUi() {
 export const MountLogsToggle: Story = {
   name: 'Mount logs stay hidden until the chip shows them',
   play: async () => {
+    await waitFor(() => adminUi().getByText('Advanced filters'))
+    const advanced = adminUi().getByText('Advanced filters')
+    const details = advanced.closest('details')
+    if (details instanceof HTMLDetailsElement && !details.open) {
+      await userEvent.click(advanced)
+    }
     const mountLogs = await waitFor(() =>
       adminUi().getByRole('button', { name: 'Mount logs' }),
     )

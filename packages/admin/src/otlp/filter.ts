@@ -119,6 +119,58 @@ export function filteredRecords(
  * a candidate-set scope, not a match — a trace-only Hide must not empty the
  * scoped trace.
  */
+export function withoutChipToggles(
+  filter: AdminMcpFilter | undefined,
+): AdminMcpFilter | undefined {
+  if (!filter) return filter
+  const next = { ...filter }
+  delete next.hasError
+  delete next.reatomKind
+  delete next.kind
+  return next
+}
+
+export function chipCountRecords(
+  admin: OtlpFilterIndex,
+  filter: AdminMcpFilter | undefined,
+): AdminRecord[] {
+  return filteredRecords(admin, withoutChipToggles(filter))
+}
+
+export function topRecordNames(
+  records: readonly AdminRecord[],
+  limit = 8,
+): Array<{ name: string; count: number }> {
+  const counts = new Map<string, number>()
+  for (const record of records) {
+    const name = recordLabel(record)
+    if (name === '') continue
+    counts.set(name, (counts.get(name) ?? 0) + 1)
+  }
+  return [...counts.entries()]
+    .map(([name, count]) => ({ name, count }))
+    .sort((left, right) => right.count - left.count || left.name.localeCompare(right.name))
+    .slice(0, limit)
+}
+
+export function endedSpanPercentile(
+  records: readonly AdminRecord[],
+  ratio: number,
+): number | undefined {
+  const durations: number[] = []
+  for (const record of records) {
+    if (record.kind !== 'span' || record.end === undefined) continue
+    durations.push(Math.max(0, record.end - record.start))
+  }
+  if (durations.length < 8) return undefined
+  durations.sort((left, right) => left - right)
+  const index = Math.min(
+    durations.length - 1,
+    Math.max(0, Math.ceil(ratio * durations.length) - 1),
+  )
+  return durations[index]
+}
+
 export function hasActiveFilter(filter: AdminMcpFilter | undefined): boolean {
   if (!filter) return false
   return (

@@ -641,8 +641,9 @@ const HelpBody = () => (
       colors.
     </p>
     <p css="margin: 0;">
-      Filter language: name, kind, errors, duration, spans, trace, attr, cause
-      and the direction markers. Example: name:makeMove kind:action.
+      Filter language: name, kind, errors, error.type, error.message, duration,
+      spans, trace, attr, cause and the direction markers. Example:
+      name:makeMove kind:action. Exception type: error.type:TypeError.
     </p>
     <p css="margin: 0;">
       Paths and Analytics treat the filter as a session filter (a session is in

@@ -54,7 +54,16 @@ function filterAdmin(field: 'Name' | 'Value', value: string) {
   search.dispatchEvent(new Event('input', { bubbles: true }))
 }
 
+function openAdvancedFilters() {
+  const summary = adminUi().getByText('Advanced filters')
+  const details = summary.closest('details')
+  if (details instanceof HTMLDetailsElement && !details.open) {
+    summary.click()
+  }
+}
+
 function hiddenAbortCount(): number {
+  openAdvancedFilters()
   const label =
     adminUi().getByRole('button', { name: 'Aborted and suspense' })
       .textContent ?? ''
@@ -374,6 +383,7 @@ export const CompareTwoModels: Story = {
       ].map((row) => row.getAttribute('data-outcome'))
       expect(outcomes).toContain('ok')
     })
+    openAdvancedFilters()
     adminUi().getByRole('button', { name: 'Mount logs' }).click()
     filterAdmin('Name', 'features.compare.column*')
     await waitFor(() => {

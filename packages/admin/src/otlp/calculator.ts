@@ -13,6 +13,7 @@ import {
   toRailNode,
 } from './bind.ts'
 import type { AdminRecord } from './ingest.ts'
+import { recordErrorMessage, recordErrorType } from './ingest.ts'
 import { recordValuesText } from './values.ts'
 
 export type CalculatorCompareOp = ':' | '=' | '>' | '<' | '>=' | '<='
@@ -69,6 +70,8 @@ const KNOWN_FIELDS = new Set([
   'outcome',
   'duration',
   'errors',
+  'error.type',
+  'error.message',
   'trace',
   'session',
   'route',
@@ -178,6 +181,7 @@ function isHighlightField(word: string): boolean {
     word === 'cause' ||
     word === 'spans' ||
     word.startsWith('attr.') ||
+    word.startsWith('error.') ||
     KNOWN_FIELDS.has(word)
   )
 }
@@ -581,6 +585,71 @@ export function stringifyCalculator(parsed: CalculatorParseOk): string {
   )
 }
 
+function describeCompare(value: CalculatorCompareValue): string {
+  const raw = value.raw
+  if (value.field === 'kind') {
+    if (raw.toLowerCase() === 'action') return 'Actions'
+    if (raw.toLowerCase() === 'atom') return 'Atoms'
+    if (raw.toLowerCase() === 'computed') return 'Computed'
+    if (raw.toLowerCase() === 'log') return 'Logs'
+    return raw
+  }
+  if (value.field === 'duration' && (value.op === '>' || value.op === '>=')) {
+    return `slower than ${raw}`
+  }
+  if (value.field === 'errors') return 'errors'
+  if (value.field === 'name') return `named ${raw}`
+  if (value.field === 'outcome') return raw
+  if (value.field === 'event') return `event ${raw}`
+  return `${value.field}${value.op}${raw}`
+}
+
+function describeNode(
+  node: FilterTagRef | FilterGroup,
+  tags: Map<string, FilterTag>,
+): string {
+  if (isTagRef(node)) {
+    const tag = tags.get(node.tagId)
+    if (!tag) return ''
+    const predicate = tag.predicates[0]
+    let body = tag.name
+    if (predicate?.type === 'cause') {
+      const cause = predicate as CausePredicate
+      body =
+        cause.direction === '>'
+          ? `caused by ${cause.referencePattern}`
+          : `triggered ${cause.referencePattern}`
+    } else if (predicate?.type === 'compare') {
+      body = describeCompare(predicate.value as CalculatorCompareValue)
+    } else if (predicate?.type === 'attr') {
+      const value = predicate.value as CalculatorAttrValue
+      body = `${value.path}${value.op}${value.raw}`
+    }
+    return node.negated ? `not ${body}` : body
+  }
+  const joiner = node.operator === 'AND' ? ', ' : ' or '
+  return node.children
+    .map((child) => describeNode(child, tags))
+    .filter((part) => part !== '')
+    .join(joiner)
+}
+
+export function describeCalculator(
+  source: string,
+  mode: 'show' | 'hide' | 'highlight' | 'exclude' = 'show',
+): string | undefined {
+  const parsed = parseCalculator(source)
+  if (!parsed.ok || parsed.expression.children.length === 0) return undefined
+  const sentence = describeNode(
+    parsed.expression,
+    new Map(parsed.tags.map((tag) => [tag.id, tag])),
+  )
+  if (sentence === '') return undefined
+  if (mode === 'highlight') return `${sentence}, highlighted`
+  if (mode === 'hide' || mode === 'exclude') return `${sentence}, hidden`
+  return sentence.charAt(0).toUpperCase() + sentence.slice(1)
+}
+
 function globRegex(pattern: string): RegExp {
   const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&')
   return new RegExp(`^${escaped.replace(/\*/g, '.*')}$`, 'i')
@@ -745,6 +814,14 @@ function matchCompare(
     }
     case 'errors':
       return isFalsey(raw) ? !recordHasError(record) : recordHasError(record)
+    case 'error.type': {
+      const type = recordErrorType(record)
+      return type !== '' && matchTextValue(type, raw, op)
+    }
+    case 'error.message': {
+      const message = recordErrorMessage(record)
+      return message !== '' && matchTextValue(message, raw, op)
+    }
     case 'trace':
       return matchTextValue(record.traceId, raw, op === ':' ? '=' : op)
     case 'session':
