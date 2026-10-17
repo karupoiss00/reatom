@@ -2,6 +2,7 @@ import type { Action, Computed } from '@reatom/core'
 import { action, effect } from '@reatom/core'
 
 import type { AdminRecord } from '../otlp/ingest'
+import { isHiddenLogGroupRow } from './logGroups'
 import { adminRecordTiming } from './records'
 import type { Gantt } from './reatomGantt'
 
@@ -73,10 +74,21 @@ export function reatomGanttRecordSelection(
   }, `${name}.select`)
 
   const move = action((delta: number) => {
-    if (gantt.rows().length === 0) return
-    gantt.moveSelection(delta)
-    const next = gantt.selected()
-    if (source.selectedRecord() !== next) source.selectRecord(next)
+    const allRows = gantt.rows().filter((row) => !isHiddenLogGroupRow(row))
+    if (allRows.length === 0) return
+    const current = gantt.selected()
+    const currentIndex = current === null ? -1 : allRows.indexOf(current)
+    const lastIndex = allRows.length - 1
+    const nextIndex =
+      currentIndex === -1
+        ? delta > 0
+          ? 0
+          : lastIndex
+        : Math.max(0, Math.min(currentIndex + delta, lastIndex))
+    const nextNode = allRows[nextIndex]!
+    source.selectRecord(nextNode)
+    gantt.select(nextNode)
+    reveal(nextNode)
   }, `${name}.move`)
 
   let stop: (() => void) | undefined

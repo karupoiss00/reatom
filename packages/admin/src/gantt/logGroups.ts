@@ -12,14 +12,13 @@ export type LogGroup = {
   count: number
 }
 
-const groupMeta = new WeakMap<AdminRecord, LogGroup>()
+export type FoldedLogRows = {
+  rows: AdminRecord[]
+  groupByRecord: Map<AdminRecord, LogGroup>
+}
 
 export const HIDDEN_MOUNT_ROW_ID = 'log-group:hidden-mount'
 export const HIDDEN_ABORT_ROW_ID = 'log-group:hidden-abort'
-
-export function logGroupOf(record: AdminRecord): LogGroup | undefined {
-  return groupMeta.get(record)
-}
 
 export function isHiddenLogGroupRow(record: AdminRecord): boolean {
   return (
@@ -27,32 +26,24 @@ export function isHiddenLogGroupRow(record: AdminRecord): boolean {
   )
 }
 
-function repeatKey(record: AdminRecord): string {
-  return `${record.name}\0${record.reatomKind ?? record.kind}\0${record.eventName ?? ''}`
-}
-
-function attach(record: AdminRecord, group: LogGroup) {
-  groupMeta.set(record, group)
-}
-
-function syntheticHiddenRow(
-  id: string,
-  name: string,
-  start: number,
-): AdminRecord {
+export function createHiddenLogRow(id: string): AdminRecord {
   return {
     id,
     sourceId: 'local',
     kind: 'log',
     traceId: '',
     spanId: '',
-    name,
-    start,
+    name: '',
+    start: 0,
     attributes: {},
     resource: {},
     links: [],
     causeIds: [],
   }
+}
+
+function repeatKey(record: AdminRecord): string {
+  return `${record.name}\0${record.reatomKind ?? record.kind}\0${record.eventName ?? ''}`
 }
 
 function hiddenLabel(kind: 'mount' | 'abort', count: number): string {
@@ -69,8 +60,14 @@ export function foldLogRows(
     errorsOn: boolean
     hiddenMountCount: number
     hiddenAbortCount: number
+    hiddenMountRow?: AdminRecord
+    hiddenAbortRow?: AdminRecord
   },
-): AdminRecord[] {
+): FoldedLogRows {
+  const groupByRecord = new Map<AdminRecord, LogGroup>()
+  const attach = (record: AdminRecord, group: LogGroup) => {
+    groupByRecord.set(record, group)
+  }
   const sorted = [...records].sort((left, right) => left.start - right.start)
   const errorMembers = new Map<string, AdminRecord[]>()
   const rest: AdminRecord[] = []
@@ -130,6 +127,10 @@ export function foldLogRows(
   for (const [key, members] of errorMembers) {
     if (members.length === 0) continue
     const latest = members[members.length - 1]!
+    if (members.length === 1) {
+      errorRows.push(latest)
+      continue
+    }
     const group: LogGroup = {
       key: `error:${key}`,
       kind: 'error',
@@ -138,8 +139,7 @@ export function foldLogRows(
     }
     attach(latest, group)
     errorRows.push(latest)
-    if (options.expandedKeys.has(group.key) || members.length === 1) {
-      if (members.length === 1) continue
+    if (options.expandedKeys.has(group.key)) {
       for (const member of members) {
         if (member === latest) continue
         attach(member, group)
@@ -152,11 +152,9 @@ export function foldLogRows(
   const start = sorted[0]?.start ?? 0
   const hidden: AdminRecord[] = []
   if (options.hiddenMountCount > 0) {
-    const row = syntheticHiddenRow(
-      HIDDEN_MOUNT_ROW_ID,
-      hiddenLabel('mount', options.hiddenMountCount),
-      start,
-    )
+    const row = options.hiddenMountRow ?? createHiddenLogRow(HIDDEN_MOUNT_ROW_ID)
+    row.name = hiddenLabel('mount', options.hiddenMountCount)
+    row.start = start
     attach(row, {
       key: HIDDEN_MOUNT_ROW_ID,
       kind: 'hidden-mount',
@@ -166,11 +164,9 @@ export function foldLogRows(
     hidden.push(row)
   }
   if (options.hiddenAbortCount > 0) {
-    const row = syntheticHiddenRow(
-      HIDDEN_ABORT_ROW_ID,
-      hiddenLabel('abort', options.hiddenAbortCount),
-      start,
-    )
+    const row = options.hiddenAbortRow ?? createHiddenLogRow(HIDDEN_ABORT_ROW_ID)
+    row.name = hiddenLabel('abort', options.hiddenAbortCount)
+    row.start = start
     attach(row, {
       key: HIDDEN_ABORT_ROW_ID,
       kind: 'hidden-abort',
@@ -183,11 +179,17 @@ export function foldLogRows(
   const merged = [...folded, ...errorRows].sort(
     (left, right) => left.start - right.start,
   )
-  return [...hidden, ...merged]
+  return { rows: [...hidden, ...merged], groupByRecord }
 }
 
-export function logGroupLabel(record: AdminRecord): string | undefined {
-  const group = logGroupOf(record)
+export function logGroupOf(
+  record: AdminRecord,
+  groups: Map<AdminRecord, LogGroup> | undefined,
+): LogGroup | undefined {
+  return groups?.get(record)
+}
+
+export function logGroupLabel(group: LogGroup | undefined): string | undefined {
   if (group === undefined || group.count < 2) return undefined
   if (group.kind === 'error') return `×${group.count}`
   if (group.kind !== 'repeat') return undefined
@@ -198,8 +200,7 @@ export function logGroupLabel(record: AdminRecord): string | undefined {
   return `×${group.count} · ${from}–${to}`
 }
 
-export function logGroupName(record: AdminRecord): string {
-  const group = logGroupOf(record)
+export function logGroupName(record: AdminRecord, group: LogGroup | undefined): string {
   if (group?.kind === 'error') return `! ${recordLabel(record)}`
   return recordLabel(record)
 }

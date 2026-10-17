@@ -1,9 +1,9 @@
+import { previousWrite } from '../gantt/writePreview'
 import {
   framedByFrameId,
   frameRecordKey,
   isStateWrite,
   recordHasError,
-  recordHistory,
   recordValuePreview,
   toRailNode,
 } from './bind.ts'
@@ -182,7 +182,7 @@ export function formatWriteChangeText(
   const next = recordValuePreview(record)
   const nextText = scalarPreview(next)
   if (next === '***') return 'masked'
-  const previous = recordHistory(records, record, 1)[0]
+  const previous = previousWrite(record, records)
   if (previous === undefined) return nextText
   const previousValue = recordValuePreview(previous)
   if (previousValue === '***') return 'masked'

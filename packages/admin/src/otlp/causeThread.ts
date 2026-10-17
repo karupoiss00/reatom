@@ -98,7 +98,8 @@ export function selectedCauseThread(
     entry.frameId === undefined ? [] : [entry.frameId],
   )
   const diamondFrameIds: string[] = []
-  if (toRailNode(selected)?.parentIds.length && toRailNode(selected)!.parentIds.length > 1) {
+  const selectedNode = toRailNode(selected)
+  if (selectedNode !== undefined && selectedNode.parentIds.length > 1) {
     diamondFrameIds.push(selected.frameId)
   }
   for (const ancestor of ancestors) {
@@ -214,41 +215,96 @@ export function findCausePathIds(
   toFrameId: string,
   traceId?: string | null,
 ): number[] | null {
-  const scoped =
-    traceId == null || traceId === ''
-      ? records
-      : records.filter((entry) => entry.traceId === traceId)
+  if (traceId == null || traceId === '') return null
+  const scoped = records.filter((entry) => entry.traceId === traceId)
   const byFrame = framedByFrameId(scoped)
   const children = childrenIndex(byFrame)
-  const startKey = [...byFrame.keys()].find((key) => key.endsWith(`:${fromFrameId}`))
-  const endKey = [...byFrame.keys()].find((key) => key.endsWith(`:${toFrameId}`))
-  if (startKey === undefined || endKey === undefined) return null
+  const startKey = frameRecordKey(traceId, fromFrameId)
+  const endKey = frameRecordKey(traceId, toFrameId)
+  if (!byFrame.has(startKey) || !byFrame.has(endKey)) return null
   if (startKey === endKey) return [Number(fromFrameId)]
 
-  const visited = new Set<string>()
-  const queue: { key: string; path: number[] }[] = [
-    { key: startKey, path: [Number(fromFrameId)] },
-  ]
-  while (queue.length > 0) {
-    const { key, path } = queue.shift()!
-    if (visited.has(key)) continue
-    visited.add(key)
+  const cameFrom = new Map<string, string | null>()
+  cameFrom.set(startKey, null)
+  const queue = [startKey]
+  let head = 0
+  while (head < queue.length) {
+    const key = queue[head++]!
     const record = byFrame.get(key)
     if (!record) continue
-    const nextKeys = [
-      ...parentKeys(record),
-      ...(children.get(key) ?? []),
-    ]
+    const nextKeys = [...parentKeys(record), ...(children.get(key) ?? [])]
     for (const nextKey of nextKeys) {
-      if (visited.has(nextKey)) continue
-      const next = byFrame.get(nextKey)
-      if (!next?.frameId) continue
-      const nextPath = [...path, Number(next.frameId)]
-      if (nextKey === endKey) return nextPath
-      queue.push({ key: nextKey, path: nextPath })
+      if (cameFrom.has(nextKey) || !byFrame.has(nextKey)) continue
+      cameFrom.set(nextKey, key)
+      if (nextKey === endKey) {
+        const path: number[] = []
+        let current: string | null = endKey
+        while (current !== null) {
+          const node = byFrame.get(current)
+          if (node?.frameId !== undefined) path.push(Number(node.frameId))
+          current = cameFrom.get(current) ?? null
+        }
+        path.reverse()
+        return path
+      }
+      queue.push(nextKey)
     }
   }
   return null
+}
+
+export type CauseThreadRowSpan = {
+  lo: number
+  hi: number
+  errorLo: number
+  errorHi: number
+  diamondIds: Set<string>
+  errorAncestorFrameId: string | undefined
+  indexById: Map<string, number>
+}
+
+export function causeThreadRowSpan(
+  rows: readonly AdminRecord[],
+  selected: AdminRecord | null,
+  thread: CauseThread,
+): CauseThreadRowSpan | null {
+  if (selected === null || selected.frameId === undefined) return null
+  const indexById = new Map<string, number>()
+  const indexByFrameId = new Map<string, number>()
+  for (let index = 0; index < rows.length; index++) {
+    const row = rows[index]!
+    indexById.set(row.id, index)
+    if (row.frameId !== undefined) indexByFrameId.set(row.frameId, index)
+  }
+  const selectedIndex = indexById.get(selected.id) ?? -1
+  const marks = [selectedIndex]
+  for (const frameId of thread.ancestorFrameIds) {
+    const index = indexByFrameId.get(frameId)
+    if (index !== undefined) marks.push(index)
+  }
+  const valid = marks.filter((index) => index >= 0)
+  if (valid.length === 0 && thread.diamondFrameIds.length === 0) return null
+  const lo = valid.length === 0 ? -1 : Math.min(...valid)
+  const hi = valid.length === 0 ? -1 : Math.max(...valid)
+  const errorIndex =
+    thread.errorAncestorFrameId === undefined
+      ? -1
+      : (indexByFrameId.get(thread.errorAncestorFrameId) ?? -1)
+  return {
+    lo,
+    hi,
+    errorLo:
+      errorIndex < 0 || selectedIndex < 0
+        ? -1
+        : Math.min(selectedIndex, errorIndex),
+    errorHi:
+      errorIndex < 0 || selectedIndex < 0
+        ? -1
+        : Math.max(selectedIndex, errorIndex),
+    diamondIds: new Set(thread.diamondFrameIds),
+    errorAncestorFrameId: thread.errorAncestorFrameId,
+    indexById,
+  }
 }
 
 export function hopSet(

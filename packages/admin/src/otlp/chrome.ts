@@ -18,7 +18,18 @@ import {
   reatomGantt,
   reatomGanttRecordSelection,
 } from '../gantt'
-import { foldLogRows } from '../gantt/logGroups'
+import { colorByChoices, type GanttColorBy } from '../gantt/barMark'
+import {
+  createHiddenLogRow,
+  foldLogRows,
+  HIDDEN_ABORT_ROW_ID,
+  HIDDEN_MOUNT_ROW_ID,
+} from '../gantt/logGroups'
+import {
+  previousWriteById as previousWriteIndex,
+  sourceIndexBySourceId as sourceIndexMap,
+  turnSectionByRootId as turnSectionIndex,
+} from '../gantt/rowIndexes'
 import { ADMIN_FRAME } from '../root'
 import {
   buildLastWriteStateTree,
@@ -33,15 +44,34 @@ import {
   type OtlpGraphDepth,
   type OtlpGraphDirection,
 } from './bind.ts'
-import { findCausePathIds, selectedCauseThread } from './causeThread.ts'
+import {
+  causeThreadRowSpan,
+  findCausePathIds,
+  selectedCauseThread,
+  writtenBySelection,
+} from './causeThread.ts'
 import { fetchClickHouseExport } from './clickhouse.ts'
-import { parseCalculator, previewGhostRecordIds } from './calculator.ts'
+import {
+  buildCalculatorIndex,
+  parseCalculator,
+  previewGhostRecordIds,
+} from './calculator.ts'
 import {
   applyFilterMode,
   candidateRecords,
+  countChipKinds,
+  endedSpanPercentile,
   filteredRecords,
   highlightedRecordIds,
+  sortedEndedSpanDurations,
+  withoutCalculator,
+  withoutChipToggles,
 } from './filter.ts'
+import { latestRecordTime as latestRecordTimeOf } from './freshness.ts'
+import {
+  traceHeaderStats,
+  traceTriageStats,
+} from './traceHeader.ts'
 import {
   isAbortOrSuspense,
   isInProgressRecord,
@@ -173,6 +203,10 @@ function reatomOtlpAdminModel(options: OtlpAdminOptions) {
     `${PREFIX}.filter.kind`,
   )
   const filterMode = atom<FilterMode>('show', `${PREFIX}.filter.mode`)
+  const expandedLogGroups = atom(
+    new Set<string>(),
+    `${PREFIX}.expandedLogGroups`,
+  )
   const filter = computed((): AdminMcpFilter => {
     const name = filterName().trim()
     const query = filterQuery().trim()
@@ -197,6 +231,10 @@ function reatomOtlpAdminModel(options: OtlpAdminOptions) {
   const matchedRecords = computed(() => {
     return filteredRecords(store, filter())
   }, `${PREFIX}.matchedRecords`)
+  const calculatorIndex = computed(
+    () => buildCalculatorIndex(store.records()),
+    `${PREFIX}.calculatorIndex`,
+  )
   const analytics = reatomOtlpAnalytics(
     { records: store.records, matchedRecords, filter },
     `${PREFIX}.analytics`,
@@ -217,6 +255,7 @@ function reatomOtlpAdminModel(options: OtlpAdminOptions) {
     filterMode.set('show')
     analytics.scope.clearScope()
     analytics.segmentMode.set('include')
+    expandedLogGroups.set(new Set<string>())
   }, `${PREFIX}.filter.reset`)
   const activitySplitRatio = atom(0.42, `${PREFIX}.activitySplit`)
   const stateSplitRatio = atom(0.42, `${PREFIX}.stateSplit`)
@@ -303,12 +342,17 @@ function reatomOtlpAdminModel(options: OtlpAdminOptions) {
     return highlightedRecordIds(matchedRecords(), filter())
   }, `${PREFIX}.highlightedIds`)
   const previewGhostIds = computed(() => {
+    const draft = filterDraft()
+    const applied = filterCalculator()
+    if (draft.trim() === '' || draft.trim() === applied.trim()) {
+      return new Set<string>()
+    }
     return previewGhostRecordIds(
-      visibleRecords(),
-      filterDraft(),
-      filterCalculator(),
+      filteredRecords(store, withoutCalculator(filter())),
+      draft,
+      applied,
       hoveredClause(),
-      store.records(),
+      calculatorIndex(),
     )
   }, `${PREFIX}.previewGhostIds`)
 
@@ -530,10 +574,18 @@ function reatomOtlpAdminModel(options: OtlpAdminOptions) {
     })
     return extras.length === 0 ? visible : [...visible, ...extras]
   }, `${PREFIX}.ganttRecords`)
-  const expandedLogGroups = atom(
-    new Set<string>(),
-    `${PREFIX}.expandedLogGroups`,
-  )
+  const hiddenMountRow = createHiddenLogRow(HIDDEN_MOUNT_ROW_ID)
+  const hiddenAbortRow = createHiddenLogRow(HIDDEN_ABORT_ROW_ID)
+  const logFold = computed(() => {
+    return foldLogRows(ganttRecords(), {
+      expandedKeys: expandedLogGroups(),
+      errorsOn: filterHasError() === true,
+      hiddenMountCount: hiddenMountLogCount(),
+      hiddenAbortCount: hiddenAbortSuspenseCount(),
+      hiddenMountRow,
+      hiddenAbortRow,
+    })
+  }, `${PREFIX}.logFold`)
   const toggleLogGroup = action((key: string) => {
     const next = new Set(expandedLogGroups())
     if (next.has(key)) next.delete(key)
@@ -545,13 +597,7 @@ function reatomOtlpAdminModel(options: OtlpAdminOptions) {
     {
       ...adminRecordTiming,
       end: (record) => (isInProgressRecord(record) ? ganttNow() : record.end),
-      foldLogRows: (rows) =>
-        foldLogRows(rows, {
-          expandedKeys: expandedLogGroups(),
-          errorsOn: filterHasError() === true,
-          hiddenMountCount: hiddenMountLogCount(),
-          hiddenAbortCount: hiddenAbortSuspenseCount(),
-        }),
+      foldLogRows: () => logFold().rows,
       virtual: {
         itemSize: ADMIN_GANTT_ROW_HEIGHT,
         overscan: ADMIN_GANTT_OVERSCAN,
@@ -559,6 +605,62 @@ function reatomOtlpAdminModel(options: OtlpAdminOptions) {
       },
     },
     `${PREFIX}.gantt`,
+  )
+  const logGroupOf = (record: AdminRecord) =>
+    gantt.mode() === 'log' ? logFold().groupByRecord.get(record) : undefined
+  const sourceIndexBySourceId = computed(
+    () => sourceIndexMap(ganttRecords()),
+    `${PREFIX}.sourceIndexBySourceId`,
+  )
+  const previousWriteById = computed(
+    () => previousWriteIndex(ganttRecords()),
+    `${PREFIX}.previousWriteById`,
+  )
+  const turnSectionByRootId = computed(
+    () => turnSectionIndex(ganttRecords()),
+    `${PREFIX}.turnSectionByRootId`,
+  )
+  const ganttSpanP95 = computed(
+    () => endedSpanPercentile(ganttRecords(), 0.95),
+    `${PREFIX}.ganttSpanP95`,
+  )
+  const ganttColorBy = atom<GanttColorBy>('kind', `${PREFIX}.ganttColorBy`)
+  effect(() => {
+    if (ganttColorBy() !== 'service') return
+    if (colorByChoices(ganttRecords()).some((choice) => choice.value === 'service')) {
+      return
+    }
+    ganttColorBy.set('kind')
+  }, `${PREFIX}.ganttColorBy.fallback`)
+  const causeThreadRowSpanComputed = computed(() => {
+    return causeThreadRowSpan(gantt.rows(), selectedRecord(), causeThread())
+  }, `${PREFIX}.causeThreadRowSpan`)
+  const chipCountRecordsComputed = computed(() => {
+    return filteredRecords(store, withoutChipToggles(filter()))
+  }, `${PREFIX}.chipCountRecords`)
+  const chipCounts = computed(
+    () => countChipKinds(chipCountRecordsComputed()),
+    `${PREFIX}.chipCounts`,
+  )
+  const chipSpanDurations = computed(
+    () => sortedEndedSpanDurations(chipCountRecordsComputed()),
+    `${PREFIX}.chipSpanDurations`,
+  )
+  const writtenNames = computed(
+    () => writtenBySelection(store.records(), selectedRecord()),
+    `${PREFIX}.writtenNames`,
+  )
+  const latestRecordTime = computed(
+    () => latestRecordTimeOf(store.records()),
+    `${PREFIX}.latestRecordTime`,
+  )
+  const traceHeader = computed(
+    () => traceHeaderStats(visibleRecords()),
+    `${PREFIX}.traceHeader`,
+  )
+  const traceTriage = computed(
+    () => traceTriageStats(visibleRecords()),
+    `${PREFIX}.traceTriage`,
   )
   const highlightedLogIds = computed(() => {
     const ids = new Set<string>()
@@ -781,6 +883,13 @@ function reatomOtlpAdminModel(options: OtlpAdminOptions) {
     ganttRecords,
     ganttNow,
     ganttSelection,
+    ganttColorBy,
+    ganttSpanP95,
+    sourceIndexBySourceId,
+    previousWriteById,
+    turnSectionByRootId,
+    logGroupOf,
+    logFold,
     expandedLogGroups,
     toggleLogGroup,
     inProgress,
@@ -803,6 +912,7 @@ function reatomOtlpAdminModel(options: OtlpAdminOptions) {
     graphFocus,
     graphPathIds,
     causeThread,
+    causeThreadRowSpan: causeThreadRowSpanComputed,
     pendingCalculatorDraft,
     filterDraft,
     hoveredClause,
@@ -833,6 +943,14 @@ function reatomOtlpAdminModel(options: OtlpAdminOptions) {
     visibleRecords,
     highlightedIds,
     feedRecords,
+    chipCountRecords: chipCountRecordsComputed,
+    chipCounts,
+    chipSpanDurations,
+    calculatorIndex,
+    writtenNames,
+    latestRecordTime,
+    traceHeader,
+    traceTriage,
     railNodes,
     allRailNodes,
     stateTree,

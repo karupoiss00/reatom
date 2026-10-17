@@ -1,4 +1,4 @@
-import { recordHistory, recordLabel, recordValuePreview } from '../otlp/bind'
+import { recordLabel, recordValuePreview } from '../otlp/bind'
 import type { AdminRecord } from '../otlp/ingest'
 import { recordValues } from '../otlp/values'
 import { isUpdateLog } from './barMark'
@@ -12,10 +12,11 @@ export type WritePreview = {
 }
 
 function isMaskedValue(value: unknown): boolean {
-  return value === '***' || value === undefined
+  return value === '***'
 }
 
 function scalarText(value: unknown): string | undefined {
+  if (value === undefined) return 'undefined'
   if (value === null) return 'null'
   const type = typeof value
   if (type === 'string') return JSON.stringify(value)
@@ -73,15 +74,30 @@ function clip(text: string): string {
 
 export function previousWrite(
   record: AdminRecord,
-  records: readonly AdminRecord[],
+  records: readonly AdminRecord[] | Map<string, AdminRecord>,
 ): AdminRecord | undefined {
-  const history = recordHistory(records, record, 1)
-  return history[0]
+  if (records instanceof Map) return records.get(record.id)
+  if (record.atomName === undefined) return undefined
+  let previous: AdminRecord | undefined
+  for (const entry of records) {
+    if (entry.atomName !== record.atomName) continue
+    if (entry.sourceId !== record.sourceId) continue
+    if (entry.id === record.id) continue
+    if (entry.start > record.start) continue
+    if (
+      previous === undefined ||
+      entry.start > previous.start ||
+      (entry.start === previous.start && entry.id > previous.id)
+    ) {
+      previous = entry
+    }
+  }
+  return previous
 }
 
 export function formatWritePreview(
   record: AdminRecord,
-  records: readonly AdminRecord[],
+  records: readonly AdminRecord[] | Map<string, AdminRecord>,
 ): WritePreview | undefined {
   if (!isUpdateLog(record)) return undefined
   const name = recordLabel(record)
@@ -94,10 +110,10 @@ export function formatWritePreview(
       : recordValuePreview(previousRecord)
   if (
     isMaskedValue(next) ||
-    values.source === 'otlp' &&
+    (values.source === 'otlp' &&
       (record.body === '***' ||
         record.attributes['reatom.payload'] === '***' ||
-        record.attributes['reatom.params'] === '***')
+        record.attributes['reatom.params'] === '***'))
   ) {
     return { name, text: 'masked' }
   }
@@ -114,7 +130,7 @@ export function formatWritePreview(
     }
   }
   const nextText = scalarText(next)
-  if (previous === undefined) {
+  if (previousRecord === undefined) {
     const keys = objectKeys(next)
     if (keys !== undefined) {
       return { name, text: clip(`+${keys.length}`), title: keys.join(', ') }
@@ -132,21 +148,9 @@ export function formatWritePreview(
 
 export function formatWriteTickTitle(
   record: AdminRecord,
-  records: readonly AdminRecord[],
+  records: readonly AdminRecord[] | Map<string, AdminRecord>,
 ): string {
   const preview = formatWritePreview(record, records)
   if (preview === undefined) return recordLabel(record)
   return `${preview.name}: ${preview.text}`
-}
-
-export function formatLogBody(record: AdminRecord): string {
-  if (typeof record.body === 'string') return clip(record.body)
-  if (record.body === undefined || record.body === null) {
-    return record.eventName ?? ''
-  }
-  try {
-    return clip(JSON.stringify(record.body))
-  } catch {
-    return record.eventName ?? ''
-  }
 }

@@ -98,6 +98,44 @@ test('bar labels sit inside wide bars and quiet sub-1% spans', () => {
   expect(isQuietSpan(20, 400)).toBe(false)
 })
 
+test('formatWritePreview uses the previous write among three', () => {
+  const first = record({
+    id: 'w1',
+    kind: 'log',
+    atomName: 'form.email',
+    eventName: 'reatom.atom.update',
+    name: 'form.email',
+    start: 1,
+    [LOCAL_VALUES]: { state: 'a' },
+  })
+  const middle = record({
+    id: 'w2',
+    kind: 'log',
+    atomName: 'form.email',
+    eventName: 'reatom.atom.update',
+    name: 'form.email',
+    start: 2,
+    [LOCAL_VALUES]: { state: 'b' },
+  })
+  const last = record({
+    id: 'w3',
+    kind: 'log',
+    atomName: 'form.email',
+    eventName: 'reatom.atom.update',
+    name: 'form.email',
+    start: 3,
+    [LOCAL_VALUES]: { state: 'c' },
+  })
+  expect(formatWritePreview(middle, [first, middle, last])).toEqual({
+    name: 'form.email',
+    text: '"a" → "b"',
+  })
+  expect(formatWritePreview(last, [first, middle, last])).toEqual({
+    name: 'form.email',
+    text: '"b" → "c"',
+  })
+})
+
 test('formatWritePreview shows prev → next, object keys, and masked', () => {
   const previous = record({
     id: 'prev',
@@ -181,16 +219,18 @@ test('foldLogRows collapses consecutive repeats and groups errors by errorGroupK
     hiddenMountCount: 0,
     hiddenAbortCount: 0,
   })
-  expect(folded).toHaveLength(1)
-  expect(logGroupOf(folded[0]!)?.count).toBe(30)
+  expect(folded.rows).toHaveLength(1)
+  expect(logGroupOf(folded.rows[0]!, folded.groupByRecord)?.count).toBe(30)
 
   const expanded = foldLogRows(lines, {
-    expandedKeys: new Set([logGroupOf(folded[0]!)!.key]),
+    expandedKeys: new Set([
+      logGroupOf(folded.rows[0]!, folded.groupByRecord)!.key,
+    ]),
     errorsOn: false,
     hiddenMountCount: 0,
     hiddenAbortCount: 0,
   })
-  expect(expanded).toHaveLength(30)
+  expect(expanded.rows).toHaveLength(30)
 })
 
 test('error groups share the MC-03 key even when not consecutive', () => {
@@ -220,10 +260,44 @@ test('error groups share the MC-03 key even when not consecutive', () => {
     hiddenMountCount: 3,
     hiddenAbortCount: 0,
   })
-  expect(folded[0]?.name).toContain('mount')
-  const errorRow = folded.find((row) => logGroupOf(row)?.kind === 'error')
-  expect(logGroupOf(errorRow!)?.count).toBe(2)
-  expect(folded.some((row) => row.id === 'ok')).toBe(true)
+  expect(folded.rows[0]?.name).toContain('mount')
+  const errorRow = folded.rows.find(
+    (row) => logGroupOf(row, folded.groupByRecord)?.kind === 'error',
+  )
+  expect(logGroupOf(errorRow!, folded.groupByRecord)?.count).toBe(2)
+  expect(folded.rows.some((row) => row.id === 'ok')).toBe(true)
+})
+
+test('foldLogRows drops group meta when an errorsOn run becomes a singleton', () => {
+  const first = record({
+    id: 'e1',
+    name: 'checkout',
+    outcome: 'error',
+    error: { type: 'TypeError', message: 'fail' },
+    start: 0,
+  })
+  const second = record({
+    id: 'e2',
+    name: 'checkout',
+    outcome: 'error',
+    error: { type: 'TypeError', message: 'fail' },
+    start: 20,
+  })
+  const grouped = foldLogRows([first, second], {
+    expandedKeys: new Set(),
+    errorsOn: true,
+    hiddenMountCount: 0,
+    hiddenAbortCount: 0,
+  })
+  expect(logGroupOf(second, grouped.groupByRecord)?.count).toBe(2)
+  const singleton = foldLogRows([first], {
+    expandedKeys: new Set(),
+    errorsOn: true,
+    hiddenMountCount: 0,
+    hiddenAbortCount: 0,
+  })
+  expect(logGroupOf(first, singleton.groupByRecord)).toBeUndefined()
+  expect(singleton.rows).toHaveLength(1)
 })
 
 test('turnSection describes a root and hairline copy', () => {

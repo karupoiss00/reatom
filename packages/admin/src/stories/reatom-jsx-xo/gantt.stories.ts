@@ -169,6 +169,25 @@ export const WinningGameTimeline: Story = {
     await clickRow('makeMove')
     await waitFor(() => {
       expect(selectedLabel()).toBe('makeMove')
+      const selected = getAdminRoot().querySelector(
+        '[role="row"][aria-selected="true"]',
+      )
+      expect(
+        selected?.querySelector('[data-testid="gantt-cause-thread"]'),
+      ).toBeTruthy()
+    })
+    await userEvent.click(adminUi().getByRole('tab', { name: 'Settings' }))
+    await userEvent.click(
+      adminUi().getByRole('switch', { name: /Cause thread/i }),
+    )
+    await userEvent.click(adminUi().getByRole('tab', { name: 'Timeline' }))
+    await waitFor(() => {
+      const selected = getAdminRoot().querySelector(
+        '[role="row"][aria-selected="true"]',
+      )
+      expect(
+        selected?.querySelector('[data-testid="gantt-cause-thread"]'),
+      ).toBeNull()
     })
   },
 }

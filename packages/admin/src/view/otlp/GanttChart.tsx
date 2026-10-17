@@ -7,7 +7,6 @@ import {
 } from '../../gantt'
 import {
   colorByChoices,
-  kindLegendClause,
   legendKinds,
   recordBarMark,
   type GanttColorBy,
@@ -19,16 +18,12 @@ import {
   isHiddenLogGroupRow,
   logGroupLabel,
   logGroupName,
-  logGroupOf,
 } from '../../gantt/logGroups'
 import { recordRowChips, rowChipDraft, visibleRowChips } from '../../gantt/rowChips'
 import {
   isRootSpan,
-  orderedRoots,
-  rootTurnNumber,
   sectionStickyTop,
   turnHairlineText,
-  turnSection,
 } from '../../gantt/turns'
 import { collapsedWriteTicks, tickLeftFraction } from '../../gantt/writeTicks'
 import {
@@ -46,7 +41,6 @@ import type {
 } from '../../otlp'
 import {
   durationThresholdMs,
-  endedSpanPercentile,
   explainRecordMatch,
   formatMatchExplanation,
   isSlowDuration,
@@ -54,9 +48,8 @@ import {
   recordHasError,
   recordLabel,
   shortenTraceId,
-  traceHeaderStats,
-  traceTriageStats,
   triageNameFilter,
+  writeClipboard,
 } from '../../otlp'
 import { adminSettings } from '../settings'
 import {
@@ -128,95 +121,81 @@ const CauseThreadGutter = ({
 }: {
   admin: OtlpAdmin
   row: AdminRecord
-}) => {
-  if (!adminSettings().causeThread()) return null
-  const selected = admin.selectedRecord()
-  const thread = admin.causeThread()
-  if (selected === null || selected.frameId === undefined) return null
-  const rows = admin.gantt.rows()
-  const selectedIndex = rows.findIndex((entry) => entry.id === selected.id)
-  const ancestorIndexes = thread.ancestorFrameIds.flatMap((frameId) => {
-    const index = rows.findIndex((entry) => entry.frameId === frameId)
-    return index === -1 ? [] : [index]
-  })
-  const marks = [selectedIndex, ...ancestorIndexes].filter((index) => index >= 0)
-  if (marks.length === 0) return null
-  const index = rows.findIndex((entry) => entry.id === row.id)
-  if (index === -1) return null
-  const lo = Math.min(...marks)
-  const hi = Math.max(...marks)
-  const onThread = index >= lo && index <= hi
-  const showDiamond =
-    row.frameId !== undefined && thread.diamondFrameIds.includes(row.frameId)
-  const showErrorMark = row.frameId === thread.errorAncestorFrameId
-  if (!onThread && !showDiamond && !showErrorMark) return null
-  const errorIndex =
-    thread.errorAncestorFrameId === undefined
-      ? -1
-      : rows.findIndex((entry) => entry.frameId === thread.errorAncestorFrameId)
-  const useError =
-    errorIndex >= 0 &&
-    selectedIndex >= 0 &&
-    index >= Math.min(selectedIndex, errorIndex) &&
-    index <= Math.max(selectedIndex, errorIndex)
-  const stroke = useError ? tokens.error : causeThread.color
-  return (
-    <span
-      data-testid="gantt-cause-thread"
-      data-error={useError ? 'true' : undefined}
-      css={`
-        position: relative;
-        flex: 0 0 ${THREAD_GUTTER}px;
-        align-self: stretch;
-        width: ${THREAD_GUTTER}px;
-        pointer-events: none;
-      `}
-    >
-      {onThread ? (
+}) => (
+  <>
+    {() => {
+      if (!adminSettings().causeThread()) return null
+      const span = admin.causeThreadRowSpan()
+      if (span === null) return null
+      const index = span.indexById.get(row.id)
+      if (index === undefined) return null
+      const onThread = span.lo >= 0 && index >= span.lo && index <= span.hi
+      const showDiamond =
+        row.frameId !== undefined && span.diamondIds.has(row.frameId)
+      const showErrorMark = row.frameId === span.errorAncestorFrameId
+      if (!onThread && !showDiamond && !showErrorMark) return null
+      const useError =
+        span.errorLo >= 0 && index >= span.errorLo && index <= span.errorHi
+      const stroke = useError ? tokens.error : causeThread.color
+      return (
         <span
+          data-testid="gantt-cause-thread"
+          data-error={useError ? 'true' : undefined}
           css={`
-            position: absolute;
-            top: 0;
-            bottom: 0;
-            left: 50%;
-            width: ${causeThread.width};
-            transform: translateX(-50%);
-            background: ${stroke};
-          `}
-        />
-      ) : null}
-      {showDiamond ? (
-        <span
-          css={`
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            width: ${causeThread.diamond};
-            height: ${causeThread.diamond};
-            box-sizing: border-box;
-            border: ${causeThread.width} solid ${stroke};
-            background: transparent;
-            transform: translate(-50%, -50%) rotate(45deg);
-          `}
-        />
-      ) : null}
-      {showErrorMark ? (
-        <span
-          css={`
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            ${type.meta}
-            color: ${tokens.error};
+            position: relative;
+            flex: 0 0 ${THREAD_GUTTER}px;
+            align-self: stretch;
+            width: ${THREAD_GUTTER}px;
+            pointer-events: none;
           `}
         >
-          !
+          {onThread ? (
+            <span
+              css={`
+                position: absolute;
+                top: 0;
+                bottom: 0;
+                left: 50%;
+                width: ${causeThread.width};
+                transform: translateX(-50%);
+                background: ${stroke};
+              `}
+            />
+          ) : null}
+          {showDiamond ? (
+            <span
+              css={`
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                width: ${causeThread.diamond};
+                height: ${causeThread.diamond};
+                box-sizing: border-box;
+                border: ${causeThread.width} solid ${stroke};
+                background: transparent;
+                transform: translate(-50%, -50%) rotate(45deg);
+              `}
+            />
+          ) : null}
+          {showErrorMark ? (
+            <span
+              css={`
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                ${type.meta}
+                color: ${tokens.error};
+              `}
+            >
+              !
+            </span>
+          ) : null}
         </span>
-      ) : null}
-    </span>
-  )
-}
+      )
+    }}
+  </>
+)
 
 export { formatAxisOffset } from '../../gantt'
 
@@ -290,7 +269,7 @@ const TraceSessionHeader = ({ admin }: { admin: OtlpAdmin }) => (
     `}
   >
     {() => {
-      const stats = traceHeaderStats(admin.feedRecords())
+      const stats = admin.traceHeader()
       if (stats === undefined) return null
       return (
         <div
@@ -320,11 +299,7 @@ const TraceSessionHeader = ({ admin }: { admin: OtlpAdmin }) => (
             </span>
             <span
               css={`
-                font-family: ${tokens.fontUi};
-                font-size: 20px;
-                line-height: 24px;
-                font-weight: 700;
-                font-variant-numeric: tabular-nums;
+                ${type.kpi}
                 color: ${tokens.text1};
               `}
             >
@@ -348,7 +323,7 @@ const TraceSessionHeader = ({ admin }: { admin: OtlpAdmin }) => (
               label={`Copy trace ${stats.traceId}`}
               testId="trace-id-copy"
               onClick={() => {
-                void navigator.clipboard.writeText(stats.traceId)
+                writeClipboard(stats.traceId)
               }}
             >
               {shortenTraceId(stats.traceId)}
@@ -452,7 +427,7 @@ const TraceTriageLine = ({ admin }: { admin: OtlpAdmin }) => (
     `}
   >
     {() => {
-      const triage = traceTriageStats(admin.feedRecords())
+      const triage = admin.traceTriage()
       if (triage === undefined) return null
       return triage.segments.map((segment, index) => (
         <span
@@ -471,7 +446,7 @@ const TraceTriageLine = ({ admin }: { admin: OtlpAdmin }) => (
             label={`Filter ${segment.name}`}
             testId={`trace-triage-${segment.id}`}
             onClick={() => {
-              admin.filterCalculator.set(triageNameFilter(segment.name))
+              admin.pendingCalculatorDraft.set(triageNameFilter(segment.name))
             }}
           >
             {segment.name}
@@ -547,9 +522,6 @@ const GanttKindLegend = ({ admin }: { admin: OtlpAdmin }) => (
             admin.filterReatomKind.set(
               admin.filterReatomKind() === reatomKind ? undefined : reatomKind,
             )
-            if (admin.filterCalculator().trim() === '') {
-              admin.filterCalculator.set(kindLegendClause(kind))
-            }
           }}
         >
           <span
@@ -581,10 +553,7 @@ export function recordRowAdapter(
   selection: GanttRecordSelection,
   connection: AdminConnection | null = null,
 ): GanttRowAdapter<AdminRecord> {
-  const colorBy = atom<GanttColorBy>(
-    'kind',
-    `_Admin.gantt.colorBy.${++ganttUiCounter}`,
-  )
+  const colorBy = admin.ganttColorBy
   return {
     labelHeader: 'Span',
     ariaLabel: 'Timeline',
@@ -614,9 +583,12 @@ export function recordRowAdapter(
       />
     ),
     toolbar: () => <GanttColorBySelect admin={admin} colorBy={colorBy} />,
-    empty: () => (
-      <TimelineEmptyState admin={admin} connection={connection} />
-    ),
+    empty: (() => {
+      const emptyState = (
+        <TimelineEmptyState admin={admin} connection={connection} />
+      )
+      return () => emptyState
+    })(),
     live: true,
   }
 }
@@ -749,10 +721,12 @@ const GanttRow = ({
   isHighlighted: () => boolean
   onSelect: () => void
 }) => {
-  const logGroup = logGroupOf(row)
-  const writePreview = formatWritePreview(row, admin.ganttRecords())
-  const label =
-    logGroup === undefined ? recordLabel(row) : logGroupName(row)
+  const rowLabel = () => {
+    const group = admin.logGroupOf(row)
+    return group === undefined ? recordLabel(row) : logGroupName(row, group)
+  }
+  const writePreview = () =>
+    formatWritePreview(row, admin.previousWriteById())
   const duration = recordDuration(row)
   const durationMs =
     row.end === undefined ? 0 : Math.max(0, row.end - row.start)
@@ -768,16 +742,8 @@ const GanttRow = ({
   const barMark = recordBarMark(row)
   const isSection = () => gantt.mode() === 'waterfall' && isRootSpan(row)
   const isLogTurn = () => gantt.mode() === 'log' && isRootSpan(row)
-  const sourceIndex = computed(() => {
-    const ids: string[] = []
-    const seen = new Set<string>()
-    for (const record of admin.ganttRecords()) {
-      if (seen.has(record.sourceId)) continue
-      seen.add(record.sourceId)
-      ids.push(record.sourceId)
-    }
-    return Math.max(0, ids.indexOf(row.sourceId))
-  }, `_Admin.gantt.row.sourceIndex`)
+  const sourceIndex = () =>
+    admin.sourceIndexBySourceId().get(row.sourceId) ?? 0
   const spanCount = computed(
     () =>
       row.kind === 'span' && depth() === 0
@@ -794,7 +760,7 @@ const GanttRow = ({
   return (
     <div
       role="row"
-      tabindex={-1}
+      tabindex={isHiddenLogGroupRow(row) ? undefined : -1}
       data-testid="gantt-row"
       data-record-id={row.id}
       data-depth={() => String(depth())}
@@ -809,7 +775,7 @@ const GanttRow = ({
       data-band={() =>
         kindName() === 'action' && hasChildren() ? 'true' : 'false'
       }
-      aria-label={label}
+      aria-label={rowLabel}
       aria-description={() =>
         recordRowDescription(row, {
           spanCount: spanCount(),
@@ -828,7 +794,11 @@ const GanttRow = ({
           ? 'true'
           : 'false'
       }
-      title={() => rowMatchTitle(admin, row, label)}
+      on:pointerenter={(event: PointerEvent) => {
+        const target = event.currentTarget
+        if (!(target instanceof HTMLElement)) return
+        target.title = rowMatchTitle(admin, row, rowLabel())
+      }}
       style:top={() =>
         isSection()
           ? sectionStickyTop(
@@ -928,7 +898,9 @@ const GanttRow = ({
           box-shadow: inset 2px 0 0 ${tokens.info},
             inset calc(2px + ${kindStripeWidth}) 0 0 var(--row-kind);
         }
-        &[data-highlighted='true']:not([aria-selected='true']) {
+        &[data-highlighted='true']:not([aria-selected='true']):not(
+            [data-error='true']
+          ) {
           background: color-mix(
             in oklch,
             ${tokens.accent} 12%,
@@ -982,9 +954,13 @@ const GanttRow = ({
           padding-right: var(--admin-space-8);
         `}
       >
-        <CauseThreadGutter admin={admin} row={row} />
+        {() =>
+          adminSettings().causeThread() ? (
+            <CauseThreadGutter admin={admin} row={row} />
+          ) : null
+        }
         {() => {
-          const group = logGroupOf(row)
+          const group = admin.logGroupOf(row)
           if (
             group !== undefined &&
             group.count > 1 &&
@@ -996,7 +972,7 @@ const GanttRow = ({
                 type="button"
                 data-testid="gantt-expand"
                 aria-expanded={open}
-                aria-label={open ? `Collapse ${label}` : `Expand ${label}`}
+                aria-label={open ? `Collapse ${rowLabel()}` : `Expand ${rowLabel()}`}
                 css={`
                   ${focusVisible}
                   appearance: none;
@@ -1027,7 +1003,7 @@ const GanttRow = ({
               data-testid="gantt-expand"
               aria-expanded={expanded}
               aria-label={() =>
-                expanded() ? `Collapse ${label}` : `Expand ${label}`
+                expanded() ? `Collapse ${rowLabel()}` : `Expand ${rowLabel()}`
               }
               css={`
                 ${focusVisible}
@@ -1092,9 +1068,9 @@ const GanttRow = ({
             color: ${recordHasError(row) ? tokens.error : tokens.text1};
           `}
         >
-          {label}
+          {() => rowLabel()}
           {() => {
-            const extra = logGroupLabel(row)
+            const extra = logGroupLabel(admin.logGroupOf(row))
             return extra === undefined ? null : (
               <span
                 css={`
@@ -1103,21 +1079,23 @@ const GanttRow = ({
               >{` ${extra}`}</span>
             )
           }}
-          {writePreview ? (
-            <span
-              title={writePreview.title}
-              css={`
-                color: ${tokens.text3};
-              `}
-            >
-              {`  `}
-              <span css={`color: ${tokens.text3};`}>{writePreview.text}</span>
-            </span>
-          ) : row.error?.message ? (
-            ` — ${row.error.message}`
-          ) : (
-            ''
-          )}
+          {() => {
+            const preview = writePreview()
+            if (preview) {
+              return (
+                <span
+                  title={preview.title}
+                  css={`
+                    color: ${tokens.text3};
+                  `}
+                >
+                  {`  `}
+                  <span css={`color: ${tokens.text3};`}>{preview.text}</span>
+                </span>
+              )
+            }
+            return row.error?.message ? ` — ${row.error.message}` : ''
+          }}
           {() =>
             spanCount() !== undefined ? (
               <span
@@ -1129,10 +1107,8 @@ const GanttRow = ({
           }
           {() => {
             if (!isSection()) return null
-            const roots = orderedRoots(admin.ganttRecords())
-            const turn = rootTurnNumber(row, roots)
-            if (turn === undefined) return null
-            const section = turnSection(row, admin.ganttRecords(), turn)
+            const section = admin.turnSectionByRootId().get(row.id)
+            if (section === undefined) return null
             return (
               <span
                 css={`
@@ -1222,7 +1198,7 @@ const GanttRow = ({
           <span
             data-gantt-duration=""
             data-slow={() => {
-              const p95 = endedSpanPercentile(admin.ganttRecords(), 0.95)
+              const p95 = admin.ganttSpanP95()
               const threshold = durationThresholdMs(admin.filterCalculator())
               return isSlowDuration(durationMs, p95, threshold) ? 'true' : 'false'
             }}
@@ -1276,12 +1252,9 @@ const GanttRow = ({
               `}
             >
               {() => {
-                const roots = orderedRoots(admin.ganttRecords())
-                const turn = rootTurnNumber(row, roots)
-                if (turn === undefined) return recordLabel(row)
-                return turnHairlineText(
-                  turnSection(row, admin.ganttRecords(), turn),
-                )
+                const section = admin.turnSectionByRootId().get(row.id)
+                if (section === undefined) return recordLabel(row)
+                return turnHairlineText(section)
               }}
             </span>
           </div>
@@ -1374,7 +1347,7 @@ const GanttRow = ({
               if (row.kind !== 'span') return null
               const geometry = gantt.bar(row)
               if (geometry === null) return null
-              const text = barLabelText(label, duration)
+              const text = barLabelText(rowLabel(), duration)
               if (!barLabelFitsInside(text, geometry.width, 400)) return null
               const window = gantt.visibleTime()
               const quiet =
@@ -1395,7 +1368,7 @@ const GanttRow = ({
                     ${truncate}
                   `}
                 >
-                  <span css={truncate}>{label}</span>
+                  <span css={truncate}>{rowLabel()}</span>
                   <span>{duration}</span>
                 </span>
               )
@@ -1406,7 +1379,7 @@ const GanttRow = ({
           if (isLogTurn() || row.kind !== 'span') return null
           const geometry = gantt.bar(row)
           if (geometry === null) return null
-          const text = barLabelText(label, duration)
+          const text = barLabelText(rowLabel(), duration)
           if (barLabelFitsInside(text, geometry.width, 400)) return null
           const window = gantt.visibleTime()
           const quiet =
@@ -1476,7 +1449,10 @@ const GanttRow = ({
               <button
                 type="button"
                 data-testid="gantt-write-tick"
-                title={formatWriteTickTitle(tick.record, admin.ganttRecords())}
+                title={formatWriteTickTitle(
+                  tick.record,
+                  admin.previousWriteById(),
+                )}
                 style:left={`${left * 100}%`}
                 css={`
                   ${focusVisible}
@@ -1510,10 +1486,8 @@ const GanttRow = ({
               position: absolute;
               top: 50%;
               transform: translateY(-50%);
+              ${type.meta}
               color: ${tokens.error};
-              font-weight: 700;
-              font-size: 10px;
-              line-height: 10px;
               pointer-events: none;
             `}
           >
@@ -1537,10 +1511,8 @@ const GanttRow = ({
             `}
           >
             {() => {
-              const roots = orderedRoots(admin.ganttRecords())
-              const turn = rootTurnNumber(row, roots)
-              if (turn === undefined) return null
-              const section = turnSection(row, admin.ganttRecords(), turn)
+              const section = admin.turnSectionByRootId().get(row.id)
+              if (section === undefined) return null
               return section.kindShare.map((share) => (
                 <span
                   style:flex={`${share.share} 0 0`}
@@ -1888,12 +1860,12 @@ export const OtlpGanttChart = <Node, Key = Node>({
         `}
       >
         {() =>
-          adapter.live && traceHeaderStats(admin.feedRecords()) ? (
+          adapter.live && admin.traceHeader() ? (
             <TraceSessionHeader admin={admin} />
           ) : null
         }
         {() =>
-          adapter.live && traceTriageStats(admin.feedRecords()) ? (
+          adapter.live && admin.traceTriage() ? (
             <TraceTriageLine admin={admin} />
           ) : null
         }
@@ -2066,20 +2038,6 @@ export const OtlpGanttChart = <Node, Key = Node>({
               `}
             >
               {() => adapter.summary()}
-            </span>
-            <span>
-              {() =>
-                adapter.live && admin.inProgress().length > 0 ? (
-                  <span
-                    css={`
-                      ${type.meta}
-                      color: ${tokens.text3};
-                    `}
-                  >
-                    Hatched bars are still in progress
-                  </span>
-                ) : null
-              }
             </span>
           </Toolbar>
         </div>

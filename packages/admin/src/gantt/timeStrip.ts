@@ -49,14 +49,21 @@ export function timeStripModel(
   const span = safeRange.end - safeRange.start
   const bucketMs = span / BUCKET_COUNT
   const buckets = Array.from({ length: BUCKET_COUNT }, () => new Map<string, number>())
-  const errorTicks: number[] = []
+  const errorTicks: number[] = Array.from({ length: BUCKET_COUNT })
   let latest = Number.NEGATIVE_INFINITY
   for (const record of records) {
     if (isInProgressRecord(record)) continue
     const end = record.end ?? record.start
     if (end > latest) latest = end
     if (recordHasError(record)) {
-      errorTicks.push(fraction(record.start, safeRange))
+      const errorBucket = Math.max(
+        0,
+        Math.min(
+          BUCKET_COUNT - 1,
+          Math.floor((record.start - safeRange.start) / bucketMs),
+        ),
+      )
+      errorTicks[errorBucket] = (errorBucket + 0.5) / BUCKET_COUNT
     }
     const startBucket = Math.max(
       0,
@@ -119,7 +126,24 @@ export function timeStripModel(
     const right = Math.min(1, Math.max(0, fraction(viewport.end, safeRange)))
     viewportBox = { left, width: Math.max(0.01, right - left) }
   }
-  return { stacks, errorTicks, gaps, viewport: viewportBox }
+  return {
+    stacks,
+    errorTicks: errorTicks.filter((tick): tick is number => tick !== undefined),
+    gaps,
+    viewport: viewportBox,
+  }
+}
+
+export function timeStripViewport(
+  range: GanttTime,
+  viewport: GanttTime | null,
+): { left: number; width: number } | null {
+  if (viewport === null || viewport.end <= viewport.start) return null
+  const safeRange: GanttTime =
+    range.end > range.start ? range : { start: range.start, end: range.start + 1 }
+  const left = Math.min(1, Math.max(0, fraction(viewport.start, safeRange)))
+  const right = Math.min(1, Math.max(0, fraction(viewport.end, safeRange)))
+  return { left, width: Math.max(0.01, right - left) }
 }
 
 export function timeAtStripFraction(range: GanttTime, fractionValue: number): number {

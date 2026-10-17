@@ -1,4 +1,4 @@
-import { atom } from '@reatom/core'
+import { atom, computed } from '@reatom/core'
 
 import type { Gantt } from '../../gantt'
 import {
@@ -10,6 +10,7 @@ import {
   hoverKindCounts,
   timeAtStripFraction,
   timeStripModel,
+  timeStripViewport,
 } from '../../gantt/timeStrip'
 import type { AdminRecord, OtlpAdmin } from '../../otlp'
 import {
@@ -23,6 +24,7 @@ import {
 import { kindShareColorVar } from '../../otlp'
 
 const STRIP_HEIGHT = 30
+let stripCounter = 0
 
 function kindColor(kind: string): string {
   return kindTokens[kindShareColorVar(kind)]
@@ -39,7 +41,15 @@ export const GanttTimeStrip = ({
   paused?: () => boolean
   dropped?: () => boolean
 }) => {
-  const hover = atom('', `_Admin.gantt.strip.hover`)
+  const hover = atom('', `_Admin.gantt.strip.hover.${++stripCounter}`)
+  const model = computed(
+    () =>
+      timeStripModel(admin.ganttRecords(), gantt.range(), null, {
+        paused: paused(),
+        dropped: dropped(),
+      }),
+    `_Admin.gantt.strip.model.${stripCounter}`,
+  )
   return (
     <div
       data-testid="gantt-time-strip"
@@ -107,20 +117,12 @@ export const GanttTimeStrip = ({
         const rect = strip.getBoundingClientRect()
         if (rect.width <= 0) return
         const fraction = (event.clientX - rect.left) / rect.width
-        const model = timeStripModel(
-          admin.ganttRecords(),
-          range,
-          gantt.visibleTime(),
-          {
-            paused: paused(),
-            dropped: dropped(),
-          },
-        )
-        if (model === null) {
+        const cached = model()
+        if (cached === null) {
           hover.set('')
           return
         }
-        const counts = hoverKindCounts(model, fraction)
+        const counts = hoverKindCounts(cached, fraction)
         hover.set(
           counts.length === 0
             ? ''
@@ -136,14 +138,8 @@ export const GanttTimeStrip = ({
       on:pointerleave={() => hover.set('')}
     >
       {() => {
-        const range = gantt.range()
-        const model = timeStripModel(
-          admin.ganttRecords(),
-          range,
-          gantt.visibleTime(),
-          { paused: paused(), dropped: dropped() },
-        )
-        if (model === null) return null
+        const cached = model()
+        if (cached === null) return null
         return (
           <div
             css={`
@@ -151,7 +147,7 @@ export const GanttTimeStrip = ({
               inset: 0;
             `}
           >
-            {model.stacks.map((stack) => (
+            {cached.stacks.map((stack) => (
               <div
                 style:left={`${stack.left * 100}%`}
                 style:width={`${stack.width * 100}%`}
@@ -175,7 +171,7 @@ export const GanttTimeStrip = ({
                 ))}
               </div>
             ))}
-            {model.gaps.map((gap) => (
+            {cached.gaps.map((gap) => (
               <div
                 style:left={`${gap.left * 100}%`}
                 style:width={`${gap.width * 100}%`}
@@ -187,7 +183,7 @@ export const GanttTimeStrip = ({
                 `}
               />
             ))}
-            {model.errorTicks.map((tick) => (
+            {cached.errorTicks.map((tick) => (
               <span
                 style:left={`${tick * 100}%`}
                 css={`
@@ -200,19 +196,25 @@ export const GanttTimeStrip = ({
                 `}
               />
             ))}
-            {model.viewport ? (
-              <div
-                style:left={`${model.viewport.left * 100}%`}
-                style:width={`${model.viewport.width * 100}%`}
-                css={`
-                  position: absolute;
-                  inset-block: 0;
-                  box-shadow: inset 0 0 0 1px ${tokens.accent};
-                  pointer-events: none;
-                `}
-              />
-            ) : null}
           </div>
+        )
+      }}
+      {() => {
+        const range = gantt.range()
+        if (range === null) return null
+        const viewport = timeStripViewport(range, gantt.visibleTime())
+        if (viewport === null) return null
+        return (
+          <div
+            style:left={`${viewport.left * 100}%`}
+            style:width={`${viewport.width * 100}%`}
+            css={`
+              position: absolute;
+              inset-block: 0;
+              box-shadow: inset 0 0 0 1px ${tokens.accent};
+              pointer-events: none;
+            `}
+          />
         )
       }}
     </div>
@@ -226,7 +228,10 @@ export const GanttAxisMarkers = ({
   gantt: Gantt<AdminRecord>
   admin: OtlpAdmin
 }) => {
-  const expanded = atom<number | null>(null, `_Admin.gantt.markers.hover`)
+  const expanded = atom<number | null>(
+    null,
+    `_Admin.gantt.markers.hover.${++stripCounter}`,
+  )
   return (
     <div
       data-testid="gantt-axis-markers"

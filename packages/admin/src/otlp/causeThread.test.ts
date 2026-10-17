@@ -4,6 +4,7 @@ import { selectedAncestorFrameIds } from '../cause-graph/otlpThread.ts'
 import type { AdminRecord } from './ingest.ts'
 import {
   causeReads,
+  causeThreadRowSpan,
   causeTriggers,
   findCausePathIds,
   focusKeepIds,
@@ -93,6 +94,7 @@ test('selectedCauseThread walks ancestors, diamonds, and the earliest error', ()
   expect(neighbors.find((row) => row.record.id === 'total')?.offsetMs).toBe(2)
 
   expect(findCausePathIds(records, '1', '4', 'trace')).toEqual([1, 3, 4])
+  expect(findCausePathIds(records, '1', '4')).toBeNull()
   expect(writtenBySelection(records, purchase).has('local:checkout.purchase')).toBe(
     true,
   )
@@ -108,4 +110,23 @@ test('hopSet is 1-hop parents and children; focus keeps the cone', () => {
   expect([...hopSet(nodes, 2, 1)].sort((a, b) => a - b)).toEqual([1, 2, 3])
   expect(focusKeepIds(nodes, 2).has(4)).toBe(true)
   expect(focusKeepIds(nodes, 2).has(1)).toBe(true)
+})
+
+test('causeThreadRowSpan maps rows by id so later selection only compares indexes', () => {
+  const parent = record({ id: 'parent', frameId: '1', start: 1 })
+  const child = record({
+    id: 'child',
+    frameId: '2',
+    start: 2,
+    causeIds: ['1'],
+  })
+  const other = record({ id: 'other', frameId: '9', start: 3 })
+  const thread = selectedCauseThread([parent, child, other], child)
+  const span = causeThreadRowSpan([parent, child, other], child, thread)
+  expect(span).not.toBeNull()
+  expect(span!.indexById.get('parent')).toBe(0)
+  expect(span!.indexById.get('child')).toBe(1)
+  expect(span!.lo).toBe(0)
+  expect(span!.hi).toBe(1)
+  expect(causeThreadRowSpan([parent, child, other], null, thread)).toBeNull()
 })
