@@ -4,8 +4,16 @@ import type { Gantt, GanttTime } from '../../gantt'
 import { ADMIN_GANTT_ROW_HEIGHT as ROW_HEIGHT } from '../../gantt'
 import type { GanttRecordSelection } from '../../gantt/selection'
 import { mcpCallLog } from '../../mcp/callLog'
-import type { AdminRecord, OtlpAdmin } from '../../otlp'
-import { recordHasError, recordLabel } from '../../otlp'
+import type { AdminRecord, AdminRecordOutcome, OtlpAdmin } from '../../otlp'
+import {
+  kindShareColorVar,
+  recordHasError,
+  recordLabel,
+  shortenTraceId,
+  traceHeaderStats,
+  traceTriageStats,
+  triageNameFilter,
+} from '../../otlp'
 import { adminSettings } from '../settings'
 import {
   analyticsContinuationText,
@@ -17,6 +25,7 @@ import {
   EmptyState,
   Icon,
   SelectField,
+  StatusDot,
   Toolbar,
   ToolbarGroup,
   ToolbarSeparator,
@@ -110,6 +119,226 @@ const ganttSideWidth = <Node,>(adapter: GanttRowAdapter<Node>) =>
   )
 
 const sessionCount = new Intl.NumberFormat(undefined)
+
+function outcomeDotTone(outcome: AdminRecordOutcome) {
+  if (outcome === 'error') return 'error' as const
+  if (outcome === 'abort') return 'warning' as const
+  if (outcome === 'suspense') return 'info' as const
+  if (outcome === 'pending') return 'accent' as const
+  return 'success' as const
+}
+
+const TraceSessionHeader = ({ admin }: { admin: OtlpAdmin }) => (
+  <div
+    data-testid="trace-header"
+    css={`
+      display: grid;
+      gap: var(--admin-space-6);
+      padding: var(--admin-space-8);
+      border-bottom: 1px solid ${tokens.border1};
+      min-width: 0;
+    `}
+  >
+    {() => {
+      const stats = traceHeaderStats(admin.feedRecords())
+      if (stats === undefined) return null
+      return (
+        <div
+          css={`
+            display: grid;
+            gap: var(--admin-space-6);
+            min-width: 0;
+          `}
+        >
+          <div
+            css={`
+              display: flex;
+              flex-wrap: wrap;
+              align-items: baseline;
+              gap: var(--admin-space-8);
+              min-width: 0;
+            `}
+          >
+            <span
+              css={`
+                ${truncate}
+                ${type.title}
+                min-width: 0;
+              `}
+            >
+              {stats.rootName}
+            </span>
+            <span
+              css={`
+                font-family: ${tokens.fontUi};
+                font-size: 20px;
+                line-height: 24px;
+                font-weight: 700;
+                font-variant-numeric: tabular-nums;
+                color: ${tokens.text1};
+              `}
+            >
+              {formatAxisOffset(stats.durationMs)}
+            </span>
+            <span
+              css={`
+                ${type.meta}
+                color: ${tokens.text2};
+                font-variant-numeric: tabular-nums;
+              `}
+            >
+              {`${stats.spanCount} spans · ${stats.logCount} logs · ${stats.atomCount} atoms`}
+            </span>
+            <StatusDot
+              tone={outcomeDotTone(stats.outcome)}
+              label={stats.outcome}
+            />
+            <Button
+              variant="ghost"
+              label={`Copy trace ${stats.traceId}`}
+              testId="trace-id-copy"
+              onClick={() => {
+                void navigator.clipboard.writeText(stats.traceId)
+              }}
+            >
+              {shortenTraceId(stats.traceId)}
+            </Button>
+          </div>
+          {() => {
+            const expression = admin.filterCalculator().trim()
+            if (expression === '') return null
+            return (
+              <p
+                css={`
+                  ${type.data}
+                  margin: 0;
+                  color: ${tokens.text2};
+                `}
+              >
+                {expression}
+              </p>
+            )
+          }}
+          {stats.kindShare.length > 0 ? (
+            <div
+              css={`
+                display: grid;
+                gap: var(--admin-space-4);
+                min-width: 0;
+              `}
+            >
+              <div
+                css={`
+                  display: flex;
+                  height: 6px;
+                  overflow: hidden;
+                  border-radius: var(--admin-radius-2);
+                  background: ${tokens.surface2};
+                `}
+              >
+                {stats.kindShare.map((share) => (
+                  <span
+                    title={`${share.kind} ${Math.round(share.share * 100)}%`}
+                    css={`
+                      flex: ${share.share} 0 0;
+                      background: ${kindTokens[kindShareColorVar(share.kind)]};
+                    `}
+                  />
+                ))}
+              </div>
+              <div
+                css={`
+                  display: flex;
+                  flex-wrap: wrap;
+                  gap: var(--admin-space-8);
+                  ${type.meta}
+                  color: ${tokens.text3};
+                `}
+              >
+                {stats.kindShare.map((share) => (
+                  <span
+                    css={`
+                      display: inline-flex;
+                      align-items: center;
+                      gap: var(--admin-space-4);
+                    `}
+                  >
+                    <span
+                      aria-hidden="true"
+                      css={`
+                        width: 6px;
+                        height: 6px;
+                        flex: 0 0 6px;
+                        border-radius: var(--admin-radius-2);
+                        background: ${kindTokens[kindShareColorVar(share.kind)]};
+                      `}
+                    />
+                    {share.kind}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      )
+    }}
+  </div>
+)
+
+const TraceTriageLine = ({ admin }: { admin: OtlpAdmin }) => (
+  <div
+    data-testid="trace-triage"
+    css={`
+      ${type.data}
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--admin-space-8);
+      padding-inline: var(--admin-space-8);
+      padding-block: var(--admin-space-4);
+      border-bottom: 1px solid ${tokens.border1};
+      min-width: 0;
+      color: ${tokens.text2};
+    `}
+  >
+    {() => {
+      const triage = traceTriageStats(admin.feedRecords())
+      if (triage === undefined) return null
+      return triage.segments.map((segment, index) => (
+        <span
+          css={`
+            display: inline-flex;
+            align-items: baseline;
+            gap: var(--admin-space-6);
+          `}
+        >
+          {index > 0 ? (
+            <span css={`color: ${tokens.text3};`}>·</span>
+          ) : null}
+          {segment.label}
+          <Button
+            variant="ghost"
+            label={`Filter ${segment.name}`}
+            testId={`trace-triage-${segment.id}`}
+            onClick={() => {
+              admin.filterCalculator.set(triageNameFilter(segment.name))
+            }}
+          >
+            {segment.name}
+          </Button>
+          <span
+            css={`
+              font-variant-numeric: tabular-nums;
+              color: ${segment.tone === 'error' ? tokens.error : tokens.text1};
+            `}
+          >
+            {segment.value}
+          </span>
+        </span>
+      ))
+    }}
+  </div>
+)
 
 export interface OtlpGanttChartProps<Node, Key = Node> {
   gantt: Gantt<Node, Key>
@@ -951,6 +1180,16 @@ export const OtlpGanttChart = <Node, Key = Node>({
           background: ${tokens.surface1};
         `}
       >
+        {() =>
+          adapter.live && traceHeaderStats(admin.feedRecords()) ? (
+            <TraceSessionHeader admin={admin} />
+          ) : null
+        }
+        {() =>
+          adapter.live && traceTriageStats(admin.feedRecords()) ? (
+            <TraceTriageLine admin={admin} />
+          ) : null
+        }
         <div
           css={`
             width: max-content;

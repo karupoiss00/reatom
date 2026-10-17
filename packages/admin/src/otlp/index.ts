@@ -85,6 +85,21 @@ export {
 export type { ClickHouseCredentials } from './clickhouse.ts'
 export { reatomOtlpStore } from './ingest.ts'
 export { errorGroupKey, stackCulprit } from './ingest.ts'
+export {
+  kindShareColorVar,
+  shortenTraceId,
+  singleTraceId,
+  TRACE_TRIAGE_MIN_SPANS,
+  traceHeaderStats,
+  traceTriageStats,
+  triageNameFilter,
+} from './traceHeader.ts'
+export type {
+  TraceHeaderStats,
+  TraceKindShare,
+  TraceTriageSegment,
+  TraceTriageStats,
+} from './traceHeader.ts'
 export { recordValues, recordValuesText } from './values.ts'
 export {
   ADMIN_MCP_MAX_BYTES,
