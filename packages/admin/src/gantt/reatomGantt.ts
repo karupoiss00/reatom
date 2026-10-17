@@ -61,6 +61,11 @@ export interface GanttOptions<Node, Key = Node> {
   /** Initial mode. Defaults to `waterfall`. */
   mode?: GanttMode
   /**
+   * Log-mode row rewrite after start-order. Waterfall ignores this. Used to
+   * fold consecutive repeats and error groups.
+   */
+  foldLogRows?: (rows: ReadonlyArray<Node>) => ReadonlyArray<Node>
+  /**
    * Row virtualization, see `reatomVirtual`. Defaults to `{ itemSize: 1 }`, so
    * scroll offsets and the viewport size count rows.
    */
@@ -299,8 +304,9 @@ export function reatomGantt<Node, Key = Node>(
 
   const layout = computed((): GanttLayout<Node> => {
     if (mode() === 'log') {
+      const sorted = sortByStart(nodes(), getStart)
       return {
-        rows: sortByStart(nodes(), getStart),
+        rows: options.foldLogRows?.(sorted) ?? sorted,
         depth: new Map(),
         rootIndexes: null,
       }

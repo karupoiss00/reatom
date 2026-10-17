@@ -3,7 +3,9 @@ import { expect, test } from 'test'
 import type { AdminRecord } from './ingest.ts'
 import { LOCAL_VALUES } from './ingest.ts'
 import {
+  appendCalculatorClause,
   describeCalculator,
+  durationThresholdMs,
   evaluateRecordExpression,
   highlightCalculator,
   parseCalculator,
@@ -514,6 +516,20 @@ test('error.type and error.message match joined exceptions', () => {
       anyMessage.tags,
     ),
   ).toBe(false)
+})
+
+test('durationThresholdMs reads the lowest duration> clause', () => {
+  expect(durationThresholdMs('kind:action duration>16ms')).toBe(16)
+  expect(durationThresholdMs('duration>=1s AND name:x')).toBe(1000)
+  expect(durationThresholdMs('NOT duration>16ms')).toBeUndefined()
+  expect(durationThresholdMs('name:x')).toBeUndefined()
+})
+
+test('appendCalculatorClause joins with AND and wraps NOT', () => {
+  expect(appendCalculatorClause('', 'outcome:error')).toBe('outcome:error')
+  expect(appendCalculatorClause('kind:action', 'outcome:error', true)).toBe(
+    'kind:action AND NOT (outcome:error)',
+  )
 })
 
 test('describeCalculator restates kind, duration, and cause', () => {

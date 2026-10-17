@@ -18,6 +18,7 @@ import {
   reatomGantt,
   reatomGanttRecordSelection,
 } from '../gantt'
+import { foldLogRows } from '../gantt/logGroups'
 import { ADMIN_FRAME } from '../root'
 import {
   buildLastWriteStateTree,
@@ -29,8 +30,10 @@ import {
   recordTimeRange,
   suggestedBucketSize,
   visibleFeed,
+  type OtlpGraphDepth,
   type OtlpGraphDirection,
 } from './bind.ts'
+import { findCausePathIds, selectedCauseThread } from './causeThread.ts'
 import { fetchClickHouseExport } from './clickhouse.ts'
 import { parseCalculator } from './calculator.ts'
 import {
@@ -88,6 +91,13 @@ function reatomOtlpAdminModel(options: OtlpAdminOptions) {
   const graphDirection = atom<OtlpGraphDirection>(
     'full',
     `${PREFIX}.graphDirection`,
+  )
+  const graphDepth = atom<OtlpGraphDepth>('all', `${PREFIX}.graphDepth`)
+  const graphPathFrom = atom<string | null>(null, `${PREFIX}.graphPathFrom`)
+  const graphFocus = atom('', `${PREFIX}.graphFocus`)
+  const pendingCalculatorDraft = atom<string | null>(
+    null,
+    `${PREFIX}.pendingCalculatorDraft`,
   )
   const followLive = reatomBoolean(true, `${PREFIX}.followLive`)
   const source = atom<OtlpAdminSource>(
@@ -311,8 +321,20 @@ function reatomOtlpAdminModel(options: OtlpAdminOptions) {
       selectedRootFrameId(),
       graphDirection(),
       selectedTraceId(),
+      graphDepth(),
     )
   }, `${PREFIX}.railNodes`)
+
+  const graphPathIds = computed(() => {
+    const from = graphPathFrom()
+    const to = selectedRootFrameId()
+    if (from === null || to === null) return undefined
+    return findCausePathIds(store.records(), from, to, selectedTraceId()) ?? undefined
+  }, `${PREFIX}.graphPathIds`)
+
+  const causeThread = computed(() => {
+    return selectedCauseThread(store.records(), selectedRecord())
+  }, `${PREFIX}.causeThread`)
 
   const allRailNodes = computed(() => {
     return causeRailNodes(
@@ -495,11 +517,28 @@ function reatomOtlpAdminModel(options: OtlpAdminOptions) {
     })
     return extras.length === 0 ? visible : [...visible, ...extras]
   }, `${PREFIX}.ganttRecords`)
+  const expandedLogGroups = atom(
+    new Set<string>(),
+    `${PREFIX}.expandedLogGroups`,
+  )
+  const toggleLogGroup = action((key: string) => {
+    const next = new Set(expandedLogGroups())
+    if (next.has(key)) next.delete(key)
+    else next.add(key)
+    expandedLogGroups.set(next)
+  }, `${PREFIX}.toggleLogGroup`)
   const gantt = reatomGantt(
     ganttRecords,
     {
       ...adminRecordTiming,
       end: (record) => (isInProgressRecord(record) ? ganttNow() : record.end),
+      foldLogRows: (rows) =>
+        foldLogRows(rows, {
+          expandedKeys: expandedLogGroups(),
+          errorsOn: filterHasError() === true,
+          hiddenMountCount: hiddenMountLogCount(),
+          hiddenAbortCount: hiddenAbortSuspenseCount(),
+        }),
       virtual: {
         itemSize: ADMIN_GANTT_ROW_HEIGHT,
         overscan: ADMIN_GANTT_OVERSCAN,
@@ -729,6 +768,8 @@ function reatomOtlpAdminModel(options: OtlpAdminOptions) {
     ganttRecords,
     ganttNow,
     ganttSelection,
+    expandedLogGroups,
+    toggleLogGroup,
     inProgress,
     selectionHistory,
     selectionHistoryIndex,
@@ -744,6 +785,12 @@ function reatomOtlpAdminModel(options: OtlpAdminOptions) {
     selectRecord,
     selectFrame,
     graphDirection,
+    graphDepth,
+    graphPathFrom,
+    graphFocus,
+    graphPathIds,
+    causeThread,
+    pendingCalculatorDraft,
     followLive,
     source,
     remoteOpen,

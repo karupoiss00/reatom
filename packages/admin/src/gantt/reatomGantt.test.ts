@@ -142,6 +142,26 @@ describe('row window', () => {
     expect(gantt.selected()).toBeNull()
   })
 
+  test('foldLogRows rewrites log mode rows only', () => {
+    const source = atom(
+      [span('a', 0), span('a2', 1), span('b', 2)],
+      'fold-source',
+    )
+    const gantt = reatomGantt(
+      source,
+      {
+        ...timing,
+        mode: 'log',
+        foldLogRows: (rows) => rows.filter((row) => row.id !== 'a2'),
+        virtual: { itemSize: 1, viewportSize: 10, overscan: 0 },
+      },
+      'fold-gantt',
+    )
+    expect(gantt.rows().map(({ id }) => id)).toEqual(['a', 'b'])
+    gantt.mode.set('waterfall')
+    expect(gantt.rows().map(({ id }) => id)).toEqual(['a', 'a2', 'b'])
+  })
+
   test('accepts a linked list source', () => {
     const list = reatomLinkedList((id: string, start: number) => ({
       id,

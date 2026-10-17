@@ -3,6 +3,7 @@ import { atom, effect, peek, type Atom } from '@reatom/core'
 import { mcpCallLog } from '../../mcp/callLog'
 import type { OtlpAdmin } from '../../otlp'
 import {
+  appendCalculatorClause,
   chipCountRecords,
   describeCalculator,
   hasActiveFilter,
@@ -135,11 +136,23 @@ export const OtlpFilterBar = ({ admin }: { admin: OtlpAdmin }) => {
     peek(admin.filterCalculator),
     `_Admin.filter.draft.${barId}`,
   )
+  const advancedOpen = atom(false, `_Admin.filter.advancedOpen.${barId}`)
   effect(() => {
-    const pending = mcpCallLog().pendingCalculatorDraft()
+    const pending =
+      admin.pendingCalculatorDraft() ?? mcpCallLog().pendingCalculatorDraft()
     if (pending === null) return
-    draft.set(pending)
+    admin.pendingCalculatorDraft.set(null)
     mcpCallLog().pendingCalculatorDraft.set(null)
+    advancedOpen.set(true)
+    const current = draft().trim()
+    const isClause = /^(NOT \(.+\)|[A-Za-z.][A-Za-z0-9.]*\s*[=:<>]+)/.test(
+      pending,
+    )
+    if (isClause && current !== '' && !current.includes(pending)) {
+      draft.set(appendCalculatorClause(current, pending))
+      return
+    }
+    draft.set(pending)
   }, `_Admin.filter.pendingDraft.${barId}`)
 
   const toggleKind = (kind: AdminReatomKind) => {
@@ -411,6 +424,7 @@ export const OtlpFilterBar = ({ admin }: { admin: OtlpAdmin }) => {
         `}
       >
         <Disclosure
+          open={advancedOpen}
           label="Advanced filters"
           detail={() => {
             const mode = admin.filterMode()

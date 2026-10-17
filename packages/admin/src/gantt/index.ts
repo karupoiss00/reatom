@@ -5,6 +5,7 @@ export {
   adminRecordTiming,
 } from './records'
 export { analyticsPathTiming } from './paths'
+export { formatAxisOffset } from './formatTime'
 export { barGeometry, reatomGantt } from './reatomGantt'
 export { reatomGanttRecordSelection } from './selection'
 export type {

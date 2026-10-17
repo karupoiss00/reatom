@@ -650,6 +650,52 @@ export function describeCalculator(
   return sentence.charAt(0).toUpperCase() + sentence.slice(1)
 }
 
+export function durationThresholdMs(source: string): number | undefined {
+  const parsed = parseCalculator(source)
+  if (!parsed.ok) return undefined
+  const tags = new Map(parsed.tags.map((tag) => [tag.id, tag]))
+  let found: number | undefined
+  const walk = (node: FilterTagRef | FilterGroup) => {
+    if (isTagRef(node)) {
+      if (node.negated) return
+      const tag = tags.get(node.tagId)
+      const predicate = tag?.predicates[0]
+      if (predicate?.type !== 'compare') return
+      const value = predicate.value as CalculatorCompareValue
+      if (value.field !== 'duration') return
+      if (value.op !== '>' && value.op !== '>=') return
+      const ms = parseDurationMs(value.raw)
+      if (ms === undefined) return
+      found = found === undefined ? ms : Math.min(found, ms)
+      return
+    }
+    for (const child of node.children) walk(child)
+  }
+  walk(parsed.expression)
+  return found
+}
+
+export function appendCalculatorClause(
+  draft: string,
+  clause: string,
+  negate = false,
+): string {
+  const piece = negate ? `NOT (${clause})` : clause
+  const trimmed = draft.trim()
+  if (trimmed === '') return piece
+  return `${trimmed} AND ${piece}`
+}
+
+export function isSlowDuration(
+  durationMs: number,
+  p95Ms: number | undefined,
+  thresholdMs: number | undefined,
+): boolean {
+  if (thresholdMs !== undefined && durationMs >= thresholdMs) return true
+  if (p95Ms !== undefined && durationMs >= p95Ms) return true
+  return false
+}
+
 function globRegex(pattern: string): RegExp {
   const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&')
   return new RegExp(`^${escaped.replace(/\*/g, '.*')}$`, 'i')
