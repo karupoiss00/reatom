@@ -1,8 +1,14 @@
+import { capturingPulse } from './mixins'
 import { size, tokens, type } from './tokens'
 
 export interface StatusBarProps {
-  children?: Element | Array<Element | false | null> | (() => Element)
+  children?:
+    | Element
+    | Array<Element | false | null | (() => Element | null)>
+    | (() => Element | null)
 }
+
+export type StatusTone = 'success' | 'warning' | 'error' | 'info' | 'accent'
 
 export const StatusBar = ({ children }: StatusBarProps) => {
   return (
@@ -29,9 +35,11 @@ export const StatusBar = ({ children }: StatusBarProps) => {
 export const StatusDot = ({
   tone,
   label,
+  pulse,
 }: {
-  tone: 'success' | 'warning' | 'error' | 'info' | (() => 'success' | 'warning' | 'error' | 'info')
+  tone: StatusTone | (() => StatusTone)
   label: string | (() => string)
+  pulse?: boolean | (() => boolean)
 }) => {
   const resolveTone = () => (typeof tone === 'function' ? tone() : tone)
   const color = () => {
@@ -39,8 +47,11 @@ export const StatusDot = ({
     if (current === 'success') return tokens.success
     if (current === 'warning') return tokens.warning
     if (current === 'error') return tokens.error
+    if (current === 'accent') return tokens.accent
     return tokens.info
   }
+  const pulsing = () =>
+    typeof pulse === 'function' ? pulse() : pulse === true
 
   return (
     <span
@@ -53,11 +64,15 @@ export const StatusDot = ({
     >
       <span
         aria-hidden="true"
+        data-pulse={() => (pulsing() ? 'true' : 'false')}
         css={`
           width: 6px;
           height: 6px;
           border-radius: 999px;
           background: ${color};
+          &[data-pulse='true'] {
+            ${capturingPulse}
+          }
         `}
       />
       {label}

@@ -25,6 +25,7 @@ import {
   ToolbarGroup,
   ToolbarSeparator,
   ToolbarSpacer,
+  capturingPulse,
   focusVisible,
   scrollable,
   size,
@@ -36,6 +37,8 @@ import { adminThemeVars } from '../design-system/tokens'
 import { ADMIN_HOST_Z_INDEX, keepAdminHostInView } from '../hostBox'
 import { bindAdminStylesheet } from '../stylesheet'
 import { importRecordFile } from '../../otlp/importRecords'
+import { AgentCallLog } from '../../mcp/AgentCallLog'
+import { mcpCallLog } from '../../mcp/callLog'
 import { adminSettings, bindAdminPalette } from '../settings'
 import { OtlpAnalyticsScreen, analystStatusWords } from './AnalyticsScreen'
 import { closeFrameCard, OtlpFrameCard } from './FrameCard'
@@ -91,6 +94,13 @@ function statusWords(
   if (!paused) return 'Capturing'
   const waiting = connection?.waiting() ?? 0
   return waiting > 0 ? `Paused, ${waiting} waiting` : 'Paused'
+}
+
+function isCapturing(
+  admin: OtlpAdmin,
+  connection: AdminConnection | null,
+): boolean {
+  return statusWords(admin, connection) === 'Capturing'
 }
 
 function serviceLabel(admin: OtlpAdmin): string {
@@ -193,10 +203,9 @@ export const OtlpApp = ({
           >
             <StatusDot
               tone={() =>
-                statusWords(admin, connection) === 'Capturing'
-                  ? 'success'
-                  : 'warning'
+                isCapturing(admin, connection) ? 'accent' : 'warning'
               }
+              pulse={() => isCapturing(admin, connection)}
               label={() => statusWords(admin, connection)}
             />
           </span>
@@ -429,6 +438,17 @@ export const OtlpApp = ({
           }}
         </span>
       </Popover>
+      {() =>
+        settings.agentCallLog() ? (
+          <span data-testid="agent-read-chip">
+            {() => {
+              const count = mcpCallLog().lastReadCount()
+              return count > 0 ? `Agent read ${count} records` : null
+            }}
+          </span>
+        ) : null
+      }
+      {() => (settings.agentCallLog() ? <AgentCallLog admin={admin} /> : null)}
     </StatusBar>
   )
 
@@ -490,6 +510,9 @@ export const OtlpApp = ({
           <button
             type="button"
             aria-label="Open Reatom Admin"
+            data-capturing={() =>
+              isCapturing(admin, connection) ? 'true' : 'false'
+            }
             css:openPosition={() => (floating ? 'absolute' : 'fixed')}
             css:openTop={launcherEdge('top')}
             css:openRight={launcherEdge('right')}
@@ -522,6 +545,9 @@ export const OtlpApp = ({
               pointer-events: auto;
               box-shadow: 0 12px 28px -16px oklch(0 0 0 / 0.7);
               ${focusVisible}
+              &[data-capturing='true'] {
+                ${capturingPulse}
+              }
             `}
             on:click={openPanel}
           >

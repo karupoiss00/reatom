@@ -1,5 +1,6 @@
-import { atom, peek } from '@reatom/core'
+import { atom, effect, peek } from '@reatom/core'
 
+import { mcpCallLog } from '../../mcp/callLog'
 import type { OtlpAdmin } from '../../otlp'
 import { hasActiveFilter } from '../../otlp'
 import type { AdminRecord, AdminRecordKind, AdminReatomKind } from '../../otlp'
@@ -7,11 +8,12 @@ import {
   Button,
   Disclosure,
   SearchField,
+  tokens,
   truncate,
   type,
 } from '../design-system'
 import { FilterCalculator } from './FilterCalculator'
-import { KindMark } from './KindMark'
+import { KindSwatch } from './KindMark'
 import type { RecordKindName } from './recordKind'
 
 let filterBarCounter = 0
@@ -43,6 +45,12 @@ export const OtlpFilterBar = ({ admin }: { admin: OtlpAdmin }) => {
     peek(admin.filterCalculator),
     `_Admin.filter.draft.${barId}`,
   )
+  effect(() => {
+    const pending = mcpCallLog().pendingCalculatorDraft()
+    if (pending === null) return
+    draft.set(pending)
+    mcpCallLog().pendingCalculatorDraft.set(null)
+  }, `_Admin.filter.pendingDraft.${barId}`)
 
   const toggleKind = (kind: AdminReatomKind) => {
     admin.filterKind.set(undefined)
@@ -148,9 +156,22 @@ export const OtlpFilterBar = ({ admin }: { admin: OtlpAdmin }) => {
           )
         }}
       >
-        {() =>
-          `Errors ${countRecords(admin.records(), (record) => record.error != null || record.outcome === 'error')}`
-        }
+        <span>Errors</span>
+        <span
+          css={`
+            ${type.meta}
+            color: ${tokens.text3};
+            font-variant-numeric: tabular-nums;
+          `}
+        >
+          {() =>
+            countRecords(
+              admin.records(),
+              (record) =>
+                record.error != null || record.outcome === 'error',
+            )
+          }
+        </span>
       </Button>
       {CHIP_KINDS.map((chip) => (
         <Button
@@ -159,10 +180,20 @@ export const OtlpFilterBar = ({ admin }: { admin: OtlpAdmin }) => {
           pressed={() => admin.filterReatomKind() === chip.reatomKind}
           onClick={() => toggleKind(chip.reatomKind)}
         >
-          <KindMark kind={chip.icon} />
-          <span>
+          <KindSwatch kind={chip.icon} />
+          <span>{chip.label}</span>
+          <span
+            css={`
+              ${type.meta}
+              color: ${tokens.text3};
+              font-variant-numeric: tabular-nums;
+            `}
+          >
             {() =>
-              `${chip.label} ${countRecords(admin.records(), (record) => record.reatomKind === chip.reatomKind)}`
+              countRecords(
+                admin.records(),
+                (record) => record.reatomKind === chip.reatomKind,
+              )
             }
           </span>
         </Button>
@@ -178,10 +209,17 @@ export const OtlpFilterBar = ({ admin }: { admin: OtlpAdmin }) => {
           if (next === 'log') admin.filterReatomKind.set(undefined)
         }}
       >
-        <KindMark kind="log" />
-        <span>
+        <KindSwatch kind="log" />
+        <span>LOG</span>
+        <span
+          css={`
+            ${type.meta}
+            color: ${tokens.text3};
+            font-variant-numeric: tabular-nums;
+          `}
+        >
           {() =>
-            `LOG ${countRecords(admin.records(), (record) => record.kind === 'log')}`
+            countRecords(admin.records(), (record) => record.kind === 'log')
           }
         </span>
       </Button>

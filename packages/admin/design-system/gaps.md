@@ -4,16 +4,6 @@ Keep unresolved system gaps here. Move closed entries in full to `design-system/
 
 ## Open gaps
 
-### Non-ghost pressed buttons lose their pressed fill on hover
-
-- **Source:** `src/view/design-system/Button.tsx`
-- **Need:** A person can see that a toggle button is on while the pointer is over it.
-- **Actual result:** The shared `:hover` background is painted after the pressed background for every variant except `ghost`. `ghost` has a later rule that keeps a pressed fill. `secondary` toggles, including pause and remote, lose the pressed fill on hover.
-- **Expected result:** Every variant that sets `pressed` keeps a pressed appearance while hovered, including with `prefers-reduced-motion`.
-- **Evidence:** Button contract, Behaviour and states. The chip rule therefore requires `variant="ghost"`.
-- **Next step:** A design-only repair of the hover rule so it does not replace a pressed fill. Contracts-only migration does not change this component.
-- **Decision needed:** none
-
 ### SearchField draws its own shortcut instead of Kbd
 
 - **Source:** `src/view/design-system/Field.tsx`

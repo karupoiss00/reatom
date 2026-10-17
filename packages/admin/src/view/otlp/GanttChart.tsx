@@ -3,8 +3,10 @@ import { atom, computed, effect, wrap } from '@reatom/core'
 import type { Gantt, GanttTime } from '../../gantt'
 import { ADMIN_GANTT_ROW_HEIGHT as ROW_HEIGHT } from '../../gantt'
 import type { GanttRecordSelection } from '../../gantt/selection'
+import { mcpCallLog } from '../../mcp/callLog'
 import type { AdminRecord, OtlpAdmin } from '../../otlp'
 import { recordHasError, recordLabel } from '../../otlp'
+import { adminSettings } from '../settings'
 import {
   analyticsContinuationText,
   analyticsShareText,
@@ -19,9 +21,14 @@ import {
   ToolbarGroup,
   ToolbarSeparator,
   ToolbarSpacer,
+  barFilled,
+  barHatch,
   focusVisible,
+  kindStripe,
+  kindStripeWidth,
   kindTokens,
   scrollable,
+  selectedRow,
   tokens,
   truncate,
   type,
@@ -336,7 +343,9 @@ const GanttRow = ({
       data-record-id={row.id}
       data-depth={() => String(depth())}
       data-kind={row.kind}
+      data-row-kind={() => kindName()}
       data-outcome={row.outcome ?? ''}
+      data-status={statusName ?? ''}
       data-band={() =>
         kindName() === 'action' && hasChildren() ? 'true' : 'false'
       }
@@ -353,6 +362,11 @@ const GanttRow = ({
       aria-rowindex={rowIndex}
       aria-selected={isSelected}
       data-highlighted={() => (isHighlighted() ? 'true' : 'false')}
+      data-agent-read={() =>
+        adminSettings().agentCallLog() && mcpCallLog().agentReadIds().has(row.id)
+          ? 'true'
+          : 'false'
+      }
       title={label}
       css={`
         box-sizing: border-box;
@@ -365,6 +379,26 @@ const GanttRow = ({
         color: ${tokens.text1};
         ${type.data}
         cursor: pointer;
+        --row-kind: ${kindTokens.other};
+        &[data-row-kind='action'] {
+          --row-kind: ${kindTokens.action};
+        }
+        &[data-row-kind='atom'] {
+          --row-kind: ${kindTokens.atom};
+        }
+        &[data-row-kind='computed'] {
+          --row-kind: ${kindTokens.computed};
+        }
+        &[data-row-kind='effect'] {
+          --row-kind: ${kindTokens.effect};
+        }
+        &[data-row-kind='log'] {
+          --row-kind: ${kindTokens.log};
+        }
+        [data-admin-colors='false'] & {
+          --row-kind: ${tokens.text3};
+        }
+        box-shadow: ${kindStripe('var(--row-kind)')};
         &[data-band='true']:not([aria-selected='true']):not(:hover) {
           background: color-mix(
             in oklch,
@@ -376,18 +410,20 @@ const GanttRow = ({
           &[data-band='true']:not([aria-selected='true']):not(:hover) {
           background: ${tokens.canvas};
         }
-        &:hover {
+        &:hover:not([aria-selected='true']) {
           background: ${tokens.surface2};
         }
         &[aria-selected='true'] {
+          ${selectedRow}
+          box-shadow: inset 2px 0 0 ${tokens.accent},
+            inset calc(2px + ${kindStripeWidth}) 0 0 var(--row-kind);
+        }
+        &[data-highlighted='true']:not([aria-selected='true']) {
           background: color-mix(
             in oklch,
-            ${tokens.accent} 24%,
+            ${tokens.accent} 12%,
             ${tokens.canvas}
           );
-        }
-        &[data-highlighted='true'] {
-          box-shadow: inset 3px 0 0 ${tokens.accent};
         }
       `}
       on:click={(event: MouseEvent) => {
@@ -461,6 +497,21 @@ const GanttRow = ({
           )
         }
         {() => <KindMark kind={kindName()} />}
+        {() =>
+          adminSettings().agentCallLog() &&
+          mcpCallLog().agentReadIds().has(row.id) ? (
+            <span
+              data-testid="gantt-agent-read"
+              title="Read by agent"
+              css={`
+                color: ${tokens.text3};
+                flex: none;
+              `}
+            >
+              →
+            </span>
+          ) : null
+        }
         <span
           data-testid="gantt-row-label"
           css={`
@@ -537,7 +588,7 @@ const GanttRow = ({
             bottom: 0;
             min-width: 2px;
             border-radius: var(--admin-radius-2);
-            background: var(--bar-color);
+            background: ${barFilled()};
             --bar-color: ${kindTokens.other};
             &[data-record-kind='action'] {
               --bar-color: ${kindTokens.action};
@@ -558,25 +609,11 @@ const GanttRow = ({
               --bar-color: ${tokens.text3};
             }
             &[data-status='error'] {
-              background: ${tokens.error};
-            }
-            &[data-status='abort'] {
-              background: repeating-linear-gradient(
-                135deg,
-                ${tokens.text3} 0 2px,
-                transparent 2px 5px
-              );
+              background: ${barFilled(tokens.error)};
             }
             &[data-status='pending'],
             &[data-status='suspense'] {
-              background: repeating-linear-gradient(
-                135deg,
-                var(--bar-color) 0 4px,
-                color-mix(in oklch, var(--bar-color) 35%, transparent) 4px 8px
-              );
-            }
-            &[data-status='pending'] {
-              mask-image: linear-gradient(90deg, black 70%, transparent);
+              background: ${barHatch};
             }
           `}
         />
@@ -643,15 +680,11 @@ const PathGanttRow = ({
         color: ${tokens.text1};
         ${type.data}
         cursor: pointer;
-        &:hover {
+        &:hover:not([aria-selected='true']) {
           background: ${tokens.surface2};
         }
         &[aria-selected='true'] {
-          background: color-mix(
-            in oklch,
-            ${tokens.accent} 24%,
-            ${tokens.canvas}
-          );
+          ${selectedRow}
         }
       `}
       on:click={(event: MouseEvent) => {

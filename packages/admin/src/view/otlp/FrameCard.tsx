@@ -12,6 +12,9 @@ import {
   Button,
   InspectorTabs,
   RailGraph,
+  kindPill,
+  kindStripe,
+  kindTokens,
   scrollable,
   tokens,
   type,
@@ -124,10 +127,17 @@ export const OtlpFrameCard = ({ admin }: { admin: OtlpAdmin }) => {
             `}
           >
             <header
+              data-row-kind={kind}
               css={`
                 display: grid;
                 gap: var(--admin-space-4);
                 min-width: 0;
+                padding-left: var(--admin-space-8);
+                --row-kind: ${kindColorVar(kind)};
+                [data-admin-colors='false'] & {
+                  --row-kind: ${tokens.text3};
+                }
+                box-shadow: ${kindStripe('var(--row-kind)')};
               `}
             >
               <h2
@@ -153,21 +163,35 @@ export const OtlpFrameCard = ({ admin }: { admin: OtlpAdmin }) => {
               <p
                 css={`
                   ${type.meta}
+                  display: flex;
+                  flex-wrap: wrap;
+                  align-items: center;
+                  gap: var(--admin-space-6);
                   margin: 0;
                   color: ${tokens.text2};
                 `}
               >
+                <span css={kindPill('var(--row-kind)')}>{kindLabel(record)}</span>
+                <span
+                  css={kindPill(
+                    record.outcome === 'error' || recordHasError(record)
+                      ? tokens.error
+                      : record.outcome === 'abort'
+                        ? tokens.warning
+                        : record.outcome === 'suspense'
+                          ? tokens.info
+                          : kindTokens.other,
+                  )}
+                >
+                  {record.outcome ?? 'ok'}
+                </span>
                 <span
                   css={`
-                    color: ${kindColorVar(kind)};
-                    [data-admin-colors='false'] & {
-                      color: inherit;
-                    }
+                    font-variant-numeric: tabular-nums;
                   `}
                 >
-                  {kindLabel(record)}
+                  {durationLabel(record)}
                 </span>
-                {` · ${record.outcome ?? 'ok'} · ${durationLabel(record)}`}
               </p>
             </header>
             <InspectorTabs value={admin.inspectorTab} />

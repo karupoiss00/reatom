@@ -560,7 +560,9 @@ export const GithubStarsFailure: Story = {
     await userEvent.click(adminUi().getByRole('button', { name: 'Errors' }))
     adminUi().getByRole('button', { name: 'Expand all' }).click()
     await clickRow(/repositoryStarCount|Service Unavailable/)
-    const card = adminUi().getByRole('complementary', { name: 'Frame' })
+    const card = await waitFor(() =>
+      adminUi().getByRole('complementary', { name: 'Frame' }),
+    )
     expect(within(card).getByRole('alert').textContent).toMatch(
       /Service Unavailable|error/i,
     )

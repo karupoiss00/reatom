@@ -41,20 +41,20 @@ export type AdminPaletteVars = {
 }
 
 const DUSK_VARS: AdminPaletteVars = {
-  '--admin-canvas': 'oklch(0.16 0.02 245)',
-  '--admin-surface-1': 'oklch(0.185 0.022 245)',
-  '--admin-surface-2': 'oklch(0.215 0.025 245)',
-  '--admin-surface-3': 'oklch(0.255 0.028 245)',
-  '--admin-text-1': 'oklch(0.94 0.012 275)',
-  '--admin-text-2': 'oklch(0.73 0.025 275)',
-  '--admin-text-3': 'oklch(0.58 0.028 275)',
-  '--admin-border-1': 'oklch(0.3 0.025 245)',
-  '--admin-border-2': 'oklch(0.4 0.03 245)',
+  '--admin-canvas': 'oklch(0.165 0.012 285)',
+  '--admin-surface-1': 'oklch(0.195 0.012 285)',
+  '--admin-surface-2': 'oklch(0.225 0.013 285)',
+  '--admin-surface-3': 'oklch(0.265 0.014 285)',
+  '--admin-text-1': 'oklch(0.93 0.012 295)',
+  '--admin-text-2': 'oklch(0.78 0.018 295)',
+  '--admin-text-3': 'oklch(0.64 0.016 295)',
+  '--admin-border-1': 'oklch(0.32 0.016 285)',
+  '--admin-border-2': 'oklch(0.42 0.018 285)',
   '--admin-accent': 'oklch(0.75 0.14 300)',
   '--admin-accent-strong': 'oklch(0.66 0.19 300)',
   '--admin-success': 'oklch(0.78 0.16 150)',
   '--admin-warning': 'oklch(0.82 0.16 85)',
-  '--admin-error': 'oklch(0.70 0.19 25)',
+  '--admin-error': 'oklch(0.68 0.19 25)',
   '--admin-info': 'oklch(0.74 0.13 235)',
   '--admin-kind-action': 'oklch(0.86 0.15 95)',
   '--admin-kind-atom': 'oklch(0.80 0.13 160)',
@@ -76,9 +76,23 @@ function wrapHue(hue: number): number {
   return ((hue % 360) + 360) % 360
 }
 
-function hueDistance(left: number, right: number): number {
+export function hueDistance(left: number, right: number): number {
   const delta = Math.abs(wrapHue(left) - wrapHue(right))
   return Math.min(delta, 360 - delta)
+}
+
+export function parseOklch(
+  value: string,
+): { l: number; c: number; h: number } | null {
+  const match = value.match(
+    /oklch\(\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)(?:deg)?\s*\)/i,
+  )
+  if (!match) return null
+  return {
+    l: Number(match[1]),
+    c: Number(match[2]),
+    h: Number(match[3]),
+  }
 }
 
 function mixHue(base: number, toward: number, amount: number): number {
@@ -142,7 +156,7 @@ function generatedPalette(
   const chroma = neutral ? 0 : clamp(seed.c, 0, 0.2)
   const dark = scheme === 'dark'
   const surfaceChroma = dark
-    ? clamp(chroma * 0.16, 0, 0.04)
+    ? clamp(chroma * 0.16, 0, 0.016)
     : clamp(chroma * 0.12, 0, 0.028)
   const textChroma = clamp(chroma * 0.1, 0, 0.03)
   const borderChroma = clamp(chroma * 0.22, 0, 0.05)
@@ -171,15 +185,15 @@ function generatedPalette(
     )
 
   return {
-    '--admin-canvas': oklch(dark ? 0.16 : 0.985, surfaceChroma, hue),
-    '--admin-surface-1': oklch(dark ? 0.19 : 0.965, surfaceChroma, hue),
-    '--admin-surface-2': oklch(dark ? 0.225 : 0.94, surfaceChroma * 1.15, hue),
-    '--admin-surface-3': oklch(dark ? 0.27 : 0.9, surfaceChroma * 1.3, hue),
-    '--admin-text-1': oklch(dark ? 0.94 : 0.25, textChroma, hue),
-    '--admin-text-2': oklch(dark ? 0.74 : 0.42, textChroma, hue),
-    '--admin-text-3': oklch(dark ? 0.6 : 0.52, textChroma * 0.8, hue),
+    '--admin-canvas': oklch(dark ? 0.165 : 0.985, surfaceChroma, hue),
+    '--admin-surface-1': oklch(dark ? 0.195 : 0.965, surfaceChroma, hue),
+    '--admin-surface-2': oklch(dark ? 0.225 : 0.94, surfaceChroma, hue),
+    '--admin-surface-3': oklch(dark ? 0.265 : 0.9, surfaceChroma, hue),
+    '--admin-text-1': oklch(dark ? 0.93 : 0.25, textChroma, hue),
+    '--admin-text-2': oklch(dark ? 0.78 : 0.42, textChroma, hue),
+    '--admin-text-3': oklch(dark ? 0.64 : 0.52, textChroma * 0.8, hue),
     '--admin-border-1': oklch(dark ? 0.32 : 0.86, borderChroma, hue),
-    '--admin-border-2': oklch(dark ? 0.44 : 0.74, borderChroma, hue),
+    '--admin-border-2': oklch(dark ? 0.42 : 0.74, borderChroma, hue),
     '--admin-accent': oklch(accentLightness, accentChroma, hue),
     '--admin-accent-strong': oklch(
       strongLightness,
@@ -187,8 +201,8 @@ function generatedPalette(
       hue,
     ),
     '--admin-success': status(150, 0.14),
-    '--admin-warning': status(85, 0.14),
-    '--admin-error': status(25, 0.16),
+    '--admin-warning': oklch(statusLightness, 0.16, 85),
+    '--admin-error': oklch(dark ? 0.68 : 0.48, 0.19, 25),
     '--admin-info': status(235, 0.12),
     '--admin-kind-action': kind(95),
     '--admin-kind-atom': kind(160),

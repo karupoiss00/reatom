@@ -1,5 +1,5 @@
 ---
-sourcesHash: ecf188c2c382c1e8a28a56113a634df81604692061b1dab8610089801abef005
+sourcesHash: 5be13da3090218e77c0ca6db7446a4f182e96a30fcbaaf968910b7456bd778ad
 id: status-bar
 description: >-
   Pin one line of session status to the bottom of the shell. StatusDot adds
@@ -35,14 +35,15 @@ Import `StatusBar` and `StatusDot` from `src/view/design-system`.
 ```
 
 - `StatusBar` `children` are the facts in that line, in reading order. The caller writes the counts and summaries.
-- `StatusDot` `tone` is `success`, `warning`, `error`, or `info`, or a zero-arg read of one of those. `error` is for a failed fact, `warning` for a degraded one, `success` for a healthy one, and `info` for a neutral count.
+- `StatusDot` `tone` is `success`, `warning`, `error`, `info`, or `accent`, or a zero-arg read of one of those. `error` is for a failed fact, `warning` for a degraded one, `success` for a healthy one, `info` for a neutral count, and `accent` for live capture.
 - `StatusDot` `label` is the visible text, or a zero-arg read. The words carry the meaning. The dot does not.
+- `StatusDot` `pulse` is optional. When true, the dot opacity eases 0.55↔1 over 1.4s. Reduced motion and a false pulse leave the dot steady.
 
 Colors are the status tokens in [tokens.ts](../../src/view/design-system/tokens.ts).
 
 ## Behaviour and states
 
-The bar is static aside from reactive children and a reactive tone or label. It does not dismiss. The dot color follows the tone.
+The bar is static aside from reactive children and a reactive tone, label, or pulse. It does not dismiss. The dot color follows the tone. A pulsed capturing dot stops when capture is paused.
 
 ## Accessibility
 

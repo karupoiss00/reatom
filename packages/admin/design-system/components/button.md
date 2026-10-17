@@ -1,5 +1,5 @@
 ---
-sourcesHash: a05e15d4e3c59a3e2acd3700cd048459d47c3d7a7e98b2b252e4e61865827cc7
+sourcesHash: ec227a1e64a9c99c5dfa382f51f7ec8e4f21dadb36272a75e7d8c55f95d8759f
 id: button
 description: >-
   Invoke one immediate action, or show one on/off choice such as a filter
@@ -17,7 +17,7 @@ examples:
 ## When to use
 
 - The person invokes one action that happens immediately, such as reset, pause, copy, or close. Omit `pressed`.
-- The person turns one independent choice on or off and that choice stays visible on the control, such as a filter chip or a mode. Pass `pressed`, and use `variant="ghost"` so the on state stays visible while the pointer is over the control. See [the pressed-hover gap](../gaps.md#non-ghost-pressed-buttons-lose-their-pressed-fill-on-hover) for every other variant.
+- The person turns one independent choice on or off and that choice stays visible on the control, such as a filter chip or a mode. Pass `pressed`. Ghost is the usual chip variant; every variant keeps its pressed fill and accent border while hovered.
 
 ## When not to use
 
@@ -56,7 +56,7 @@ Tokens come from [tokens.ts](../../src/view/design-system/tokens.ts). Do not pas
 
 Enabled, hovered, pressed, and disabled are the visible states. Disabled buttons do not run `onClick`. Pressed and not-pressed are independent of hover.
 
-On hover, every variant except `ghost` replaces the pressed background with the shared hover fill. `ghost` keeps a pressed fill. That is why chips use `ghost`. The other variants are [a recorded gap](../gaps.md#non-ghost-pressed-buttons-lose-their-pressed-fill-on-hover).
+A pressed control uses accent fill at 16% and an accent border at 55%. Hover on a pressed control keeps that fill and border. Hover on an unpressed control uses the shared accent wash. Danger pressed keeps the error fill on hover.
 
 Hover and press transitions follow the shared motion tokens and stop under reduced motion.
 

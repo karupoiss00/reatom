@@ -3,7 +3,9 @@ import { paletteVarBlock, paletteVars, DEFAULT_ACCENT } from './palette'
 export {
   ADMIN_SCHEME_IDS,
   DEFAULT_ACCENT,
+  hueDistance,
   isAdminAccent,
+  parseOklch,
   paletteVars,
 } from './palette'
 export type {
@@ -17,6 +19,23 @@ export const adminThemeVars = `
   color-scheme: dark;
   --admin-kind-log: var(--admin-text-2);
   --admin-kind-other: var(--admin-text-3);
+  --admin-kind-stripe: 3px;
+  --admin-error-wash: oklch(from var(--admin-error) l c h / 0.08);
+  --admin-bar-hatch: repeating-linear-gradient(
+    45deg,
+    color-mix(in oklch, var(--admin-text-3) 35%, transparent) 0 1px,
+    transparent 1px 5px
+  );
+  --admin-motion-pulse: 1.4s;
+  @keyframes admin-capture-pulse {
+    from,
+    to {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.55;
+    }
+  }
   --admin-font-ui: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
     'Segoe UI', sans-serif;
   --admin-font-data: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas,
@@ -63,6 +82,7 @@ export const tokens = {
   success: 'var(--admin-success)',
   warning: 'var(--admin-warning)',
   error: 'var(--admin-error)',
+  errorWash: 'var(--admin-error-wash)',
   info: 'var(--admin-info)',
   fontUi: 'var(--admin-font-ui)',
   fontData: 'var(--admin-font-data)',
@@ -151,6 +171,53 @@ export const size = {
 
 export function soft(token: string, amount = 14): string {
   return `color-mix(in oklch, ${token} ${amount}%, transparent)`
+}
+
+export const kindStripeWidth = 'var(--admin-kind-stripe)'
+
+export function barFilled(kind = 'var(--bar-color)'): string {
+  return `color-mix(in oklch, ${kind} 20%, transparent)`
+}
+
+export function barHollow(kind = 'var(--bar-color)'): string {
+  return `
+    background: transparent;
+    box-shadow: inset 0 0 0 1px ${kind};
+  `
+}
+
+export function barTick(kind = 'var(--bar-color)'): string {
+  return `
+    width: 2px;
+    min-width: 2px;
+    background: ${kind};
+    border-radius: 0;
+  `
+}
+
+export const barHatch = 'var(--admin-bar-hatch)'
+
+export function kindStripe(kind: string): string {
+  return `inset ${kindStripeWidth} 0 0 ${kind}`
+}
+
+export function kindPill(kind: string): string {
+  return `
+    display: inline-flex;
+    align-items: center;
+    height: 16px;
+    padding-inline: var(--admin-space-4);
+    border-radius: var(--admin-radius-2);
+    border: 1px solid ${soft(kind, 40)};
+    background: ${soft(kind, 12)};
+    color: ${kind};
+    font-family: ${tokens.fontUi};
+    font-size: 10px;
+    line-height: 16px;
+    font-weight: 650;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  `
 }
 
 export const MAX_RAIL_LANES = 5

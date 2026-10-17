@@ -61,7 +61,9 @@ test('accent color builds a light or dark palette', () => {
     expect(settings.scheme()).toBe('dark')
     expect(settings.accent()).toBe('#bc98f9')
     expect(settings.resolvedScheme()).toBe('dark')
-    expect(settings.palette()['--admin-canvas']).toBe('oklch(0.16 0.02 245)')
+    expect(settings.palette()['--admin-canvas']).toBe(
+      'oklch(0.165 0.012 285)',
+    )
     expect(settings.palette()['--admin-accent']).toBe('oklch(0.75 0.14 300)')
 
     settings.accent.set('#c2410c')
@@ -99,7 +101,7 @@ test('accent color survives an admin frame reset', () => {
   expect(ADMIN_FRAME.run(() => adminSettings().accent())).toBe('#c2410c')
   expect(
     ADMIN_FRAME.run(() => adminSettings().palette()['--admin-canvas']),
-  ).not.toBe('oklch(0.16 0.02 245)')
+  ).not.toBe('oklch(0.165 0.012 285)')
 })
 
 test('panel corner defaults to bottom right and persists', () => {

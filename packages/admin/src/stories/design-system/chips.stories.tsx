@@ -42,6 +42,12 @@ export const GhostChip: Story = {
             pressed={() => pressed()}
             onClick={() => pressed.set(!pressed())}
           />
+          <Button
+            variant="secondary"
+            label="ClickHouse"
+            pressed={() => pressed()}
+            onClick={() => pressed.set(!pressed())}
+          />
         </div>,
       ),
     )

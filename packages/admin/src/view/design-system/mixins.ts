@@ -1,4 +1,4 @@
-import { radius, size, tokens } from './tokens'
+import { radius, size, soft, tokens } from './tokens'
 
 export const visuallyHidden = `
   position: absolute;
@@ -55,7 +55,21 @@ export const interactive = `
 export const hairline = `1px solid ${tokens.border1}`
 
 export const selectedRow = `
-  background: color-mix(in oklch, ${tokens.accent} 40%, ${tokens.canvas});
+  background: ${tokens.surface2};
+  color: ${tokens.text1};
+  box-shadow: inset 2px 0 0 ${tokens.accent};
+`
+
+export const capturingPulse = `
+  animation: admin-capture-pulse var(--admin-motion-pulse) ease-in-out infinite;
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+`
+
+export const pressedFill = `
+  background: ${soft(tokens.accent, 16)};
+  border-color: ${soft(tokens.accent, 55)};
   color: ${tokens.text1};
 `
 

@@ -156,7 +156,7 @@ export const DebuggerWorkspace = ({
                 left={mainPane}
                 right={
                   <aside
-                    aria-label={readLabel}
+                    aria-label={() => readLabel()}
                     css={`
                       height: 100%;
                       min-width: 0;

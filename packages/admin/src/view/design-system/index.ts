@@ -12,12 +12,14 @@ export { Icon } from './Icon'
 export { Kbd } from './Kbd'
 export { INSPECTOR_TABS, InspectorTabs } from './InspectorTabs'
 export {
+  capturingPulse,
   controlBase,
   controlType,
   focusRing,
   focusVisible,
   hairline,
   interactive,
+  pressedFill,
   reducedMotion,
   scrollable,
   selectedRow,
@@ -43,10 +45,19 @@ export {
   SHELL_FOCUS_MAX,
   ADMIN_SCHEME_IDS,
   adminThemeVars,
+  barFilled,
+  barHatch,
+  barHollow,
+  barTick,
   DEFAULT_ACCENT,
+  hueDistance,
   isAdminAccent,
+  kindPill,
+  kindStripe,
+  kindStripeWidth,
   kindTokens,
   paletteVars,
+  parseOklch,
   railTokens,
   radius,
   size,
@@ -62,6 +73,7 @@ export type {
   AdminScheme,
 } from './tokens'
 export type { ButtonVariant } from './Button'
+export type { StatusTone } from './StatusBar'
 export type { DisclosureProps } from './Disclosure'
 export type { DrawerProps } from './Drawer'
 export type { KbdProps } from './Kbd'

@@ -76,6 +76,6 @@ SearchField still draws its own shortcut glyph. That is [a recorded gap](../gaps
 
 A valid composition uses a ghost chip that reports `aria-pressed`, proved by "Ghost chip toggles with click and Enter", and an advanced section that starts closed, proved by "Disclosure opens and closes from the keyboard".
 
-A violation is a chip that uses `variant="secondary"` with `pressed`, or an advanced section that starts open. The secondary chip also hits the [pressed-hover gap](../gaps.md#non-ghost-pressed-buttons-lose-their-pressed-fill-on-hover).
+A violation is a chip that uses `variant="secondary"` with `pressed`, or an advanced section that starts open.
 
 The product filter language and the live row list are out of this kit check.

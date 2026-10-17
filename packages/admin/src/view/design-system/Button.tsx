@@ -1,4 +1,4 @@
-import { controlBase, interactive } from './mixins'
+import { controlBase, interactive, pressedFill } from './mixins'
 import { radius, size, soft, tokens } from './tokens'
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'icon'
@@ -41,20 +41,24 @@ function variantCss(variant: ButtonVariant, pressed: boolean): string {
       padding: 0;
       justify-content: center;
       background: ${pressed ? soft(tokens.accent, 16) : 'transparent'};
-      border-color: ${pressed ? tokens.accent : tokens.border1};
+      border-color: ${pressed ? soft(tokens.accent, 55) : tokens.border1};
       color: ${pressed ? tokens.text1 : tokens.text2};
     `
   }
   if (variant === 'ghost') {
-    return `
-      background: ${pressed ? tokens.accent : 'transparent'};
-      border-color: ${pressed ? tokens.accent : tokens.border1};
-      color: ${pressed ? tokens.canvas : tokens.text2};
+    return pressed
+      ? pressedFill
+      : `
+      background: transparent;
+      border-color: ${tokens.border1};
+      color: ${tokens.text2};
     `
   }
-  return `
-    background: ${pressed ? soft(tokens.accent, 16) : tokens.surface2};
-    border-color: ${pressed ? tokens.accent : tokens.border1};
+  return pressed
+    ? pressedFill
+    : `
+    background: ${tokens.surface2};
+    border-color: ${tokens.border1};
     color: ${tokens.text1};
   `
 }
@@ -98,11 +102,16 @@ export const Button = ({
           opacity: 0.45;
           cursor: not-allowed;
         }
-        &:hover:not(:disabled) {
+        &:hover:not(:disabled):not([aria-pressed='true']) {
           background: ${soft(tokens.accent, 12)};
         }
-        &[data-variant='ghost'][aria-pressed='true']:hover:not(:disabled) {
-          background: ${tokens.accentStrong};
+        &[aria-pressed='true']:hover:not(:disabled) {
+          ${pressedFill}
+        }
+        &[data-variant='danger'][aria-pressed='true']:hover:not(:disabled) {
+          background: ${soft(tokens.error, 16)};
+          border-color: ${tokens.error};
+          color: ${tokens.error};
         }
       `}
       on:click={onClick}

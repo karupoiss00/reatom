@@ -12,6 +12,8 @@ import {
   RAIL_LANE_GAP,
   RAIL_LINE_WIDTH,
   RAIL_NODE_OUTER,
+  kindStripe,
+  kindTokens,
   railTokens,
   soft,
   tokens,
@@ -354,17 +356,22 @@ const RailRow = ({
         color: ${tokens.text1};
         text-align: start;
         cursor: pointer;
+        box-shadow: ${kindStripe(
+          node.kind === 'action' ? kindTokens.action : kindTokens.atom,
+        )};
         &:focus-visible {
           outline-offset: -2px;
         }
         &[data-lit] {
           background: ${soft(tokens.surface3, 45)};
         }
-        &:hover {
+        &:hover:not([aria-current='true']) {
           background: ${soft(tokens.surface3, 80)};
         }
         &[aria-current='true'] {
-          background: ${soft(tokens.info, 16)};
+          background: ${tokens.surface2};
+          outline: 1px solid ${tokens.accent};
+          outline-offset: -1px;
         }
         &[data-relation='related'] [data-node-name] {
           color: ${tokens.text2};

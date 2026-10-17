@@ -5,6 +5,11 @@ import { ADMIN_FRAME } from '../../root'
 import { matchStoryRootScreenshot } from '../../testing/visual'
 import {
   StatusDot,
+  barFilled,
+  barHatch,
+  barHollow,
+  barTick,
+  kindTokens,
   tokens,
   type as typeRoles,
 } from '../../view/design-system'
@@ -106,6 +111,53 @@ const TokenBoard = () => (
         <StatusDot tone="warning" label="Replay" />
         <StatusDot tone="error" label="Error" />
         <StatusDot tone="info" label="Info" />
+        <StatusDot tone="accent" label="Capturing" pulse />
+      </div>
+    </section>
+    <section>
+      <h2 css={`${typeRoles.title} margin: 0 0 var(--admin-space-8);`}>
+        Bar paints
+      </h2>
+      <div
+        css={`
+          display: grid;
+          gap: var(--admin-space-8);
+        `}
+      >
+        <span
+          css={`
+            display: block;
+            height: 10px;
+            width: 8rem;
+            border-radius: var(--admin-radius-2);
+            background: ${barFilled(kindTokens.action)};
+          `}
+        />
+        <span
+          css={`
+            display: block;
+            height: 10px;
+            width: 8rem;
+            border-radius: var(--admin-radius-2);
+            ${barHollow(kindTokens.computed)}
+          `}
+        />
+        <span
+          css={`
+            display: block;
+            height: 10px;
+            ${barTick(kindTokens.atom)}
+          `}
+        />
+        <span
+          css={`
+            display: block;
+            height: 10px;
+            width: 8rem;
+            border-radius: var(--admin-radius-2);
+            background: ${barHatch};
+          `}
+        />
       </div>
     </section>
   </div>
