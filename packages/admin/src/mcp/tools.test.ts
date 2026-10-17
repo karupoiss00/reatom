@@ -727,3 +727,27 @@ test('MCP output does not include live local values', () => {
   expect(JSON.stringify(mcp.search())).not.toContain(secret)
   expect(JSON.stringify(mcp.getState())).not.toContain(secret)
 })
+
+test('a non-error record with a 30 KB params object shrinks instead of missing', () => {
+  const { admin, mcp } = createMcp()
+  const blob = 'x'.repeat(30 * 1024)
+  ingest(admin, [
+    {
+      eventName: 'reatom.atom.update',
+      traceId: 'a'.repeat(32),
+      spanId: 'b'.repeat(16),
+      timeUnixNano: '1761000000000000000',
+      body: 'ok',
+      attributes: {
+        'event.name': 'reatom.atom.update',
+        'reatom.name': 'form.draft',
+        'reatom.kind': 'atom',
+        'reatom.params': { payload: blob },
+      },
+    },
+  ])
+  const stored = ADMIN_FRAME.run(() => admin.records()[0]!)
+  const packed = mcp.getRecord({ id: stored.id })
+  expect(packed.ok).toBe(true)
+  expect(jsonUtf8Bytes(packed)).toBeLessThanOrEqual(ADMIN_MCP_MAX_BYTES)
+})

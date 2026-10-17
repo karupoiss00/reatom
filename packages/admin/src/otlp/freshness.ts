@@ -1,5 +1,6 @@
 import type { AdminRecord } from './ingest.ts'
 import { ANALYTICS_MIN_SHARE_SESSIONS } from './analytics.ts'
+import { CLICKHOUSE_FETCH_LIMIT } from './clickhouse.ts'
 
 export interface FreshnessInput {
   source: 'live' | 'replay' | 'remote'
@@ -62,11 +63,11 @@ export function loadedRecordWindow(records: readonly AdminRecord[]): {
   return { start, end, spans, logs }
 }
 
-export function freshnessLabel(input: FreshnessInput): string {
+export function freshnessStateLabel(input: FreshnessInput): string {
   if (input.source === 'remote') {
     const window = loadedRecordWindow(input.records)
     if (window === undefined) {
-      return 'ClickHouse · newest 500 spans · 500 logs'
+      return `ClickHouse · newest ${CLICKHOUSE_FETCH_LIMIT} spans · ${CLICKHOUSE_FETCH_LIMIT} logs`
     }
     return `ClickHouse · loaded ${timeFormat.format(window.start)}–${timeFormat.format(window.end)} · ${window.spans} spans · ${window.logs} logs`
   }
@@ -76,9 +77,22 @@ export function freshnessLabel(input: FreshnessInput): string {
       ? `Paused · ${input.waiting} waiting`
       : 'Paused'
   }
-  const latest = latestRecordTime(input.records)
-  if (latest === undefined) return 'Capturing'
-  return `Capturing · last record ${formatRecordAge(input.now, latest)}`
+  return 'Capturing'
+}
+
+export function freshnessAgeLabel(
+  input: FreshnessInput,
+  latest = latestRecordTime(input.records),
+): string | undefined {
+  if (input.source !== 'live' || input.paused) return undefined
+  if (latest === undefined) return undefined
+  return `last record ${formatRecordAge(input.now, latest)}`
+}
+
+export function freshnessLabel(input: FreshnessInput): string {
+  const state = freshnessStateLabel(input)
+  const age = freshnessAgeLabel(input)
+  return age === undefined ? state : `${state} · ${age}`
 }
 
 export function attentionItems(input: {

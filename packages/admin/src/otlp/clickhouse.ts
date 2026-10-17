@@ -9,6 +9,8 @@ export interface ClickHouseJsonResult {
   data?: unknown[]
 }
 
+export const CLICKHOUSE_FETCH_LIMIT = 500
+
 export const CLICKHOUSE_SPAN_SQL = `SELECT
   toUnixTimestamp64Nano(Timestamp) AS startTimeUnixNano,
   TraceId,
@@ -24,7 +26,7 @@ export const CLICKHOUSE_SPAN_SQL = `SELECT
   ResourceAttributes
 FROM otel_traces
 ORDER BY Timestamp DESC
-LIMIT 500`
+LIMIT ${CLICKHOUSE_FETCH_LIMIT}`
 
 export const CLICKHOUSE_LOG_SQL = `SELECT
   toUnixTimestamp64Nano(Timestamp) AS timeUnixNano,
@@ -39,7 +41,7 @@ export const CLICKHOUSE_LOG_SQL = `SELECT
   ResourceAttributes
 FROM otel_logs
 ORDER BY Timestamp DESC
-LIMIT 500`
+LIMIT ${CLICKHOUSE_FETCH_LIMIT}`
 
 export const CLICKHOUSE_LOG_SQL_NO_EVENT = `SELECT
   toUnixTimestamp64Nano(Timestamp) AS timeUnixNano,
@@ -54,7 +56,7 @@ export const CLICKHOUSE_LOG_SQL_NO_EVENT = `SELECT
   ResourceAttributes
 FROM otel_logs
 ORDER BY Timestamp DESC
-LIMIT 500`
+LIMIT ${CLICKHOUSE_FETCH_LIMIT}`
 
 function nanoString(value: unknown): string {
   if (typeof value === 'string' && value !== '') return value

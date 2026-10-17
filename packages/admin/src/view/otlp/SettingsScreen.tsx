@@ -225,6 +225,7 @@ function AppearanceRadios<T extends string>({
             tabindex={() => (value() === option.id ? 0 : -1)}
             on:click={() => {
               value.set(option.id)
+              if (option.id === 'match') adminSettings().captureHostScheme()
             }}
             css={`
               display: inline-flex;

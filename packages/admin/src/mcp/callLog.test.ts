@@ -79,8 +79,10 @@ test('clear increments the write count and applyThisFilter fills the draft only'
   expect(log.entries().some((entry) => entry.tool === 'clear')).toBe(true)
   const searchEntry = log.entries().find((entry) => entry.tool === 'search')
   expect(searchEntry).toBeDefined()
-  log.applyThisFilter(searchEntry!)
-  expect(ADMIN_FRAME.run(() => log.pendingCalculatorDraft())).toBe('kind:action')
+  log.applyThisFilter(admin, searchEntry!)
+  expect(ADMIN_FRAME.run(() => admin.pendingCalculatorDraft())).toBe(
+    'kind:action',
+  )
   expect(ADMIN_FRAME.run(() => admin.filterCalculator())).toBe('')
 })
 
@@ -101,6 +103,32 @@ test('connectRemote passwords are redacted in the buffer', async () => {
   expect(entry).toBeDefined()
   expect(JSON.stringify(entry!.args).includes('super-secret')).toBe(false)
   expect(entry!.args).toEqual({ password: '***' })
+})
+
+test('connectRemote redacts userinfo in the url', async () => {
+  const admin = reatomOtlpAdmin({
+    sourceId: 'clickhouse',
+    resource: INSTANCE_RESOURCE,
+    fetch: async () =>
+      new Response(JSON.stringify({ error: 'denied' }), { status: 401 }),
+  })
+  const mcp = reatomOtlpMcp(admin)
+  await ADMIN_FRAME.run(async () => {
+    await wrap(
+      mcp.connectRemote({
+        url: 'https://user:pass@127.0.0.1:8123',
+        password: 'super-secret',
+      }),
+    )
+  })
+  const entry = mcpCallLog()
+    .entries()
+    .find((item) => item.tool === 'connectRemote')
+  expect(entry).toBeDefined()
+  expect(JSON.stringify(entry!.args)).not.toContain('super-secret')
+  expect(JSON.stringify(entry!.args)).not.toContain('user:')
+  expect((entry!.args as { url?: string }).url).toBe('https://127.0.0.1:8123/')
+  expect((entry!.args as { password?: string }).password).toBe('***')
   expect(mcpCallLog().writeCount()).toBe(1)
 })
 
@@ -141,6 +169,25 @@ test('showOnTimeline selects a still-loaded record from the call', () => {
     searched.data[0]!.id,
   )
   expect(ADMIN_FRAME.run(() => admin.view())).toBe('timeline')
+})
+
+test('reset keeps the call log model and rebuilds agent-read ids from the ring', () => {
+  const first = mcpCallLog()
+  first.push({
+    tool: 'search',
+    args: {},
+    ms: 1,
+    headline: 'ok',
+    ok: true,
+    recordIds: ['a', 'b'],
+  })
+  expect(ADMIN_FRAME.run(() => first.agentReadIds()).size).toBe(2)
+  resetMcpCallLog()
+  const second = mcpCallLog()
+  expect(second).toBe(first)
+  expect(second.entries()).toEqual([])
+  expect(ADMIN_FRAME.run(() => second.agentReadIds()).size).toBe(0)
+  expect(ADMIN_FRAME.run(() => second.lastReadCount())).toBe(0)
 })
 
 test('mcpFilterToCalculatorDraft prefers the calculator source', () => {

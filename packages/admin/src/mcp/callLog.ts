@@ -21,14 +21,13 @@ export interface AdminMcpCallEntry {
 
 export interface AdminMcpCallLog {
   revision: Atom<number>
-  pendingCalculatorDraft: Atom<string | null>
   agentReadIds: Atom<Set<string>>
   lastReadCount: Atom<number>
   entries: () => AdminMcpCallEntry[]
   writeCount: () => number
   totalMs: () => number
   push: (entry: AdminMcpCallEntry) => void
-  applyThisFilter: (entry: AdminMcpCallEntry) => void
+  applyThisFilter: (admin: OtlpAdmin, entry: AdminMcpCallEntry) => void
   showOnTimeline: (admin: OtlpAdmin, entry: AdminMcpCallEntry) => void
 }
 
@@ -48,12 +47,26 @@ export function mcpFilterToCalculatorDraft(filter: AdminMcpFilter): string {
   return clauses.join(' ')
 }
 
+function redactUrl(url: string): string {
+  try {
+    const parsed = new URL(url)
+    if (parsed.username === '' && parsed.password === '') return url
+    parsed.username = ''
+    parsed.password = ''
+    return parsed.toString()
+  } catch {
+    return url
+  }
+}
+
 export function redactMcpArgs(tool: string, args: unknown): unknown {
   if (tool !== 'connectRemote' || args === null || typeof args !== 'object') {
     return args
   }
-  if (!('password' in args)) return args
-  return { ...args, password: '***' }
+  const next = { ...(args as Record<string, unknown>) }
+  if ('password' in next) next.password = '***'
+  if (typeof next.url === 'string') next.url = redactUrl(next.url)
+  return next
 }
 
 export function recordIdsFromResult(
@@ -103,12 +116,15 @@ export function recordIdsFromResult(
 
 function createMcpCallLog(): AdminMcpCallLog {
   const revision = atom(0, '_Admin.mcp.callLogRevision')
-  const pendingCalculatorDraft = atom<string | null>(
-    null,
-    '_Admin.mcp.pendingCalculatorDraft',
-  )
-  const agentReadIds = atom(new Set<string>(), '_Admin.mcp.agentReadIds')
   const lastReadCount = atom(0, '_Admin.mcp.lastReadCount')
+  const agentReadIds = atom(new Set<string>(), '_Admin.mcp.agentReadIds')
+  const refreshAgentReadIds = () => {
+    const ids = new Set<string>()
+    for (const entry of storedEntries) {
+      for (const id of entry.recordIds) ids.add(id)
+    }
+    agentReadIds.set(ids)
+  }
   const entries = () => storedEntries
   const writeCount = () =>
     storedEntries.filter((entry) => ADMIN_MCP_WRITE_TOOLS.has(entry.tool)).length
@@ -122,20 +138,16 @@ function createMcpCallLog(): AdminMcpCallLog {
         : next
     ADMIN_FRAME.run(() => {
       if (entry.recordIds.length > 0) {
-        agentReadIds.set((current) => {
-          const ids = new Set(current)
-          for (const id of entry.recordIds) ids.add(id)
-          return ids
-        })
         lastReadCount.set(entry.recordIds.length)
       }
+      refreshAgentReadIds()
       revision.set(revision() + 1)
     })
   }
-  const applyThisFilter = (entry: AdminMcpCallEntry) => {
+  const applyThisFilter = (admin: OtlpAdmin, entry: AdminMcpCallEntry) => {
     if (!entry.filter) return
     ADMIN_FRAME.run(() => {
-      pendingCalculatorDraft.set(mcpFilterToCalculatorDraft(entry.filter!))
+      admin.pendingCalculatorDraft.set(mcpFilterToCalculatorDraft(entry.filter!))
     })
   }
   const showOnTimeline = (admin: OtlpAdmin, entry: AdminMcpCallEntry) => {
@@ -150,7 +162,6 @@ function createMcpCallLog(): AdminMcpCallLog {
   }
   return {
     revision,
-    pendingCalculatorDraft,
     agentReadIds,
     lastReadCount,
     entries,
@@ -169,12 +180,20 @@ export function mcpCallLog(): AdminMcpCallLog {
   return callLogModel
 }
 
-export function resetMcpCallLog(): void {
+function clearCallLogAtoms() {
   storedEntries = []
-  callLogModel = null
+  if (callLogModel === null) return
+  ADMIN_FRAME.run(() => {
+    callLogModel!.agentReadIds.set(new Set<string>())
+    callLogModel!.lastReadCount.set(0)
+    callLogModel!.revision.set(callLogModel!.revision() + 1)
+  })
+}
+
+export function resetMcpCallLog(): void {
+  clearCallLogAtoms()
 }
 
 onAdminReset(() => {
-  storedEntries = []
-  callLogModel = null
+  clearCallLogAtoms()
 })

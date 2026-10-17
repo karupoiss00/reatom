@@ -84,21 +84,42 @@ function isIdentityKey(key: string | undefined): boolean {
   return key !== undefined && IDENTITY_KEYS.has(key)
 }
 
-function mapStrings(value: unknown, maxChars: number, key?: string): unknown {
+function mapStrings(
+  value: unknown,
+  maxChars: number,
+  key?: string,
+  protectErrorPath = false,
+): unknown {
   if (isIdentityKey(key)) return value
-  if (isErrorPathKey(key) && key !== undefined) {
-    return capErrorPathValue(value, key)
+  if (protectErrorPath && isErrorPathKey(key) && key !== undefined) {
+    if (typeof value === 'string') return capErrorPathValue(value, key)
+    if (Array.isArray(value)) {
+      return value.map((item) => mapStrings(item, maxChars, undefined, true))
+    }
+    if (value && typeof value === 'object') {
+      const next: Record<string, unknown> = {}
+      for (const [innerKey, inner] of Object.entries(value)) {
+        next[innerKey] = mapStrings(inner, maxChars, innerKey, true)
+      }
+      return next
+    }
+    return value
   }
   if (typeof value === 'string') {
     return value.length > maxChars ? `${value.slice(0, maxChars)}…` : value
   }
   if (Array.isArray(value)) {
-    return value.map((item) => mapStrings(item, maxChars))
+    return value.map((item) =>
+      mapStrings(item, maxChars, undefined, protectErrorPath),
+    )
   }
   if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>
+    const protectThis =
+      protectErrorPath || record.hasError === true
     const next: Record<string, unknown> = {}
-    for (const [innerKey, inner] of Object.entries(value)) {
-      next[innerKey] = mapStrings(inner, maxChars, innerKey)
+    for (const [innerKey, inner] of Object.entries(record)) {
+      next[innerKey] = mapStrings(inner, maxChars, innerKey, protectThis)
     }
     return next
   }
@@ -137,19 +158,28 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
-function markLargeAttributeValues(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(markLargeAttributeValues)
+function markLargeAttributeValues(
+  value: unknown,
+  protectErrorPath = false,
+): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => markLargeAttributeValues(item, protectErrorPath))
+  }
   if (!isPlainObject(value)) return value
+  const protectThis = protectErrorPath || value.hasError === true
   const next: Record<string, unknown> = {}
   for (const [key, inner] of Object.entries(value)) {
-    if (isIdentityKey(key) || isErrorPathKey(key)) {
+    if (isIdentityKey(key) || (protectThis && isErrorPathKey(key))) {
       next[key] = inner
       continue
     }
     if (key === 'attributes' && isPlainObject(inner)) {
       const marked: Record<string, unknown> = {}
       for (const [attrKey, attrValue] of Object.entries(inner)) {
-        if (ERROR_PATH_ATTRIBUTE_KEYS.has(attrKey) || isIdentityKey(attrKey)) {
+        if (
+          isIdentityKey(attrKey) ||
+          (protectThis && ERROR_PATH_ATTRIBUTE_KEYS.has(attrKey))
+        ) {
           marked[attrKey] = attrValue
           continue
         }
@@ -164,7 +194,7 @@ function markLargeAttributeValues(value: unknown): unknown {
       next[key] = truncatedMarker(inner)
       continue
     }
-    next[key] = markLargeAttributeValues(inner)
+    next[key] = markLargeAttributeValues(inner, protectThis)
   }
   return next
 }

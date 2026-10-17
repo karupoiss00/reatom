@@ -7,9 +7,10 @@ let popoverCounter = 0
 
 export interface PopoverProps {
   /** Accessible name of the trigger button. */
-  triggerLabel: string
+  triggerLabel: string | (() => string)
   /** Accessible name of the panel. */
   label: string
+  placement?: 'top' | 'bottom'
   children?: Element | string | Array<Element | string>
 }
 
@@ -17,7 +18,12 @@ export interface PopoverProps {
  * Non-modal note anchored to its trigger. The panel is a descendant of the
  * trigger's tree, so it stays inside a shadow root.
  */
-export const Popover = ({ triggerLabel, label, children }: PopoverProps) => {
+export const Popover = ({
+  triggerLabel,
+  label,
+  placement = 'bottom',
+  children,
+}: PopoverProps) => {
   const panelId = `_AdminPopover${++popoverCounter}`
   const titleId = `${panelId}Title`
   const isOpen = atom(false, `_Admin.popover.open.${popoverCounter}`)
@@ -82,10 +88,13 @@ export const Popover = ({ triggerLabel, label, children }: PopoverProps) => {
               ${reducedMotion}
               position: absolute;
               z-index: 3;
-              inset-block-start: calc(100% + var(--admin-space-4));
+              inset-block-start: ${placement === 'top' ? 'auto' : 'calc(100% + var(--admin-space-4))'};
+              inset-block-end: ${placement === 'top' ? 'calc(100% + var(--admin-space-4))' : 'auto'};
               inset-inline-start: 0;
               min-width: 12rem;
-              max-width: 18rem;
+              max-width: ${placement === 'top' ? '28rem' : '18rem'};
+              max-height: ${placement === 'top' ? '20rem' : 'none'};
+              overflow: ${placement === 'top' ? 'auto' : 'visible'};
               padding: var(--admin-space-8);
               background: ${tokens.surface2};
               color: ${tokens.text1};

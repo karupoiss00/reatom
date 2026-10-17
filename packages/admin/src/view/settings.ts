@@ -143,13 +143,7 @@ function createAdminSettings(): AdminSettings {
   const resolvedScheme = computed((): AdminResolvedScheme => {
     const mode = scheme()
     if (mode === 'light' || mode === 'dark') return mode
-    if (mode === 'match') {
-      const snapped = matchedHostScheme()
-      if (snapped !== null) return snapped
-      const next = readHostScheme(typeof document === 'undefined' ? null : document)
-      matchedHostScheme.set(next)
-      return next
-    }
+    if (mode === 'match') return matchedHostScheme() ?? 'dark'
     return prefersDark() ? 'dark' : 'light'
   }, '_Admin.settings.resolvedScheme')
   const captureHostScheme = action((from?: Document | Element | null) => {

@@ -4,6 +4,7 @@ import {
   firstExceptionMessageLine,
   LOCAL_VALUES,
   recordErrorMessage,
+  recordErrorStack,
   recordErrorType,
   recordReatomName,
   stackCulprit,
@@ -11,6 +12,28 @@ import {
 } from './ingest.ts'
 import { recordHasError, recordLabel } from './bind.ts'
 import { recordValues } from './values.ts'
+
+const LIVE_TEXT_CAP = 4096
+
+function safeLiveText(value: unknown): string {
+  const seen = new WeakSet<object>()
+  try {
+    const text = JSON.stringify(value, (_key, inner) => {
+      if (typeof inner === 'bigint') return inner.toString()
+      if (inner !== null && typeof inner === 'object') {
+        if (seen.has(inner)) return '[Circular]'
+        seen.add(inner)
+      }
+      return inner
+    })
+    if (text === undefined) return '[unserializable]'
+    return text.length > LIVE_TEXT_CAP
+      ? `${text.slice(0, LIVE_TEXT_CAP - 1)}…`
+      : text
+  } catch {
+    return '[unserializable]'
+  }
+}
 
 export function frameCalculatorExpression(record: AdminRecord): string {
   return `name=${quoteCalculatorValue(recordReatomName(record))}`
@@ -43,12 +66,7 @@ export function copyForAgentMarkdown(
     if (type !== '' || message !== '') {
       lines.push(`exception: ${[type, message].filter(Boolean).join(' — ')}`)
     }
-    const culprit = stackCulprit(
-      record.error?.stack ??
-        (typeof record.attributes['exception.stacktrace'] === 'string'
-          ? record.attributes['exception.stacktrace']
-          : undefined),
-    )
+    const culprit = stackCulprit(recordErrorStack(record))
     if (culprit) lines.push(`culprit: ${culprit}`)
   }
   const values = recordValues(record)
@@ -57,7 +75,7 @@ export function copyForAgentMarkdown(
   } else if (includeLive) {
     const live = record[LOCAL_VALUES]
     if (live !== undefined) {
-      lines.push(`live: ${JSON.stringify(live)}`)
+      lines.push(`live: ${safeLiveText(live)}`)
     }
   }
   return lines.join('\n')

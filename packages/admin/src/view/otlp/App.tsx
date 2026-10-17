@@ -12,7 +12,8 @@ import type { AdminConnection, OtlpAdmin, OtlpAdminOptions } from '../../otlp'
 import {
   ADMIN_CLEAR_UNDO_MS,
   attentionItems,
-  freshnessLabel,
+  freshnessAgeLabel,
+  freshnessStateLabel,
   reatomOtlpAdmin,
 } from '../../otlp'
 import { ADMIN_FRAME } from '../../root'
@@ -99,18 +100,18 @@ function isCapturing(
   return !(connection ? connection.paused() : admin.paused())
 }
 
-function currentFreshness(
+function freshnessInput(
   admin: OtlpAdmin,
   connection: AdminConnection | null,
   now: number,
-): string {
-  return freshnessLabel({
+) {
+  return {
     source: admin.source(),
     paused: connection ? connection.paused() : admin.paused(),
     waiting: connection?.waiting() ?? 0,
     now,
     records: admin.records(),
-  })
+  }
 }
 
 function serviceLabel(admin: OtlpAdmin): string {
@@ -138,15 +139,19 @@ export const OtlpApp = ({
   const undoOpen = atom(false, `_Admin.shell.undoOpen.${shellId}`)
   const undoGeneration = atom(0, `_Admin.shell.undoGeneration.${shellId}`)
   const freshnessNow = atom(Date.now(), `_Admin.shell.freshness.${shellId}`)
+  const minimized =
+    sharedMinimized ?? atom(false, `_Admin.shell.minimized.${shellId}`)
+  const closed = sharedClosed ?? atom(false, `_Admin.shell.closed.${shellId}`)
   effect(async () => {
+    if (closed() || minimized()) return
+    if (admin.source() !== 'live') return
+    const paused = connection ? connection.paused() : admin.paused()
+    if (paused) return
     while (true) {
       freshnessNow.set(Date.now())
       await wrap(sleep(1000))
     }
   }, `_Admin.shell.freshnessTick.${shellId}`)
-  const minimized =
-    sharedMinimized ?? atom(false, `_Admin.shell.minimized.${shellId}`)
-  const closed = sharedClosed ?? atom(false, `_Admin.shell.closed.${shellId}`)
   const launcherEdge = (side: 'top' | 'right' | 'bottom' | 'left') => () => {
     if (floating) return '0px'
     const corner = settings.corner()
@@ -160,6 +165,11 @@ export const OtlpApp = ({
   const openPanel = () => {
     minimized.set(false)
     closed.set(false)
+  }
+  const openErrors = () => {
+    openPanel()
+    admin.view.set('timeline')
+    admin.filterHasError.set(true)
   }
   let localSnapshot: ReturnType<OtlpAdmin['records']> | null = null
 
@@ -224,7 +234,9 @@ export const OtlpApp = ({
               }
               pulse={() => isCapturing(admin, connection)}
               label={() =>
-                currentFreshness(admin, connection, freshnessNow())
+                freshnessStateLabel(
+                  freshnessInput(admin, connection, freshnessNow()),
+                )
               }
             />
           </span>
@@ -464,7 +476,15 @@ export const OtlpApp = ({
   const status = (
     <StatusBar>
       <span role="status">
-        {() => currentFreshness(admin, connection, freshnessNow())}
+        {() => freshnessStateLabel(freshnessInput(admin, connection, freshnessNow()))}
+      </span>
+      <span aria-hidden="true">
+        {() =>
+          freshnessAgeLabel(
+            freshnessInput(admin, connection, freshnessNow()),
+            admin.latestRecordTime(),
+          )
+        }
       </span>
       <span>
         {() => {
@@ -527,7 +547,7 @@ export const OtlpApp = ({
         if (stats.inFlight > 0) parts.push(`in flight ${stats.inFlight}`)
         if (stats.exported > 0) parts.push(`exported ${stats.exported}`)
         if (parts.length === 0) return null
-        return parts.join(' · ')
+        return <span>{parts.join(' · ')}</span>
       }}
       {() =>
         admin.localValuesTrimmed() ? (
@@ -545,26 +565,36 @@ export const OtlpApp = ({
           <span>Shares hide below 5 sessions</span>
         ) : null
       }}
-      {() => {
-        const items = attentionItems({
-          olderRecordsDropped: connection?.olderRecordsDropped() ?? false,
-          localValuesTrimmed: admin.localValuesTrimmed(),
-          transportQuarantined:
-            connection?.stats()?.transportQuarantined ?? false,
-          inProgressCount: admin.inProgress().length,
-          analyticsSessions: admin.analytics.sessions().length,
-        })
-        if (items.length === 0) return null
-        return (
-          <Popover triggerLabel="Needs attention" label="Needs attention">
-            <div
-              css={`
-                display: grid;
-                gap: var(--admin-space-8);
-                min-width: 14rem;
-              `}
-            >
-              {items.map((item) => (
+      <span
+        prop:hidden={() =>
+          attentionItems({
+            olderRecordsDropped: connection?.olderRecordsDropped() ?? false,
+            localValuesTrimmed: admin.localValuesTrimmed(),
+            transportQuarantined:
+              connection?.stats()?.transportQuarantined ?? false,
+            inProgressCount: admin.inProgress().length,
+            analyticsSessions: admin.analytics.sessions().length,
+          }).length === 0
+        }
+      >
+        <Popover triggerLabel="Needs attention" label="Needs attention">
+          <div
+            css={`
+              display: grid;
+              gap: var(--admin-space-8);
+              min-width: 14rem;
+            `}
+          >
+            {() =>
+              attentionItems({
+                olderRecordsDropped:
+                  connection?.olderRecordsDropped() ?? false,
+                localValuesTrimmed: admin.localValuesTrimmed(),
+                transportQuarantined:
+                  connection?.stats()?.transportQuarantined ?? false,
+                inProgressCount: admin.inProgress().length,
+                analyticsSessions: admin.analytics.sessions().length,
+              }).map((item) => (
                 <div
                   css={`
                     display: grid;
@@ -578,25 +608,26 @@ export const OtlpApp = ({
                     {item.next}
                   </span>
                 </div>
-              ))}
-            </div>
-          </Popover>
-        )
-      }}
-      {() => {
-        const reasons = connection?.stats()?.droppedByReason ?? {}
-        const entries = Object.entries(reasons)
-        if (entries.length === 0) return null
-        return (
-          <Popover triggerLabel="Drop reasons" label="Dropped by reason">
-            <span>
-              {entries
+              ))
+            }
+          </div>
+        </Popover>
+      </span>
+      <span
+        prop:hidden={() =>
+          Object.keys(connection?.stats()?.droppedByReason ?? {}).length === 0
+        }
+      >
+        <Popover triggerLabel="Drop reasons" label="Dropped by reason">
+          <span>
+            {() =>
+              Object.entries(connection?.stats()?.droppedByReason ?? {})
                 .map(([reason, count]) => `${reason}: ${count}`)
-                .join(', ')}
-            </span>
-          </Popover>
-        )
-      }}
+                .join(', ')
+            }
+          </span>
+        </Popover>
+      </span>
       {() =>
         settings.agentCallLog() ? (
           <span data-testid="agent-read-chip">
@@ -708,56 +739,83 @@ export const OtlpApp = ({
               &[data-capturing='true'] {
                 ${capturingPulse}
               }
-              &[data-errors='true']::after {
-                content: '';
-                position: absolute;
-                top: 4px;
-                right: 4px;
-                width: 8px;
-                height: 8px;
-                border-radius: 999px;
-                background: ${tokens.error};
-              }
             `}
-            on:click={() => {
-              openPanel()
-              if (admin.errorCount() > 0) {
-                admin.view.set('timeline')
-                admin.filterHasError.set(true)
-              }
-            }}
+            on:click={() => openPanel()}
           >
             R
+            {() =>
+              admin.errorCount() > 0 ? (
+                <span
+                  role="button"
+                  tabindex={0}
+                  aria-label="Show errors"
+                  css={`
+                    position: absolute;
+                    top: 4px;
+                    right: 4px;
+                    width: 8px;
+                    height: 8px;
+                    border-radius: 999px;
+                    background: ${tokens.error};
+                  `}
+                  on:click={(event: MouseEvent) => {
+                    event.stopPropagation()
+                    openErrors()
+                  }}
+                  on:keydown={(event: KeyboardEvent) => {
+                    if (event.key !== 'Enter' && event.key !== ' ') return
+                    event.preventDefault()
+                    event.stopPropagation()
+                    openErrors()
+                  }}
+                />
+              ) : null
+            }
           </button>
         ) : minimized() ? (
           <Toolbar>
             <ToolbarGroup>
               <span role="status">
-                {() => currentFreshness(admin, connection, freshnessNow())}
+                {() =>
+                  freshnessStateLabel(
+                    freshnessInput(admin, connection, freshnessNow()),
+                  )
+                }
               </span>
-              {() =>
-                admin.errorCount() > 0 ? (
-                  <span
-                    aria-label="Errors in capture"
-                    css={`
-                      width: 8px;
-                      height: 8px;
-                      border-radius: 999px;
-                      background: ${tokens.error};
-                    `}
-                  />
-                ) : null
-              }
+              <span aria-hidden="true">
+                {() =>
+                  freshnessAgeLabel(
+                    freshnessInput(admin, connection, freshnessNow()),
+                    admin.latestRecordTime(),
+                  )
+                }
+              </span>
+              <span>
+                {() =>
+                  admin.errorCount() > 0 ? (
+                    <button
+                      type="button"
+                      aria-label="Show errors"
+                      css={`
+                        width: 8px;
+                        height: 8px;
+                        padding: 0;
+                        border: 0;
+                        border-radius: 999px;
+                        background: ${tokens.error};
+                        cursor: pointer;
+                      `}
+                      on:click={() => openErrors()}
+                    />
+                  ) : null
+                }
+              </span>
             </ToolbarGroup>
             <ToolbarSpacer />
             <Button
               label="Show admin"
               onClick={() => {
                 minimized.set(false)
-                if (admin.errorCount() > 0) {
-                  admin.view.set('timeline')
-                  admin.filterHasError.set(true)
-                }
               }}
             >
               Show

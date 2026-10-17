@@ -284,11 +284,22 @@ function parseCssRgb(
   const hex = value.match(/^#([0-9a-f]{3,8})$/i)
   if (!hex) return null
   const raw = hex[1]
+  if (raw === undefined) return null
   if (raw.length === 3 || raw.length === 4) {
-    const r = Number.parseInt(raw[0] + raw[0], 16)
-    const g = Number.parseInt(raw[1] + raw[1], 16)
-    const b = Number.parseInt(raw[2] + raw[2], 16)
-    const a = raw.length === 4 ? Number.parseInt(raw[3] + raw[3], 16) / 255 : 1
+    const rDigit = raw[0]
+    const gDigit = raw[1]
+    const bDigit = raw[2]
+    const aDigit = raw[3]
+    if (rDigit === undefined || gDigit === undefined || bDigit === undefined) {
+      return null
+    }
+    const r = Number.parseInt(rDigit + rDigit, 16)
+    const g = Number.parseInt(gDigit + gDigit, 16)
+    const b = Number.parseInt(bDigit + bDigit, 16)
+    const a =
+      raw.length === 4 && aDigit !== undefined
+        ? Number.parseInt(aDigit + aDigit, 16) / 255
+        : 1
     return { r, g, b, a }
   }
   if (raw.length === 6 || raw.length === 8) {

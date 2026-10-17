@@ -48,3 +48,18 @@ test('copy for agent includes causes and exception and omits live values', () =>
   expect(markdown).not.toContain('secret')
   expect(frameMcpSnippet(child)).toBe('getRecord({ id: "rec-1" })')
 })
+
+test('copy for agent with live values survives circular state', () => {
+  const state: { self?: unknown } = {}
+  const live = {
+    state,
+    params: [1] as const,
+  }
+  state.self = live
+  const cyclic = record({
+    [LOCAL_VALUES]: live,
+  })
+  const markdown = copyForAgentMarkdown(cyclic, [cyclic], true)
+  expect(markdown).toContain('live:')
+  expect(markdown).toContain('[Circular]')
+})
