@@ -1422,18 +1422,20 @@ export const OtlpGanttChart = <Node, Key = Node>({
             >
               {() => adapter.summary()}
             </span>
-            {() =>
-              adapter.live && admin.inProgress().length > 0 ? (
-                <span
-                  css={`
-                    ${type.meta}
-                    color: ${tokens.text3};
-                  `}
-                >
-                  Hatched bars are still in progress
-                </span>
-              ) : null
-            }
+            <span>
+              {() =>
+                adapter.live && admin.inProgress().length > 0 ? (
+                  <span
+                    css={`
+                      ${type.meta}
+                      color: ${tokens.text3};
+                    `}
+                  >
+                    Hatched bars are still in progress
+                  </span>
+                ) : null
+              }
+            </span>
           </Toolbar>
         </div>
       </div>

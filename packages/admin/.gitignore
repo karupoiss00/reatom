@@ -1,3 +1,4 @@
 test-results
 storybook-static
 .vitest-attachments
+.vitest/attachments
