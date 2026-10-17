@@ -7,6 +7,11 @@ import { ADMIN_FRAME } from '../root'
 import {
   ALL_SESSIONS_LABEL,
   analyticsBreakdown,
+  analyticsConsentCounts,
+  analyticsDeltaText,
+  analyticsFunnelMeta,
+  analyticsHalfWindowDeltas,
+  analyticsPercentText,
   type AnalyticsPathNode,
   analyticsPathTree,
   analyticsSegment,
@@ -394,6 +399,8 @@ describe('totals and breakdowns', () => {
       (row) => row.key === '/goods/:id',
     )
     expect(goods).toMatchObject({ sessions: 5, pageViews: 6, visitors: 4 })
+    expect(rows('campaign')).toEqual([['spring', 1]])
+    expect(rows('clickId')).toEqual([['gclid', 1]])
   })
 
   test('a filter selects whole sessions, and exclusion finds drop-offs', () => {
@@ -617,6 +624,50 @@ describe('trend and session selection', () => {
     expect(
       epoch.buckets.reduce((sum, bucket) => sum + bucket.sessions, 0),
     ).toBe(2)
+    expect(trend.buckets.some((bucket) => bucket.pageViews > 0)).toBe(true)
+  })
+
+  test('half-window deltas need five sessions on each side', () => {
+    const sessions = analyticsSessions(shopRecords())
+    expect(analyticsHalfWindowDeltas(sessions)).toBeNull()
+    const padded = [
+      ...sessions,
+      ...sessions.map((session, index) => ({
+        ...session,
+        id: `extra-${index}`,
+        start: session.start + 1_000_000,
+      })),
+    ]
+    const deltas = analyticsHalfWindowDeltas(padded)
+    expect(deltas).not.toBeNull()
+    expect(deltas!.first.sessions).toBeGreaterThanOrEqual(5)
+    expect(deltas!.second.sessions).toBeGreaterThanOrEqual(5)
+  })
+
+  test('consent counts treat missing session.id as excluded', () => {
+    const records = [
+      ...shopRecords().slice(0, 3),
+      analyticsLog(
+        'app.page_view',
+        T0,
+        { 'url.path': '/private', 'app.visitor.id': 'anon' },
+        'no-consent',
+      ),
+    ]
+    expect(analyticsConsentCounts(records)).toEqual({
+      consentedSessions: 1,
+      excludedSessions: 1,
+    })
+  })
+
+  test('funnel meta hides shares below five sessions', () => {
+    expect(analyticsFunnelMeta(2, 1, 2, 1, 2)).toBe('2 · — · ↓—')
+    expect(analyticsFunnelMeta(6, 0.5, 12, 0.5, 12)).toBe(
+      `6 · ${analyticsPercentText(0.5, 12)} · ↓${analyticsPercentText(0.5, 12)}`,
+    )
+    expect(analyticsDeltaText(8, 5)).toBe('+3')
+    expect(analyticsDeltaText(2, 5)).toBe('-3')
+    expect(analyticsDeltaText(5, 5)).toBeUndefined()
   })
 
   test('no active filter keeps every session in both modes', () => {

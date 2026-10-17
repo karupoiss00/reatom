@@ -1,5 +1,5 @@
 ---
-sourcesHash: ef840d2ff10d4ed5dfaae53d7713864b528aa740cb9c9b3e028529d2651dc50f
+sourcesHash: 7e87283461d730dd10ad989ceca6cc24d892300b95812a865aa3f518955df5f2
 id: empty-state
 description: >-
   Explain why a region has no rows and offer at most one next action.
@@ -31,12 +31,18 @@ Import `EmptyState` from `src/view/design-system`.
   title="No records"
   description="Atoms nobody touched are absent."
   action={<Button label="Reset filters" onClick={reset} />}
+  icon="timeline"
+  docsHref="https://v1001.reatom.dev"
+  docsLabel="Docs"
 />
 ```
 
 - `title` is the heading. The caller states the empty condition in a few words.
 - `description` is one paragraph that says why it is empty or what is missing.
 - `action` is one element, usually a [Button](./button.md), or null. The default is null. Omit it when there is no single next step.
+- `icon` is an optional 32px kind-colored tile. Omit it in dense table empties.
+- `docsHref` is an optional ghost link. `docsLabel` defaults to Docs.
+- `detail` is optional extra content such as a code chip row.
 
 ## Behaviour and states
 

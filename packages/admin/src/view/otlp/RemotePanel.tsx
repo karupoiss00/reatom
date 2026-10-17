@@ -7,6 +7,7 @@ import {
   tokens,
   type,
 } from '../design-system'
+import { ClickHouseEmptyState } from './emptyStates'
 
 export interface OtlpRemotePanelProps {
   admin: OtlpAdmin
@@ -129,18 +130,20 @@ export const OtlpRemotePanel = ({ admin }: OtlpRemotePanelProps) => {
       </p>
       {() => {
         const message = admin.remoteForm.submit.error()?.message ?? ''
-        if (!/ClickHouse 40[13]/.test(message)) return null
+        if (message === '') return null
         return (
-          <p
+          <div
             css={`
               grid-column: 1 / -1;
-              margin: 0;
-              ${type.body}
-              color: ${tokens.text1};
             `}
           >
-            Check the ClickHouse user and password, then try Connect again.
-          </p>
+            <ClickHouseEmptyState
+              message={message}
+              onRetry={() => {
+                void admin.remoteForm.submit()
+              }}
+            />
+          </div>
         )
       }}
     </form>

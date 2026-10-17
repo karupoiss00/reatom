@@ -1,6 +1,7 @@
 import type { Atom } from '@reatom/core'
 
 import {
+  Eyebrow,
   Hint,
   focusVisible,
   reducedMotion,
@@ -254,32 +255,12 @@ function AppearanceSection({ settings }: { settings: AdminSettings }) {
         gap: var(--admin-space-12);
       `}
     >
-      <div
-        css={`
-          display: flex;
-          flex-wrap: wrap;
-          align-items: baseline;
-          gap: var(--admin-space-8);
-        `}
+      <Eyebrow
+        heading
+        summary={() => `${settings.resolvedScheme()} · ${settings.accent()}`}
       >
-        <h2
-          css={`
-            ${type.title}
-            margin: 0;
-            color: ${tokens.text1};
-          `}
-        >
-          Appearance
-        </h2>
-        <span
-          css={`
-            ${type.meta}
-            color: ${tokens.text3};
-          `}
-        >
-          {() => `${settings.resolvedScheme()} · ${settings.accent()}`}
-        </span>
-      </div>
+        Appearance
+      </Eyebrow>
       <Hint>
         Light, Dark, or the device scheme. The accent color builds the palette.
       </Hint>
@@ -368,32 +349,9 @@ function WindowSection({ settings }: { settings: AdminSettings }) {
         gap: var(--admin-space-12);
       `}
     >
-      <div
-        css={`
-          display: flex;
-          flex-wrap: wrap;
-          align-items: baseline;
-          gap: var(--admin-space-8);
-        `}
-      >
-        <h2
-          css={`
-            ${type.title}
-            margin: 0;
-            color: ${tokens.text1};
-          `}
-        >
-          Window
-        </h2>
-        <span
-          css={`
-            ${type.meta}
-            color: ${tokens.text3};
-          `}
-        >
-          {() => settings.corner()}
-        </span>
-      </div>
+      <Eyebrow heading summary={() => settings.corner()}>
+        Window
+      </Eyebrow>
       <Hint>Closing the panel leaves its icon in this corner.</Hint>
       <AppearanceRadios
         label="Panel corner"
@@ -478,36 +436,17 @@ export const SettingsScreen = () => {
                 }
               `}
             >
-              <div
-                css={`
-                  display: flex;
-                  flex-wrap: wrap;
-                  align-items: baseline;
-                  gap: var(--admin-space-8);
-                `}
+              <Eyebrow
+                heading
+                summary={
+                  section.id === 'display'
+                    ? () =>
+                        `${settings.icons() ? 'Icons on' : 'Icons off'} · ${settings.colors() ? 'Colors on' : 'Colors off'}`
+                    : undefined
+                }
               >
-                <h2
-                  css={`
-                    ${type.title}
-                    margin: 0;
-                    color: ${tokens.text1};
-                  `}
-                >
-                  {section.title}
-                </h2>
-                {section.id === 'display' ? (
-                  <span
-                    css={`
-                      ${type.meta}
-                      color: ${tokens.text3};
-                    `}
-                  >
-                    {() =>
-                      `${settings.icons() ? 'Icons on' : 'Icons off'} · ${settings.colors() ? 'Colors on' : 'Colors off'}`
-                    }
-                  </span>
-                ) : null}
-              </div>
+                {section.title}
+              </Eyebrow>
               {section.options.length === 0 ? (
                 <p
                   css={`

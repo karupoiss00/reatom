@@ -50,6 +50,7 @@ export const adminThemeVars = `
   --admin-radius-2: 2px;
   --admin-radius-4: 4px;
   --admin-radius-6: 6px;
+  --admin-radius-16: 16px;
   --admin-toolbar-height: 36px;
   --admin-tabs-height: 40px;
   --admin-filter-height: 42px;
@@ -120,6 +121,7 @@ export const radius = {
   2: 'var(--admin-radius-2)',
   4: 'var(--admin-radius-4)',
   6: 'var(--admin-radius-6)',
+  16: 'var(--admin-radius-16)',
 } as const
 
 export const type = {
@@ -152,6 +154,21 @@ export const type = {
     font-size: 15px;
     line-height: 20px;
     font-weight: 650;
+  `,
+  eyebrow: `
+    font-family: ${tokens.fontUi};
+    font-size: 10px;
+    line-height: 14px;
+    font-weight: 550;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  `,
+  kpi: `
+    font-family: ${tokens.fontUi};
+    font-size: 20px;
+    line-height: 24px;
+    font-weight: 650;
+    font-variant-numeric: tabular-nums;
   `,
 } as const
 

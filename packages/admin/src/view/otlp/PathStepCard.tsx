@@ -1,11 +1,12 @@
 import type { OtlpAdmin } from '../../otlp'
 import {
   analyticsContinuationText,
+  analyticsFunnelMeta,
   analyticsShareText,
   typicalAnalyticsSession,
   type AnalyticsPathNode,
 } from '../../otlp/analytics'
-import { Button, scrollable, tokens, type } from '../design-system'
+import { Button, FunnelTrack, scrollable, tokens, type } from '../design-system'
 import { formatAxisOffset } from './GanttChart'
 
 const directionText = (node: AnalyticsPathNode) => {
@@ -64,6 +65,19 @@ export const PathStepCard = ({ admin }: { admin: OtlpAdmin }) => (
             </h2>
             <p css={quiet}>{directionText(node)}</p>
           </div>
+          <FunnelTrack
+            label={node.label}
+            meta={analyticsFunnelMeta(
+              node.sessions,
+              node.share,
+              node.share > 0 ? node.sessions / node.share : node.sessions,
+              node.continuation,
+              node.continuation > 0
+                ? node.sessions / node.continuation
+                : node.sessions,
+            )}
+            fill={node.share}
+          />
           <dl
             css={`
               display: grid;

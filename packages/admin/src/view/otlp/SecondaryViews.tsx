@@ -1,5 +1,6 @@
 import type { OtlpAdmin } from '../../otlp'
-import { Button, EmptyState, RailGraph, scrollable } from '../design-system'
+import { Button, RailGraph, scrollable } from '../design-system'
+import { GraphEmptyState } from './emptyStates'
 import { StateInspector } from './StateInspector'
 
 const directions = ['ancestors', 'descendants', 'full'] as const
@@ -59,12 +60,7 @@ export const OtlpGraphView = ({ admin }: { admin: OtlpAdmin }) => {
         {() => {
           const nodes = admin.railNodes()
           if (nodes.length === 0) {
-            return (
-              <EmptyState
-                title="No cause graph"
-                description="Select a record, then open it in the graph to see causes and effects."
-              />
-            )
+            return <GraphEmptyState admin={admin} />
           }
           const selected = Number(admin.selectedRootFrameId())
           return (

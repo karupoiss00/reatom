@@ -14,6 +14,7 @@ import {
 } from '../gantt/index.ts'
 import {
   analyticsBreakdown,
+  analyticsHalfWindowDeltas,
   analyticsPathTree,
   analyticsSessions,
   analyticsTotals,
@@ -24,12 +25,14 @@ import {
   type AnalyticsBreakdownRow,
   type AnalyticsDimension,
   type AnalyticsSegmentMode,
+  type AnalyticsTrendMetric,
 } from './analytics.ts'
 import { hasActiveFilter } from './filter.ts'
 import type { AdminRecord } from './ingest.ts'
 import type { AdminMcpFilter } from '../mcp/types.ts'
 
 export type OtlpTimelineUnit = 'records' | 'paths'
+export type AnalyticsPathsPresentation = 'gantt' | 'funnel'
 
 export interface AnalyticsScopeFocus {
   dimension: AnalyticsDimension
@@ -97,7 +100,15 @@ export function reatomOtlpAnalytics(source: OtlpAnalyticsSource, name: string) {
     })
   }, `${name}.segment`)
   const totals = computed(() => analyticsTotals(segment()), `${name}.totals`)
+  const deltas = computed(
+    () => analyticsHalfWindowDeltas(segment()),
+    `${name}.deltas`,
+  )
   const trend = computed(() => analyticsTrend(segment()), `${name}.trend`)
+  const trendMetric = atom<AnalyticsTrendMetric>(
+    'sessions',
+    `${name}.trendMetric`,
+  )
   const breakdowns = computed(() => {
     const current = segment()
     const rows = {} as Record<AnalyticsDimension, AnalyticsBreakdownRow[]>
@@ -106,6 +117,18 @@ export function reatomOtlpAnalytics(source: OtlpAnalyticsSource, name: string) {
     }
     return rows
   }, `${name}.breakdowns`)
+  const campaignRows = computed(
+    () => analyticsBreakdown(segment(), 'campaign'),
+    `${name}.campaignRows`,
+  )
+  const clickIdRows = computed(
+    () => analyticsBreakdown(segment(), 'clickId'),
+    `${name}.clickIdRows`,
+  )
+  const pathsPresentation = atom<AnalyticsPathsPresentation>(
+    'gantt',
+    `${name}.pathsPresentation`,
+  )
   const align = atom<string | undefined>(undefined, `${name}.align`)
   const alignChoice = atom('', `${name}.alignChoice`)
   const pathNodes = computed(
@@ -183,8 +206,13 @@ export function reatomOtlpAnalytics(source: OtlpAnalyticsSource, name: string) {
     scope,
     segment,
     totals,
+    deltas,
     trend,
+    trendMetric,
     breakdowns,
+    campaignRows,
+    clickIdRows,
+    pathsPresentation,
     align,
     alignChoice,
     pathNodes,

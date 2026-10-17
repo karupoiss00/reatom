@@ -32,6 +32,9 @@ export {
   evaluateRecordExpression,
   highlightCalculator,
   describeCalculator,
+  durationThresholdMs,
+  appendCalculatorClause,
+  isSlowDuration,
   parseCalculator,
   parseFilterCalculator,
   quoteCalculatorValue,
@@ -151,15 +154,21 @@ export type {
   OtlpMcp,
 } from '../mcp/index.ts'
 export type {
+  AnalyticsBreakdownDimension,
   AnalyticsBreakdownRow,
   AnalyticsDimension,
+  AnalyticsHalfWindowDeltas,
   AnalyticsPathNode,
   AnalyticsSegmentMode,
   AnalyticsSession,
   AnalyticsTotals,
   AnalyticsTrend,
+  AnalyticsTrendMetric,
 } from './analytics.ts'
+export { exclusionDrafts } from './exclusion.ts'
+export type { ExclusionDraft, ExclusionKind } from './exclusion.ts'
 export type {
+  AnalyticsPathsPresentation,
   AnalyticsSessionScope,
   OtlpAnalytics,
   OtlpTimelineUnit,

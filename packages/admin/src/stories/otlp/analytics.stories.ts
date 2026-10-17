@@ -53,6 +53,14 @@ export const AnalyticsTab: Story = {
       expect(kpiText(root, 'visitors')).toContain('7')
     })
 
+    clickElement(tabByLabel(root, 'Entries'))
+    await waitFor(() => {
+      expect(
+        root.querySelector(
+          '[data-testid="analytics-breakdown-entry"] [data-row-id="/"]',
+        ),
+      ).toBeInstanceOf(HTMLElement)
+    })
     const entry = root.querySelector(
       '[data-testid="analytics-breakdown-entry"] [data-row-id="/"]',
     )

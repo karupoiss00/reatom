@@ -18,6 +18,8 @@ export const ALL_SESSIONS_LABEL = 'All sessions'
  * this.
  */
 export const ANALYTICS_MIN_SHARE_SESSIONS = 5
+export const ANALYTICS_MIN_DELTA_SESSIONS = 5
+export const ANALYTICS_BOUNCE_WARNING = 0.6
 
 const analyticsPercent = new Intl.NumberFormat(undefined, {
   style: 'percent',
@@ -48,6 +50,30 @@ export function analyticsContinuationText(node: AnalyticsPathNode): string {
   const parentSessions =
     node.continuation > 0 ? node.sessions / node.continuation : 0
   return analyticsPercentText(node.continuation, parentSessions)
+}
+
+/** `count · share%` or `count · share% · ↓continue%`, with blank shares under the minimum. */
+export function analyticsFunnelMeta(
+  count: number,
+  share: number,
+  shareDenominator: number,
+  continuation?: number,
+  continuationDenominator?: number,
+): string {
+  const shareText = analyticsPercentText(share, shareDenominator)
+  if (continuation === undefined || continuationDenominator === undefined) {
+    return `${count} · ${shareText}`
+  }
+  return `${count} · ${shareText} · ↓${analyticsPercentText(continuation, continuationDenominator)}`
+}
+
+export function analyticsDeltaText(
+  current: number,
+  previous: number,
+): string | undefined {
+  const delta = current - previous
+  if (delta === 0) return undefined
+  return delta > 0 ? `+${delta}` : String(delta)
 }
 
 const ANALYTICS_EVENT_NAMES: ReadonlySet<string> = new Set(
@@ -87,6 +113,7 @@ export interface AnalyticsSession {
   previousId?: string
   source: string
   campaign?: string
+  clickId?: string
   start: number
   end: number
   visits: AnalyticsVisit[]
@@ -116,6 +143,13 @@ export interface AnalyticsTotals {
 }
 
 export type AnalyticsDimension = 'page' | 'entry' | 'exit' | 'source'
+export type AnalyticsBreakdownDimension = AnalyticsDimension | 'campaign' | 'clickId'
+export type AnalyticsTrendMetric =
+  | 'sessions'
+  | 'visitors'
+  | 'pageViews'
+  | 'engaged'
+  | 'errors'
 
 export interface AnalyticsBreakdownRow {
   key: string
@@ -409,6 +443,9 @@ function buildSession(
     campaign:
       textOf(startAttributes['app.attribution.last.campaign']) ??
       textOf(firstViewAttributes['app.utm.campaign']),
+    clickId:
+      clickIdSource(startAttributes, 'app.attribution.last.') ??
+      clickIdSource(firstViewAttributes, 'app.click_id.'),
     start: ordered[0]!.start,
     end: Math.max(
       ordered[ordered.length - 1]!.start,
@@ -458,9 +495,28 @@ export interface AnalyticsSelection {
   range?: { start: number; end: number }
 }
 
+export interface AnalyticsTrendBucket {
+  start: number
+  sessions: number
+  visitors: number
+  pageViews: number
+  engaged: number
+  errors: number
+}
+
 export interface AnalyticsTrend {
   bucketMs: number
-  buckets: Array<{ start: number; sessions: number }>
+  buckets: AnalyticsTrendBucket[]
+}
+
+export interface AnalyticsHalfWindowDeltas {
+  first: AnalyticsTotals
+  second: AnalyticsTotals
+}
+
+export interface AnalyticsConsentCounts {
+  consentedSessions: number
+  excludedSessions: number
 }
 
 const TREND_STEPS_MS = [
@@ -513,16 +569,103 @@ export function analyticsTrend(
   }
   const first = Math.floor(earliest / bucketMs) * bucketMs
   const last = Math.floor(latest / bucketMs) * bucketMs
-  const counts = new Map<number, number>()
+  const counts = new Map<
+    number,
+    {
+      sessions: number
+      visitors: Set<string>
+      pageViews: number
+      engaged: number
+      errors: number
+    }
+  >()
+  const bucketOf = (start: number) => {
+    let bucket = counts.get(start)
+    if (!bucket) {
+      bucket = {
+        sessions: 0,
+        visitors: new Set(),
+        pageViews: 0,
+        engaged: 0,
+        errors: 0,
+      }
+      counts.set(start, bucket)
+    }
+    return bucket
+  }
   for (const session of sessions) {
     const bucketStart = Math.floor(session.start / bucketMs) * bucketMs
-    counts.set(bucketStart, (counts.get(bucketStart) ?? 0) + 1)
+    const bucket = bucketOf(bucketStart)
+    bucket.sessions += 1
+    bucket.visitors.add(session.visitorId ?? session.id)
+    bucket.pageViews += session.visits.length
+    if (session.engaged) bucket.engaged += 1
+    if (session.exceptions > 0) bucket.errors += 1
   }
   const buckets: AnalyticsTrend['buckets'] = []
   for (let start = first; start <= last; start += bucketMs) {
-    buckets.push({ start, sessions: counts.get(start) ?? 0 })
+    const bucket = counts.get(start)
+    buckets.push({
+      start,
+      sessions: bucket?.sessions ?? 0,
+      visitors: bucket?.visitors.size ?? 0,
+      pageViews: bucket?.pageViews ?? 0,
+      engaged: bucket?.engaged ?? 0,
+      errors: bucket?.errors ?? 0,
+    })
   }
   return { bucketMs, buckets }
+}
+
+export function analyticsHalfWindowDeltas(
+  sessions: readonly AnalyticsSession[],
+): AnalyticsHalfWindowDeltas | null {
+  if (sessions.length === 0) return null
+  let earliest = Infinity
+  let latest = -Infinity
+  for (const session of sessions) {
+    if (session.start < earliest) earliest = session.start
+    if (session.start > latest) latest = session.start
+  }
+  if (latest <= earliest) return null
+  const mid = earliest + (latest - earliest) / 2
+  const first: AnalyticsSession[] = []
+  const second: AnalyticsSession[] = []
+  for (const session of sessions) {
+    if (session.start < mid) first.push(session)
+    else second.push(session)
+  }
+  if (
+    first.length < ANALYTICS_MIN_DELTA_SESSIONS ||
+    second.length < ANALYTICS_MIN_DELTA_SESSIONS
+  ) {
+    return null
+  }
+  return {
+    first: analyticsTotals(first),
+    second: analyticsTotals(second),
+  }
+}
+
+export function analyticsConsentCounts(
+  records: readonly AdminRecord[],
+): AnalyticsConsentCounts {
+  const consented = new Set<string>()
+  const excluded = new Set<string>()
+  for (const record of records) {
+    if (record.kind !== 'log') continue
+    if (!ANALYTICS_EVENT_NAMES.has(record.eventName ?? '')) continue
+    const sessionId = textOf(record.attributes['session.id'])
+    if (sessionId !== undefined) {
+      consented.add(sessionId)
+      continue
+    }
+    excluded.add(textOf(record.attributes['app.visitor.id']) ?? record.id)
+  }
+  return {
+    consentedSessions: consented.size,
+    excludedSessions: excluded.size,
+  }
 }
 
 export function analyticsSegment(
@@ -601,7 +744,7 @@ export function analyticsTotals(
 
 export function analyticsBreakdown(
   sessions: readonly AnalyticsSession[],
-  dimension: AnalyticsDimension,
+  dimension: AnalyticsBreakdownDimension,
 ): AnalyticsBreakdownRow[] {
   const groups = new Map<
     string,
@@ -649,12 +792,18 @@ export function analyticsBreakdown(
       }
       continue
     }
+    if (dimension === 'campaign' && session.campaign === undefined) continue
+    if (dimension === 'clickId' && session.clickId === undefined) continue
     const key =
       dimension === 'entry'
         ? session.visits[0]!.label
         : dimension === 'exit'
           ? session.visits[session.visits.length - 1]!.label
-          : session.source
+          : dimension === 'campaign'
+            ? session.campaign!
+            : dimension === 'clickId'
+              ? session.clickId!
+              : session.source
     const group = groupOf(key)
     group.pageViews += session.visits.length
     group.activeMs.push(session.activeMs)

@@ -1,31 +1,44 @@
+import { atom, type Atom } from '@reatom/core'
+
 import type { OtlpAdmin } from '../../otlp'
 import {
+  ANALYTICS_BOUNCE_WARNING,
+  analyticsDeltaText,
+  analyticsFunnelMeta,
   analyticsPercentText,
+  type AnalyticsBreakdownDimension,
   type AnalyticsBreakdownRow,
-  type AnalyticsDimension,
+  type AnalyticsTotals,
+  type AnalyticsTrendMetric,
 } from '../../otlp/analytics'
 import {
   Button,
-  DataGrid,
-  EmptyState,
+  Eyebrow,
+  FunnelTrack,
+  KpiCell,
+  Popover,
+  SearchField,
+  Tabs,
+  barHatch,
   scrollable,
   tokens,
   type,
-  type DataGridColumn,
 } from '../design-system'
+import { AnalyticsEmptyState } from './emptyStates'
 import { formatAxisOffset } from './GanttChart'
 
 const TOP_ROWS = 10
 
-const DIMENSIONS: Array<{
-  id: AnalyticsDimension
-  title: string
-  paths: boolean
-}> = [
-  { id: 'page', title: 'Pages', paths: true },
-  { id: 'entry', title: 'Entry pages', paths: true },
-  { id: 'exit', title: 'Exit pages', paths: true },
-  { id: 'source', title: 'Sources', paths: false },
+const PAGE_TABS = [
+  { id: 'page' as const, label: 'Pages', title: 'Pages' },
+  { id: 'entry' as const, label: 'Entries', title: 'Entry pages' },
+  { id: 'exit' as const, label: 'Exits', title: 'Exit pages' },
+]
+
+const SOURCE_TABS = [
+  { id: 'source' as const, label: 'Source', title: 'Sources' },
+  { id: 'campaign' as const, label: 'Campaign', title: 'Campaign' },
+  { id: 'clickId' as const, label: 'Click id', title: 'Click id' },
 ]
 
 export function analystStatusWords(admin: OtlpAdmin): string {
@@ -42,12 +55,16 @@ export function analystStatusWords(admin: OtlpAdmin): string {
   return `${shown} of ${total} consented sessions · ${source}${partial}`
 }
 
-const kpi = (id: string, title: string, text: string) => (
-  <div data-testid={`analytics-kpi-${id}`}>
-    <div css={kpiLabel}>{title}</div>
-    <div css={kpiNumber}>{text}</div>
-  </div>
-)
+const sessionCaption = (sessions: number) =>
+  `Of ${sessions} consented sessions`
+
+const showErrorSessions = (admin: OtlpAdmin) => {
+  admin.filterHasError.set(true)
+  admin.view.set('timeline')
+  admin.timelineUnit.set('records')
+}
+
+let breakdownCardCounter = 0
 
 export const OtlpAnalyticsScreen = ({ admin }: { admin: OtlpAdmin }) => (
   <section
@@ -92,10 +109,7 @@ export const OtlpAnalyticsScreen = ({ admin }: { admin: OtlpAdmin }) => (
     }}
     {() =>
       admin.analytics.sessions().length === 0 ? (
-        <EmptyState
-          title="No analytics sessions."
-          description="Analytics reads connectWebAnalytics records (app.page_view logs with session.id). Nothing is sent before consent."
-        />
+        <AnalyticsEmptyState />
       ) : (
         <div
           css={`
@@ -104,66 +118,125 @@ export const OtlpAnalyticsScreen = ({ admin }: { admin: OtlpAdmin }) => (
             min-width: 0;
           `}
         >
-          <div
-            css={`
-              display: flex;
-              flex-wrap: wrap;
-              gap: var(--admin-space-12);
-            `}
-          >
-            {() => {
-              const totals = admin.analytics.totals()
-              const sessions = totals.sessions
-              return (
-                <>
-                  {kpi('visitors', 'Visitors', String(totals.visitors))}
-                  {kpi('sessions', 'Sessions', String(totals.sessions))}
-                  {kpi('pageViews', 'Page views', String(totals.pageViews))}
-                  {kpi(
-                    'engaged',
-                    'Engaged',
-                    `${totals.engagedSessions} · ${analyticsPercentText(totals.engagementRate, sessions)}`,
-                  )}
-                  {kpi(
-                    'bounce',
-                    'Bounce',
-                    analyticsPercentText(totals.bounceRate, sessions),
-                  )}
-                  {kpi(
-                    'activeTime',
-                    'Median active',
-                    formatAxisOffset(totals.activeMsPerSession.median),
-                  )}
-                  {kpi('errors', 'Errors', String(totals.sessionsWithErrors))}
-                </>
-              )
-            }}
-          </div>
+          <AnalyticsKpis admin={admin} />
           <AnalyticsTrend admin={admin} />
           <div
             css={`
               display: grid;
               grid-template-columns: repeat(
                 auto-fit,
-                minmax(min(100%, 760px), 1fr)
+                minmax(min(100%, 360px), 1fr)
               );
               gap: var(--admin-space-12);
               min-width: 0;
             `}
           >
-            {DIMENSIONS.map((dimension) => (
-              <BreakdownGrid
-                admin={admin}
-                dimension={dimension.id}
-                title={dimension.title}
-                paths={dimension.paths}
-              />
-            ))}
+            <PageBreakdownCard admin={admin} />
+            <SourceBreakdownCard admin={admin} />
           </div>
         </div>
       )
     }
   </section>
+)
+
+const AnalyticsKpis = ({ admin }: { admin: OtlpAdmin }) => (
+  <div
+    css={`
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--admin-space-12) 0;
+    `}
+  >
+    {() => {
+      const totals = admin.analytics.totals()
+      const sessions = totals.sessions
+      const deltas = admin.analytics.deltas()
+      const first = deltas?.first
+      const second = deltas?.second
+      const deltaOf = (
+        pick: (item: AnalyticsTotals) => number,
+      ): string | undefined => {
+        if (!first || !second) return undefined
+        return analyticsDeltaText(pick(second), pick(first))
+      }
+      const setMetric = (metric: AnalyticsTrendMetric) => {
+        admin.analytics.trendMetric.set(metric)
+      }
+      const errorCount = totals.sessionsWithErrors
+      return (
+        <>
+          <KpiCell
+            id="visitors"
+            label="Visitors"
+            value={String(totals.visitors)}
+            caption={sessionCaption(sessions)}
+            delta={deltaOf((item) => item.visitors)}
+            onClick={() => setMetric('visitors')}
+          />
+          <KpiCell
+            id="sessions"
+            label="Sessions"
+            value={String(totals.sessions)}
+            caption={sessionCaption(sessions)}
+            delta={deltaOf((item) => item.sessions)}
+            onClick={() => setMetric('sessions')}
+          />
+          <KpiCell
+            id="pageViews"
+            label="Page views"
+            value={String(totals.pageViews)}
+            caption={sessionCaption(sessions)}
+            delta={deltaOf((item) => item.pageViews)}
+            onClick={() => setMetric('pageViews')}
+          />
+          <KpiCell
+            id="engaged"
+            label="Engaged"
+            value={`${totals.engagedSessions} · ${analyticsPercentText(totals.engagementRate, sessions)}`}
+            caption="active > 10s or ≥ 2 views"
+            delta={deltaOf((item) => item.engagedSessions)}
+            onClick={() => setMetric('engaged')}
+          />
+          <KpiCell
+            id="bounce"
+            label="Bounce"
+            value={analyticsPercentText(totals.bounceRate, sessions)}
+            caption={sessionCaption(sessions)}
+            tone={
+              totals.bounceRate > ANALYTICS_BOUNCE_WARNING
+                ? 'warning'
+                : 'default'
+            }
+            onClick={() => setMetric('sessions')}
+          />
+          <KpiCell
+            id="activeTime"
+            label="Median active"
+            value={formatAxisOffset(totals.activeMsPerSession.median)}
+            caption={sessionCaption(sessions)}
+            onClick={() => setMetric('sessions')}
+          />
+          <KpiCell
+            id="errors"
+            label="Errors"
+            value={String(errorCount)}
+            caption={sessionCaption(sessions)}
+            tone={errorCount > 0 ? 'error' : 'muted'}
+            delta={deltaOf((item) => item.sessionsWithErrors)}
+            onClick={
+              errorCount > 0
+                ? () => {
+                    setMetric('errors')
+                    showErrorSessions(admin)
+                  }
+                : () => setMetric('errors')
+            }
+          />
+        </>
+      )
+    }}
+  </div>
 )
 
 const AnalyticsTrend = ({ admin }: { admin: OtlpAdmin }) => (
@@ -192,96 +265,250 @@ const AnalyticsTrend = ({ admin }: { admin: OtlpAdmin }) => (
   >
     {() => {
       const trend = admin.analytics.trend()
-      const max = trend.buckets.reduce(
-        (peak, bucket) => Math.max(peak, bucket.sessions),
-        0,
-      )
-      return trend.buckets.map((bucket) => (
-        <div
-          title={`${bucket.sessions}`}
-          style:height={max === 0 ? '0%' : `${(bucket.sessions / max) * 100}%`}
-          css={`
-            flex: 1 1 0;
-            min-width: 2px;
-            background: ${tokens.accent};
-          `}
-        />
-      ))
+      const metric = admin.analytics.trendMetric()
+      const live = admin.source() === 'live'
+      const now = Date.now()
+      const values = trend.buckets.map((bucket) => bucket[metric])
+      const max = values.reduce((peak, value) => Math.max(peak, value), 0)
+      return trend.buckets.map((bucket, index) => {
+        const value = values[index] ?? 0
+        const last = index === trend.buckets.length - 1
+        const open = live && last && now < bucket.start + trend.bucketMs
+        return (
+          <div
+            title={open ? 'This bucket is still open' : `${value}`}
+            data-open={open ? 'true' : undefined}
+            style:height={max === 0 ? '0%' : `${(value / max) * 100}%`}
+            css={`
+              flex: 1 1 0;
+              min-width: 2px;
+              background: ${tokens.accent};
+              &[data-open='true'] {
+                background: ${barHatch}, ${tokens.surface3};
+              }
+            `}
+          />
+        )
+      })
     }}
   </div>
 )
 
-const BreakdownGrid = ({
+const PageBreakdownCard = ({ admin }: { admin: OtlpAdmin }) => {
+  const tab = atom<(typeof PAGE_TABS)[number]['id']>(
+    'page',
+    `_Admin.analytics.pageTab.${++breakdownCardCounter}`,
+  )
+  return (
+    <BreakdownCard
+      admin={admin}
+      tab={tab}
+      items={PAGE_TABS}
+      paths
+      empty="No pages in this segment."
+    />
+  )
+}
+
+const SourceBreakdownCard = ({ admin }: { admin: OtlpAdmin }) => {
+  const tab = atom<(typeof SOURCE_TABS)[number]['id']>(
+    'source',
+    `_Admin.analytics.sourceTab.${++breakdownCardCounter}`,
+  )
+  return (
+    <BreakdownCard
+      admin={admin}
+      tab={tab}
+      items={SOURCE_TABS}
+      paths={false}
+      empty={() => {
+        const dimension = tab()
+        if (dimension === 'campaign') {
+          return 'No campaign attributes on these sessions. Analytics reads app.utm.campaign and app.attribution.last.campaign.'
+        }
+        if (dimension === 'clickId') {
+          return 'No click id attributes on these sessions. Analytics reads app.click_id.* and app.attribution.last.*clid.'
+        }
+        return 'No sources in this segment.'
+      }}
+    />
+  )
+}
+
+const BreakdownCard = <T extends AnalyticsBreakdownDimension>({
+  admin,
+  tab,
+  items,
+  paths,
+  empty,
+}: {
+  admin: OtlpAdmin
+  tab: Atom<T>
+  items: ReadonlyArray<{ id: T; label: string; title: string }>
+  paths: boolean
+  empty: string | (() => string)
+}) => {
+  const query = atom(
+    '',
+    `_Admin.analytics.filter.${items[0]!.id}.${++breakdownCardCounter}`,
+  )
+  const titleOf = (dimension: AnalyticsBreakdownDimension) =>
+    items.find((item) => item.id === dimension)?.title ?? dimension
+  const rowsOf = (dimension: AnalyticsBreakdownDimension) => {
+    if (dimension === 'campaign') return admin.analytics.campaignRows()
+    if (dimension === 'clickId') return admin.analytics.clickIdRows()
+    return admin.analytics.breakdowns()[dimension]
+  }
+  return (
+    <div
+      css={`
+        display: grid;
+        gap: var(--admin-space-8);
+        min-width: 0;
+        padding: var(--admin-space-12);
+        border: 1px solid ${tokens.border1};
+        border-radius: var(--admin-radius-4);
+        background: ${tokens.surface1};
+      `}
+    >
+      <Eyebrow>{() => titleOf(tab())}</Eyebrow>
+      <Tabs value={tab} items={[...items]} ariaLabel={items[0]!.label} />
+      <SearchField
+        value={query}
+        label="Filter"
+        placeholder="Filter…"
+        shortcut=""
+      />
+      {() => {
+        const dimension = tab()
+        const needle = query().trim().toLowerCase()
+        const rows = rowsOf(dimension).filter(
+          (row) =>
+            needle === '' || row.key.toLowerCase().includes(needle),
+        )
+        const shown = rows.slice(0, TOP_ROWS)
+        const hidden = rows.length - shown.length
+        const totalSessions = admin.analytics.segment().length
+        if (shown.length === 0) {
+          return (
+            <p
+              data-testid={`analytics-breakdown-${dimension}`}
+              css={`
+                ${type.ui}
+                margin: 0;
+                color: ${tokens.text2};
+              `}
+            >
+              {typeof empty === 'function' ? empty() : empty}
+            </p>
+          )
+        }
+        return (
+          <div
+            data-testid={`analytics-breakdown-${dimension}`}
+            css={`
+              display: grid;
+              gap: var(--admin-space-12);
+            `}
+          >
+            {shown.map((row) => (
+              <BreakdownRow
+                admin={admin}
+                dimension={dimension}
+                title={titleOf(dimension)}
+                row={row}
+                paths={paths}
+                totalSessions={totalSessions}
+              />
+            ))}
+            {hidden > 0 ? <p css={moreRows}>{`+${hidden} more`}</p> : null}
+          </div>
+        )
+      }}
+    </div>
+  )
+}
+
+const BreakdownRow = ({
   admin,
   dimension,
   title,
+  row,
   paths,
+  totalSessions,
 }: {
   admin: OtlpAdmin
-  dimension: AnalyticsDimension
+  dimension: AnalyticsBreakdownDimension
   title: string
+  row: AnalyticsBreakdownRow
   paths: boolean
+  totalSessions: number
 }) => {
-  const rows = () => admin.analytics.breakdowns()[dimension].slice(0, TOP_ROWS)
-  const columns: Array<DataGridColumn<AnalyticsBreakdownRow>> = [
-    {
-      id: 'key',
-      header: 'Key',
-      render: (row) => <span>{row.key}</span>,
-    },
-    {
-      id: 'sessions',
-      header: 'Sessions',
-      width: '80px',
-      render: (row) => <span>{String(row.sessions)}</span>,
-    },
-    {
-      id: 'visitors',
-      header: 'Visitors',
-      width: '76px',
-      render: (row) => <span>{String(row.visitors)}</span>,
-    },
-    {
-      id: 'pageViews',
-      header: 'Views',
-      title: 'Page views',
-      width: '64px',
-      render: (row) => <span>{String(row.pageViews)}</span>,
-    },
-    {
-      id: 'engaged',
-      header: 'Engaged',
-      title: 'Engaged %',
-      width: '76px',
-      render: (row) => (
-        <span>
-          {analyticsPercentText(
-            row.sessions === 0 ? 0 : row.engagedSessions / row.sessions,
-            row.sessions,
-          )}
-        </span>
-      ),
-    },
-    {
-      id: 'active',
-      header: 'Active',
-      title: 'Median active',
-      width: '72px',
-      render: (row) => <span>{formatAxisOffset(row.activeMs.median)}</span>,
-    },
-    {
-      id: 'actions',
-      header: 'Actions',
-      width: '220px',
-      render: (row) => (
-        <span
-          css={`
-            display: inline-flex;
-            gap: var(--admin-space-4);
-          `}
-          on:click={(event: MouseEvent) => event.stopPropagation()}
+  const share = totalSessions === 0 ? 0 : row.sessions / totalSessions
+  const selected = () => {
+    const scope = admin.analytics.scope()
+    return scope?.dimension === dimension && scope.key === row.key
+  }
+  const showSessions = () => {
+    const focus =
+      dimension === 'campaign' || dimension === 'clickId'
+        ? undefined
+        : { dimension, key: row.key }
+    admin.showSessions(
+      `${title}: ${row.key}`,
+      new Set(row.sessionIds),
+      focus,
+    )
+  }
+  const scopeToRow = () => {
+    const focus =
+      dimension === 'campaign' || dimension === 'clickId'
+        ? undefined
+        : { dimension, key: row.key }
+    admin.analytics.scope.scopeTo(
+      `${title}: ${row.key}`,
+      new Set(row.sessionIds),
+      focus,
+    )
+  }
+  return (
+    <div
+      data-row-id={row.key}
+      data-selected={() => (selected() ? 'true' : undefined)}
+      on:click={scopeToRow}
+      css={`
+        display: grid;
+        gap: var(--admin-space-6);
+        cursor: pointer;
+        &[data-selected='true'] {
+          outline: 1px solid ${tokens.accent};
+          outline-offset: 4px;
+        }
+      `}
+    >
+      <FunnelTrack
+        label={row.key}
+        meta={analyticsFunnelMeta(row.sessions, share, totalSessions)}
+        fill={share}
+      />
+      <div
+        css={`
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: var(--admin-space-4);
+        `}
+        on:click={(event: MouseEvent) => event.stopPropagation()}
+      >
+        <Button
+          variant="ghost"
+          label={`Show sessions ${row.key}`}
+          onClick={showSessions}
         >
-          {paths ? (
+          Show sessions
+        </Button>
+        {paths ? (
+          <Popover triggerLabel="More" label={`More actions for ${row.key}`}>
             <Button
               variant="ghost"
               label={`Paths from here ${row.key}`}
@@ -289,91 +516,15 @@ const BreakdownGrid = ({
             >
               Paths from here
             </Button>
-          ) : null}
-          <Button
-            variant="ghost"
-            label={`Show sessions ${row.key}`}
-            onClick={() =>
-              admin.showSessions(
-                `${title}: ${row.key}`,
-                new Set(row.sessionIds),
-                {
-                  dimension,
-                  key: row.key,
-                },
-              )
-            }
-          >
-            Show sessions
-          </Button>
-        </span>
-      ),
-    },
-  ]
-
-  return (
-    <div data-testid={`analytics-breakdown-${dimension}`}>
-      <h2
-        css={`
-          ${type.ui}
-          margin: 0 0 var(--admin-space-8);
-        `}
-      >
-        {title}
-      </h2>
-      <div
-        css={`
-          height: 280px;
-          min-height: 0;
-          overflow-x: auto;
-          overflow-y: hidden;
-          border: 1px solid ${tokens.border1};
-          & > [role='grid'] {
-            height: 100%;
-            min-width: 720px;
-          }
-        `}
-      >
-        <DataGrid
-          columns={columns}
-          rows={rows}
-          getRowId={(row) => row.key}
-          selectedId={() => {
-            const scope = admin.analytics.scope()
-            if (scope === null || scope.dimension !== dimension) return null
-            return scope.key ?? null
-          }}
-          onSelect={(row) =>
-            admin.analytics.scope.scopeTo(
-              `${title}: ${row.key}`,
-              new Set(row.sessionIds),
-              { dimension, key: row.key },
-            )
-          }
-          empty={<span>No rows</span>}
-          ariaLabel={title}
-        />
+          </Popover>
+        ) : null}
       </div>
-      {() => {
-        const hidden = admin.analytics.breakdowns()[dimension].length - TOP_ROWS
-        return hidden > 0 ? <p css={moreRows}>{`+${hidden} more`}</p> : null
-      }}
     </div>
   )
 }
 
-const kpiLabel = `
-  ${type.meta}
-  color: ${tokens.text3};
-`
-
-const kpiNumber = `
-  ${type.title}
-  font-variant-numeric: tabular-nums;
-`
-
 const moreRows = `
   ${type.meta}
-  margin: var(--admin-space-4) 0 0;
+  margin: 0;
   color: ${tokens.text3};
 `

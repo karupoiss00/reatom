@@ -41,16 +41,18 @@ import {
 import { adminThemeVars } from '../design-system/tokens'
 import { ADMIN_HOST_Z_INDEX, keepAdminHostInView } from '../hostBox'
 import { bindAdminStylesheet } from '../stylesheet'
-import { importRecordFile } from '../../otlp/importRecords'
 import { AgentCallLog } from '../../mcp/AgentCallLog'
 import { mcpCallLog } from '../../mcp/callLog'
 import { adminSettings, bindAdminPalette } from '../settings'
 import { OtlpAnalyticsScreen, analystStatusWords } from './AnalyticsScreen'
+import { ExclusionBanner } from './ExclusionBanner'
 import { closeFrameCard, OtlpFrameCard } from './FrameCard'
 import { OtlpFilterBar } from './FilterBar'
+import { ImportRecords } from './ImportRecords'
 import { floatAdminHost, type FloatingWindowOptions } from './FloatingWindow'
 import { OtlpGanttChart, pathRowAdapter, recordRowAdapter } from './GanttChart'
 import { PathStepCard } from './PathStepCard'
+import { PathsFunnelView, PathsPresentationBar } from './PathsFunnel'
 import { OtlpRemotePanel } from './RemotePanel'
 import { OtlpGraphView, OtlpStateView } from './SecondaryViews'
 import { handleAdminShellKey, isEditableTarget } from './shellKeys'
@@ -398,6 +400,7 @@ export const OtlpApp = ({
               admin.remoteOpen() ? <OtlpRemotePanel admin={admin} /> : null
             }
             <OtlpFilterBar admin={admin} />
+            <ExclusionBanner admin={admin} />
           </div>
         )
       }
@@ -420,12 +423,28 @@ export const OtlpApp = ({
         if (view === 'analytics') return <OtlpAnalyticsScreen admin={admin} />
         if (admin.timelineUnit() === 'paths') {
           return (
-            <OtlpGanttChart
-              gantt={admin.analytics.paths}
-              admin={admin}
-              adapter={pathRowAdapter(admin)}
-              onInspect={() => admin.cardOpen.setTrue()}
-            />
+            <div
+              css={`
+                display: grid;
+                grid-template-rows: auto minmax(0, 1fr);
+                height: 100%;
+                min-height: 0;
+              `}
+            >
+              <PathsPresentationBar admin={admin} />
+              {() =>
+                admin.analytics.pathsPresentation() === 'funnel' ? (
+                  <PathsFunnelView admin={admin} />
+                ) : (
+                  <OtlpGanttChart
+                    gantt={admin.analytics.paths}
+                    admin={admin}
+                    adapter={pathRowAdapter(admin)}
+                    onInspect={() => admin.cardOpen.setTrue()}
+                  />
+                )
+              }
+            </div>
           )
         }
         return (
@@ -830,39 +849,6 @@ const HelpBody = () => (
       apply there, and filter.mode is ignored by the analytics tools.
     </p>
   </div>
-)
-
-const ImportRecords = ({ admin }: { admin: OtlpAdmin }) => (
-  <label
-    css={`
-      ${type.ui}
-      display: inline-flex;
-      align-items: center;
-      cursor: pointer;
-      color: ${tokens.text1};
-    `}
-  >
-    Import
-    <input
-      aria-label="Import"
-      type="file"
-      accept="application/json"
-      css={`
-        position: absolute;
-        width: 1px;
-        height: 1px;
-        overflow: hidden;
-        clip: rect(0, 0, 0, 0);
-      `}
-      on:change={async (event: Event) => {
-        const input = event.currentTarget
-        if (!(input instanceof HTMLInputElement)) return
-        const file = input.files?.[0]
-        if (!file) return
-        await importRecordFile(admin, file)
-      }}
-    />
-  </label>
 )
 
 function downloadRecords(records: readonly unknown[]) {
