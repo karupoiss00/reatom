@@ -656,7 +656,8 @@ describe('trend and session selection', () => {
     ]
     expect(analyticsConsentCounts(records)).toEqual({
       consentedSessions: 1,
-      excludedSessions: 1,
+      excludedVisitors: 1,
+      excludedEvents: 1,
     })
   })
 

@@ -1,4 +1,4 @@
-import type { OtlpAdmin } from '../../otlp'
+import { CLICKHOUSE_FETCH_LIMIT, type OtlpAdmin } from '../../otlp'
 import {
   Button,
   Hint,
@@ -114,7 +114,7 @@ export const OtlpRemotePanel = ({ admin }: OtlpRemotePanelProps) => {
         >
           {() => (admin.remoteForm.submit.ready() ? 'Connect' : 'Connecting')}
         </Button>
-        <Hint>Fetches the newest 500 spans and 500 logs.</Hint>
+        <Hint>{`Fetches the newest ${CLICKHOUSE_FETCH_LIMIT} spans and ${CLICKHOUSE_FETCH_LIMIT} logs.`}</Hint>
       </div>
       <p
         data-testid="otlp-remote-error"

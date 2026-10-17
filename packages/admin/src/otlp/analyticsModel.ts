@@ -14,6 +14,7 @@ import {
 } from '../gantt/index.ts'
 import {
   analyticsBreakdown,
+  analyticsConsentCounts,
   analyticsHalfWindowDeltas,
   analyticsPathTree,
   analyticsSessions,
@@ -63,6 +64,10 @@ export function reatomOtlpAnalytics(source: OtlpAnalyticsSource, name: string) {
   const sessions = computed(
     () => analyticsSessions(source.records()),
     `${name}.sessions`,
+  )
+  const consentCounts = computed(
+    () => analyticsConsentCounts(source.records()),
+    `${name}.consentCounts`,
   )
   const segmentMode = atom<AnalyticsSegmentMode>(
     'include',
@@ -202,6 +207,7 @@ export function reatomOtlpAnalytics(source: OtlpAnalyticsSource, name: string) {
 
   return {
     sessions,
+    consentCounts,
     segmentMode,
     scope,
     segment,

@@ -167,7 +167,9 @@ export const PathsUnit: Story = {
         (row) =>
           row.querySelector('[data-testid="gantt-row-label"]')?.textContent,
       )
-      expect(recordLabels.filter((label) => label !== 'In progress')).toEqual([
+      expect(
+        recordLabels.filter((label) => !label?.startsWith('In progress')),
+      ).toEqual([
         'session.start',
         'app.page_view',
         'app.page.engagement',

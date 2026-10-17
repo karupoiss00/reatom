@@ -1,5 +1,6 @@
 import type { Admin } from '../../index'
 import type { FilterConfig } from '../../types'
+import { DEFAULT_ACCENT } from '../design-system'
 import { formatModeLabel } from '../format'
 import {
   badge,
@@ -153,7 +154,7 @@ export const FilterConfigCard = ({ admin, config }: FilterConfigCardProps) => {
           Highlight color
           <input
             type="color"
-            value={config.highlightColor ?? '#89b4fa'}
+            value={config.highlightColor ?? DEFAULT_ACCENT}
             on:input={(event: Event) => {
               const target = event.currentTarget
               if (!(target instanceof HTMLInputElement)) return

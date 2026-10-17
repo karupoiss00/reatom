@@ -22,7 +22,7 @@ export interface EngineDeps {
 
 const PREFIX = '_Admin.filters.engine'
 const CONFIGS_STORAGE_KEY = `${PREFIX}.configs.v1`
-const DEFAULT_HIGHLIGHT_COLOR = '#89b4fa'
+const DEFAULT_HIGHLIGHT_COLOR = 'var(--admin-accent)'
 
 export type FilterConfigInput = Pick<
   FilterConfig,

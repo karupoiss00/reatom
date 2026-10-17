@@ -1,10 +1,17 @@
 import { expect, test } from 'test'
 
+import { analyticsConsentCounts } from './analytics.ts'
 import { analyticsLog } from './fixtures/analyticsRecords.ts'
 import { exclusionDrafts } from './exclusion.ts'
 
+const emptyConsent = {
+  consentedSessions: 0,
+  excludedVisitors: 0,
+  excludedEvents: 0,
+}
+
 const base = {
-  records: [] as const,
+  consent: emptyConsent,
   source: 'live' as const,
   hiddenRows: 0,
   filter: {},
@@ -35,10 +42,10 @@ test('hidden rows, the remote cap, and a segment each add a clause', () => {
   )
 })
 
-test('consent wording counts events without session.id', () => {
+test('consent wording counts visitors without session.id', () => {
   const drafts = exclusionDrafts({
     ...base,
-    records: [
+    consent: analyticsConsentCounts([
       analyticsLog(
         'app.page_view',
         1,
@@ -51,10 +58,10 @@ test('consent wording counts events without session.id', () => {
         { 'url.path': '/private', 'app.visitor.id': 'anon' },
         'denied',
       ),
-    ],
+    ]),
   })
   expect(drafts[0]).toMatchObject({
     kind: 'consent',
-    text: '1 of 2 sessions have no consent and are excluded',
+    text: '1 visitor has no consent and is excluded',
   })
 })

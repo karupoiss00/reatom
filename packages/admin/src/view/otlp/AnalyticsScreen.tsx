@@ -1,6 +1,6 @@
 import { atom, type Atom } from '@reatom/core'
 
-import type { OtlpAdmin } from '../../otlp'
+import { CLICKHOUSE_FETCH_LIMIT, type OtlpAdmin } from '../../otlp'
 import {
   ANALYTICS_BOUNCE_WARNING,
   analyticsDeltaText,
@@ -51,7 +51,9 @@ export function analystStatusWords(admin: OtlpAdmin): string {
         ? 'Replay'
         : 'Live'
   const partial =
-    admin.source() === 'remote' ? ' · latest 500 records per signal' : ''
+    admin.source() === 'remote'
+      ? ` · latest ${CLICKHOUSE_FETCH_LIMIT} records per signal`
+      : ''
   return `${shown} of ${total} consented sessions · ${source}${partial}`
 }
 

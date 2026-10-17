@@ -516,7 +516,8 @@ export interface AnalyticsHalfWindowDeltas {
 
 export interface AnalyticsConsentCounts {
   consentedSessions: number
-  excludedSessions: number
+  excludedVisitors: number
+  excludedEvents: number
 }
 
 const TREND_STEPS_MS = [
@@ -651,7 +652,8 @@ export function analyticsConsentCounts(
   records: readonly AdminRecord[],
 ): AnalyticsConsentCounts {
   const consented = new Set<string>()
-  const excluded = new Set<string>()
+  const excludedVisitors = new Set<string>()
+  let excludedEvents = 0
   for (const record of records) {
     if (record.kind !== 'log') continue
     if (!ANALYTICS_EVENT_NAMES.has(record.eventName ?? '')) continue
@@ -660,11 +662,13 @@ export function analyticsConsentCounts(
       consented.add(sessionId)
       continue
     }
-    excluded.add(textOf(record.attributes['app.visitor.id']) ?? record.id)
+    excludedEvents += 1
+    excludedVisitors.add(textOf(record.attributes['app.visitor.id']) ?? record.id)
   }
   return {
     consentedSessions: consented.size,
-    excludedSessions: excluded.size,
+    excludedVisitors: excludedVisitors.size,
+    excludedEvents,
   }
 }
 

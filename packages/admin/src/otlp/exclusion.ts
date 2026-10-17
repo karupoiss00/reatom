@@ -1,7 +1,7 @@
-import { analyticsConsentCounts } from './analytics.ts'
+import type { AnalyticsConsentCounts } from './analytics.ts'
+import { CLICKHOUSE_FETCH_LIMIT } from './clickhouse.ts'
 import type { OtlpTimelineUnit } from './analyticsModel.ts'
 import { hasActiveFilter } from './filter.ts'
-import type { AdminRecord } from './ingest.ts'
 import type { AdminMcpFilter } from '../mcp/types.ts'
 
 export type ExclusionKind = 'consent' | 'remoteCap' | 'hidden' | 'segment'
@@ -13,7 +13,7 @@ export interface ExclusionDraft {
 }
 
 export interface ExclusionInput {
-  records: readonly AdminRecord[]
+  consent: AnalyticsConsentCounts
   source: 'live' | 'replay' | 'remote'
   hiddenRows: number
   filter: AdminMcpFilter
@@ -21,21 +21,32 @@ export interface ExclusionInput {
   timelineUnit: OtlpTimelineUnit
 }
 
+function consentExclusionText(consent: AnalyticsConsentCounts): string {
+  const visitors = consent.excludedVisitors
+  const events = consent.excludedEvents
+  if (visitors === events) {
+    return visitors === 1
+      ? '1 visitor has no consent and is excluded'
+      : `${visitors} visitors have no consent and are excluded`
+  }
+  return events === 1
+    ? '1 event has no consent and is excluded'
+    : `${events} events have no consent and are excluded`
+}
+
 export function exclusionDrafts(input: ExclusionInput): ExclusionDraft[] {
   const drafts: ExclusionDraft[] = []
-  const consent = analyticsConsentCounts(input.records)
-  if (consent.excludedSessions > 0) {
-    const total = consent.consentedSessions + consent.excludedSessions
+  if (input.consent.excludedEvents > 0) {
     drafts.push({
       kind: 'consent',
-      text: `${consent.excludedSessions} of ${total} sessions have no consent and are excluded`,
+      text: consentExclusionText(input.consent),
       actionLabel: 'Docs',
     })
   }
   if (input.source === 'remote') {
     drafts.push({
       kind: 'remoteCap',
-      text: 'latest 500 records per signal',
+      text: `latest ${CLICKHOUSE_FETCH_LIMIT} records per signal`,
       actionLabel: 'Remote',
     })
   }

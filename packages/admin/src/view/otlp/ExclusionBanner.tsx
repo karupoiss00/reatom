@@ -8,7 +8,7 @@ export const ExclusionBanner = ({ admin }: { admin: OtlpAdmin }) => (
   <div>
     {() => {
       const drafts = exclusionDrafts({
-        records: admin.records(),
+        consent: admin.analytics.consentCounts(),
         source: admin.source(),
         hiddenRows:
           admin.hiddenAbortSuspenseCount() + admin.hiddenMountLogCount(),
