@@ -27,7 +27,7 @@ export const scrollable = `
 `
 
 export const focusRing = `
-  outline: var(--admin-focus-width) solid ${tokens.accent};
+  outline: var(--admin-focus-width) solid ${tokens.focus};
   outline-offset: var(--admin-focus-width);
 `
 
@@ -55,7 +55,7 @@ export const interactive = `
 export const hairline = `1px solid ${tokens.border1}`
 
 export const selectedRow = `
-  background: ${tokens.surface2};
+  background: ${tokens.selection};
   color: ${tokens.text1};
   box-shadow: inset 2px 0 0 ${tokens.accent};
 `

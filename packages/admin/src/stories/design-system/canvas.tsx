@@ -1,11 +1,19 @@
 import { mount } from '@reatom/jsx'
 
 import { ADMIN_FRAME } from '../../root'
-import { adminThemeVars, tokens } from '../../view/design-system'
+import {
+  adminThemeVars,
+  paletteVarBlock,
+  paletteVars,
+  DEFAULT_ACCENT,
+  tokens,
+  type AdminResolvedScheme,
+} from '../../view/design-system'
 
 export function renderDesignCanvas(
   child: Element,
   size: { width: number; height: number } = { width: 560, height: 760 },
+  scheme: AdminResolvedScheme = 'dark',
 ): HTMLDivElement {
   const root = document.createElement('div')
   root.dataset.testid = 'design-system-canvas'
@@ -25,6 +33,8 @@ export function renderDesignCanvas(
       <div
         css={`
           ${adminThemeVars}
+          ${paletteVarBlock(paletteVars(DEFAULT_ACCENT, scheme))}
+          color-scheme: ${scheme};
           width: 100%;
           height: 100%;
           overflow: auto;

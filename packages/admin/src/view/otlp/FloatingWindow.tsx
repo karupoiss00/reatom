@@ -51,7 +51,7 @@ const FLOATING_HOST_STYLE = `
     background: ${tokens.canvas};
     border: 1px solid ${tokens.border2};
     border-radius: ${radius[6]};
-    box-shadow: 0 24px 48px -24px oklch(0 0 0 / 0.6);
+    box-shadow: 0 24px 48px -24px ${tokens.shadowStrong};
   }
   :host([data-corner='top-left']) {
     top: ${FLOATING_MARGIN}px;

@@ -15,6 +15,7 @@ const SCHEME_KEY = '_Admin.settings.scheme.v1'
 const ACCENT_KEY = '_Admin.settings.accent.v1'
 const CORNER_KEY = '_Admin.settings.corner.v1'
 const AGENT_CALL_LOG_KEY = '_Admin.settings.agentCallLog.v1'
+const CAUSE_THREAD_KEY = '_Admin.settings.causeThread.v1'
 
 afterEach(() => {
   resetAdminSettings()
@@ -25,6 +26,7 @@ afterEach(() => {
   localStorage.removeItem(ACCENT_KEY)
   localStorage.removeItem(CORNER_KEY)
   localStorage.removeItem(AGENT_CALL_LOG_KEY)
+  localStorage.removeItem(CAUSE_THREAD_KEY)
 })
 
 test('display settings default to on and toggle', () => {
@@ -32,6 +34,7 @@ test('display settings default to on and toggle', () => {
   ADMIN_FRAME.run(() => {
     expect(settings.icons()).toBe(true)
     expect(settings.colors()).toBe(true)
+    expect(settings.causeThread()).toBe(true)
     settings.icons.toggle()
     settings.colors.setFalse()
     expect(settings.icons()).toBe(false)
@@ -82,6 +85,31 @@ test('accent color builds a light or dark palette', () => {
     const resolved = settings.resolvedScheme()
     expect(resolved === 'light' || resolved === 'dark').toBe(true)
     expect(settings.palette()['--admin-accent']).toContain('oklch(')
+
+    settings.accent.set('#bc98f9')
+    settings.scheme.set('light')
+    expect(settings.palette()['--admin-canvas']).toBe(
+      'oklch(0.985 0.004 285)',
+    )
+    expect(settings.palette()['--admin-accent']).toBe('oklch(0.520 0.160 305)')
+  })
+})
+
+test('match host snapshots the page once', () => {
+  const settings = adminSettings()
+  ADMIN_FRAME.run(() => {
+    expect(settings.scheme()).toBe('dark')
+    settings.matchedHostScheme.set('light')
+    settings.scheme.set('match')
+    expect(settings.resolvedScheme()).toBe('light')
+    expect(settings.palette()['--admin-canvas']).toBe(
+      'oklch(0.985 0.004 285)',
+    )
+    settings.matchedHostScheme.set('dark')
+    expect(settings.resolvedScheme()).toBe('dark')
+    expect(settings.palette()['--admin-canvas']).toBe(
+      'oklch(0.165 0.012 285)',
+    )
   })
 })
 

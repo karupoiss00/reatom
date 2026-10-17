@@ -17,6 +17,7 @@ import {
   DEFAULT_ACCENT,
   isAdminAccent,
   paletteVars,
+  readHostScheme,
   type AdminPaletteVars,
   type AdminResolvedScheme,
   type AdminScheme,
@@ -28,6 +29,7 @@ const ICONS_KEY = '_Admin.settings.icons.v1'
 const COLORS_KEY = '_Admin.settings.colors.v1'
 const CORNER_KEY = '_Admin.settings.corner.v1'
 const AGENT_CALL_LOG_KEY = '_Admin.settings.agentCallLog.v1'
+const CAUSE_THREAD_KEY = '_Admin.settings.causeThread.v1'
 
 /** Corner of the viewport where the admin panel docks. */
 export type AdminPanelCorner =
@@ -69,15 +71,24 @@ export interface AdminSettings {
   colors: BooleanAtom
   /** Status popover of in-process MCP tool calls. Default on. */
   agentCallLog: BooleanAtom
+  /** Cause thread in the Timeline gutter. Default on. */
+  causeThread: BooleanAtom
   /**
-   * Light, Dark, or the device scheme. Default Dark, so the shell stays on the
-   * original violet night until a person chooses otherwise.
+   * Light, Dark, the device scheme, or a one-shot match of the host page.
+   * Default Dark. `match` does not follow later page changes unless remounted.
    */
   scheme: Atom<AdminScheme> & { reset(): AdminScheme }
   /** Picked accent. Light and dark palettes are calculated from this color. */
   accent: Atom<string>
-  /** Light or dark after System follows the device. */
+  /** Light or dark after System follows the device, or after Match snapshots the host. */
   resolvedScheme: Computed<AdminResolvedScheme>
+  /**
+   * Reads the host page into the Match snapshot. Bind calls this so a remount
+   * can see a new host background. Match does not subscribe after that.
+   */
+  captureHostScheme: Action<[from?: Document | Element | null], AdminResolvedScheme>
+  /** Last Match-host snapshot. Null until Match reads the page. */
+  matchedHostScheme: Atom<AdminResolvedScheme | null>
   /** Shell colors for the resolved scheme and the picked accent. */
   palette: Computed<AdminPaletteVars>
   /**
@@ -97,10 +108,15 @@ function createAdminSettings(): AdminSettings {
   const icons = reatomBoolean(true, '_Admin.settings.icons')
   const colors = reatomBoolean(true, '_Admin.settings.colors')
   const agentCallLog = reatomBoolean(true, '_Admin.settings.agentCallLog')
-  const scheme = reatomEnum(['light', 'dark', 'system'] as const, {
+  const causeThread = reatomBoolean(true, '_Admin.settings.causeThread')
+  const scheme = reatomEnum(['light', 'dark', 'system', 'match'] as const, {
     name: '_Admin.settings.scheme',
     initState: 'dark',
   })
+  const matchedHostScheme = atom<AdminResolvedScheme | null>(
+    null,
+    '_Admin.settings.matchedHostScheme',
+  )
   const accent = atom(DEFAULT_ACCENT, '_Admin.settings.accent')
   const corner = atom<AdminPanelCorner>(
     'bottom-right',
@@ -110,6 +126,7 @@ function createAdminSettings(): AdminSettings {
     icons.extend(withLocalStorage(ICONS_KEY))
     colors.extend(withLocalStorage(COLORS_KEY))
     agentCallLog.extend(withLocalStorage(AGENT_CALL_LOG_KEY))
+    causeThread.extend(withLocalStorage(CAUSE_THREAD_KEY))
     scheme.extend(withLocalStorage(SCHEME_KEY))
     accent.extend(withLocalStorage(ACCENT_KEY))
     corner.extend(withLocalStorage(CORNER_KEY))
@@ -126,8 +143,22 @@ function createAdminSettings(): AdminSettings {
   const resolvedScheme = computed((): AdminResolvedScheme => {
     const mode = scheme()
     if (mode === 'light' || mode === 'dark') return mode
+    if (mode === 'match') {
+      const snapped = matchedHostScheme()
+      if (snapped !== null) return snapped
+      const next = readHostScheme(typeof document === 'undefined' ? null : document)
+      matchedHostScheme.set(next)
+      return next
+    }
     return prefersDark() ? 'dark' : 'light'
   }, '_Admin.settings.resolvedScheme')
+  const captureHostScheme = action((from?: Document | Element | null) => {
+    const next = readHostScheme(
+      from ?? (typeof document === 'undefined' ? null : document),
+    )
+    matchedHostScheme.set(next)
+    return next
+  }, '_Admin.settings.captureHostScheme')
   const palette = computed(
     () => paletteVars(accent(), resolvedScheme()),
     '_Admin.settings.palette',
@@ -152,9 +183,12 @@ function createAdminSettings(): AdminSettings {
     icons,
     colors,
     agentCallLog,
+    causeThread,
     scheme,
     accent,
     resolvedScheme,
+    captureHostScheme,
+    matchedHostScheme,
     palette,
     corner,
     localWorkOptions,
@@ -196,6 +230,9 @@ let palettePaintCount = 0
 /** Paints the calculated palette on a shell root. Returns the unbind. */
 export function bindAdminPalette(element: HTMLElement): () => void {
   const settings = adminSettings()
+  if (ADMIN_FRAME.run(() => settings.scheme()) === 'match') {
+    ADMIN_FRAME.run(() => settings.captureHostScheme(element.ownerDocument))
+  }
   const stop = effect(() => {
     const scheme = settings.resolvedScheme()
     for (const [name, value] of Object.entries(settings.palette())) {
@@ -217,7 +254,9 @@ export function resetAdminSettings(): void {
     settings.icons.setTrue()
     settings.colors.setTrue()
     settings.agentCallLog.setTrue()
+    settings.causeThread.setTrue()
     settings.scheme.reset()
+    settings.matchedHostScheme.set(null)
     settings.accent.set(DEFAULT_ACCENT)
     settings.corner.set('bottom-right')
     settings.localWorkOptions.set([])

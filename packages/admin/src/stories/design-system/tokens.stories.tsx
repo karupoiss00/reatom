@@ -124,40 +124,38 @@ const TokenBoard = () => (
           gap: var(--admin-space-8);
         `}
       >
-        <span
-          css={`
-            display: block;
-            height: 10px;
-            width: 8rem;
-            border-radius: var(--admin-radius-2);
-            background: ${barFilled(kindTokens.action)};
-          `}
-        />
-        <span
-          css={`
-            display: block;
-            height: 10px;
-            width: 8rem;
-            border-radius: var(--admin-radius-2);
-            ${barHollow(kindTokens.computed)}
-          `}
-        />
-        <span
-          css={`
-            display: block;
-            height: 10px;
-            ${barTick(kindTokens.atom)}
-          `}
-        />
-        <span
-          css={`
-            display: block;
-            height: 10px;
-            width: 8rem;
-            border-radius: var(--admin-radius-2);
-            background: ${barHatch};
-          `}
-        />
+        {(
+          [
+            ['Filled', `background: ${barFilled(kindTokens.action)};`],
+            ['Hollow', barHollow(kindTokens.computed)],
+            ['Tick', `${barTick(kindTokens.atom)} position: relative;`],
+            ['Hatch', `background: ${barHatch};`],
+          ] as const
+        ).map(([label, paint]) => (
+          <div
+            css={`
+              position: relative;
+              height: 18px;
+              width: 14rem;
+              border-radius: var(--admin-radius-2);
+              ${paint}
+            `}
+          >
+            <span
+              css={`
+                ${typeRoles.meta}
+                position: absolute;
+                inset: 0;
+                display: flex;
+                align-items: center;
+                padding-inline: var(--admin-space-4);
+                color: ${tokens.barInk};
+              `}
+            >
+              {`${label} · 12ms`}
+            </span>
+          </div>
+        ))}
       </div>
     </section>
   </div>
@@ -188,5 +186,20 @@ export const DarkWide: Story = {
   play: async ({ canvasElement }) => {
     expect(canvasElement.textContent).toContain('Title 15 / 20')
     await matchStoryRootScreenshot(canvasElement, 'tokens-1280')
+  },
+}
+
+export const LightDocked: Story = {
+  name: 'Tokens light 560x760',
+  tags: ['@visual'],
+  render: () =>
+    ADMIN_FRAME.run(() =>
+      renderDesignCanvas(<TokenBoard />, { width: 560, height: 760 }, 'light'),
+    ),
+  play: async ({ canvasElement }) => {
+    expect(canvasElement.textContent).toContain('Filled · 12ms')
+    expect(canvasElement.textContent).toContain('Hollow · 12ms')
+    expect(canvasElement.textContent).toContain('Hatch · 12ms')
+    await matchStoryRootScreenshot(canvasElement, 'tokens-light-560')
   },
 }

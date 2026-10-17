@@ -29,6 +29,7 @@ const config: StorybookConfig = {
     '../src/stories/reatom-jsx-xo/gantt.stories.ts',
     storyGlob('../src/stories/chat', 'ts'),
     '../src/stories/otlp/analytics.stories.ts',
+    '../src/stories/otlp/light-theme.stories.ts',
     '../src/stories/otlp/clickhouse-gantt.stories.ts',
     '../src/stories/otlp/mount-logs.stories.ts',
   ],

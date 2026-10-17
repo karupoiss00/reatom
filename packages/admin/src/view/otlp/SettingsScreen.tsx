@@ -137,6 +137,12 @@ const THEME_OPTIONS = [
   { id: 'light', label: 'Light', title: 'Always use the light palette' },
   { id: 'dark', label: 'Dark', title: 'Always use the dark palette' },
   { id: 'system', label: 'System', title: 'Follow this device' },
+  {
+    id: 'match',
+    label: 'Match host',
+    title:
+      'Read the host page color-scheme and background once when the panel mounts',
+  },
 ] as const
 
 let appearanceCounter = 0
@@ -262,7 +268,9 @@ function AppearanceSection({ settings }: { settings: AdminSettings }) {
         Appearance
       </Eyebrow>
       <Hint>
-        Light, Dark, or the device scheme. The accent color builds the palette.
+        Light, Dark, the device scheme, or Match host. Match reads the host page
+        once at mount and does not follow later page changes unless the panel
+        remounts. The accent color builds the palette.
       </Hint>
       <AppearanceRadios
         label="Theme"
@@ -386,6 +394,12 @@ function settingsSections(settings: AdminSettings): Array<SettingsSection> {
           description: 'Show what in-process MCP tools just called',
           checked: settings.agentCallLog,
         },
+        {
+          id: 'causeThread',
+          label: 'Cause thread',
+          description: 'Accent line from the selected row to its cause ancestors',
+          checked: settings.causeThread,
+        },
       ],
     },
     {
@@ -441,7 +455,7 @@ export const SettingsScreen = () => {
                 summary={
                   section.id === 'display'
                     ? () =>
-                        `${settings.icons() ? 'Icons on' : 'Icons off'} · ${settings.colors() ? 'Colors on' : 'Colors off'}`
+                        `${settings.icons() ? 'Icons on' : 'Icons off'} · ${settings.colors() ? 'Colors on' : 'Colors off'} · ${settings.causeThread() ? 'Thread on' : 'Thread off'}`
                     : undefined
                 }
               >

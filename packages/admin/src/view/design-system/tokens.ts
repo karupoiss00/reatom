@@ -6,7 +6,10 @@ export {
   hueDistance,
   isAdminAccent,
   parseOklch,
+  paletteVarBlock,
   paletteVars,
+  readHostScheme,
+  resolveHostSignals,
 } from './palette'
 export type {
   AdminPaletteVars,
@@ -21,11 +24,18 @@ export const adminThemeVars = `
   --admin-kind-other: var(--admin-text-3);
   --admin-kind-stripe: 3px;
   --admin-error-wash: oklch(from var(--admin-error) l c h / 0.08);
+  --admin-bar-ink: var(--admin-text-1);
   --admin-bar-hatch: repeating-linear-gradient(
     45deg,
     color-mix(in oklch, var(--admin-text-3) 35%, transparent) 0 1px,
     transparent 1px 5px
   );
+  --admin-graph-dot: color-mix(in oklch, var(--admin-border-1) 40%, transparent);
+  --admin-graph-edge: color-mix(in oklch, var(--admin-text-3) 55%, transparent);
+  --admin-focus: var(--admin-accent);
+  --admin-selection: var(--admin-surface-2);
+  --admin-shadow: oklch(0.16 0.02 285 / 0.28);
+  --admin-shadow-strong: oklch(0.12 0.02 285 / 0.48);
   --admin-motion-pulse: 1.4s;
   @keyframes admin-capture-pulse {
     from,
@@ -88,6 +98,13 @@ export const tokens = {
   error: 'var(--admin-error)',
   errorWash: 'var(--admin-error-wash)',
   info: 'var(--admin-info)',
+  barInk: 'var(--admin-bar-ink)',
+  graphDot: 'var(--admin-graph-dot)',
+  graphEdge: 'var(--admin-graph-edge)',
+  focus: 'var(--admin-focus)',
+  selection: 'var(--admin-selection)',
+  shadow: 'var(--admin-shadow)',
+  shadowStrong: 'var(--admin-shadow-strong)',
   fontUi: 'var(--admin-font-ui)',
   fontData: 'var(--admin-font-data)',
 } as const

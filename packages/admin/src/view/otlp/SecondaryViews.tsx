@@ -53,7 +53,7 @@ export const OtlpGraphView = ({ admin }: { admin: OtlpAdmin }) => {
         min-height: 0;
         background: ${tokens.canvas};
         background-image: radial-gradient(
-          ${tokens.border1} 1px,
+          ${tokens.graphDot} 1px,
           transparent 1px
         );
         background-size: 16px 16px;

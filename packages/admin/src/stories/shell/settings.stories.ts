@@ -234,6 +234,7 @@ export const ColorTheme: Story = {
       'aria-checked',
       'true',
     )
+    await I.see(role('radio', 'Match host').within(shell()))
     await I.seeAttribute(
       role('radio', 'Dark').within(shell()),
       'aria-checked',
