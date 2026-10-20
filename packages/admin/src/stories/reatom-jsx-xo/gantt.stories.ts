@@ -238,6 +238,95 @@ export const ScrollKeepsRowsMounted: Story = {
   },
 }
 
+export const InspectingARowKeepsScroll: Story = {
+  name: 'Inspecting a row keeps the selected row in view',
+  play: async ({ canvasElement }) => {
+    await boot(canvasElement)
+    await playWinningGame(canvasElement)
+    const scroller = getAdminRoot().querySelector(
+      '[data-testid="gantt-scroller"]',
+    )
+    if (!(scroller instanceof HTMLElement)) throw new Error('Scroller missing')
+    const rowsPastOverscan = ADMIN_GANTT_OVERSCAN + 4
+    await waitFor(() => {
+      adminUi().getByRole('button', { name: 'Expand all' }).click()
+      expect(scroller.scrollHeight).toBeGreaterThan(
+        scroller.clientHeight + ROW_HEIGHT * (rowsPastOverscan + 1),
+      )
+    })
+    const scrollTop = ROW_HEIGHT * rowsPastOverscan
+    await scrollTimeline(scroller, scrollTop)
+
+    const scrollerBox = scroller.getBoundingClientRect()
+    const visibleRows = mountedRows().filter((row) => {
+      const box = row.getBoundingClientRect()
+      return box.bottom > scrollerBox.top && box.top < scrollerBox.bottom
+    })
+    const target = visibleRows[Math.floor(visibleRows.length / 2)]
+    if (!target) throw new Error('No visible timeline row')
+    const label = target.getAttribute('aria-label')
+    if (!label) throw new Error('Visible row has no name')
+    target.dispatchEvent(
+      new MouseEvent('click', { bubbles: true, cancelable: true }),
+    )
+
+    await waitFor(() => {
+      expect(adminUi().getByRole('heading', { name: label })).toBeTruthy()
+    })
+    await nextFrames()
+
+    const spacer = scroller.querySelector('[data-testid="gantt-spacer-before"]')
+    const spacerHeight =
+      spacer instanceof HTMLElement ? spacer.offsetHeight : 0
+    expect(scroller.scrollTop).toBeGreaterThan(0)
+    expect(scroller.scrollTop).toBeGreaterThanOrEqual(
+      spacerHeight - ROW_HEIGHT * (ADMIN_GANTT_OVERSCAN + 1),
+    )
+    expect(Math.abs(scroller.scrollTop - scrollTop)).toBeLessThan(
+      ROW_HEIGHT * 3,
+    )
+
+    const selected = scroller.querySelector('[aria-selected="true"]')
+    if (!(selected instanceof HTMLElement)) {
+      throw new Error('Selected row is not mounted')
+    }
+    const selectedBox = selected.getBoundingClientRect()
+    const view = scroller.getBoundingClientRect()
+    expect(selectedBox.bottom).toBeGreaterThan(view.top)
+    expect(selectedBox.top).toBeLessThan(view.bottom)
+  },
+}
+
+export const WaterfallRootShowsSpanCount: Story = {
+  name: 'Waterfall roots show a span count away from the duration',
+  play: async ({ canvasElement }) => {
+    await boot(canvasElement)
+    await playWinningGame(canvasElement)
+    await userEvent.click(adminUi().getByRole('button', { name: 'Expand all' }))
+    const badge = await waitFor(() => {
+      const found = getAdminRoot().querySelector(
+        '[data-testid="gantt-span-count"]',
+      )
+      expect(found?.textContent).toMatch(/\d+ spans/)
+      return found as HTMLElement
+    })
+    const row = badge.closest('[role="row"]')
+    const label = row?.querySelector('[data-testid="gantt-row-label"]')
+    const duration = row?.querySelector('[data-gantt-duration]')
+    expect(label?.contains(badge)).toBe(false)
+    expect(badge.textContent).toMatch(/^\d+ spans$/)
+    expect(badge.textContent).not.toMatch(/\d+ms|\d+s/)
+    expect(duration?.textContent ?? '').toMatch(/\d/)
+
+    await userEvent.click(adminUi().getByRole('button', { name: 'Log' }))
+    await waitFor(() => {
+      expect(
+        getAdminRoot().querySelector('[data-testid="gantt-span-count"]'),
+      ).toBeNull()
+    })
+  },
+}
+
 export const InspectAMove: Story = {
   name: 'Inspect a move',
   tags: ['@smoke'],

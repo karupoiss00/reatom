@@ -1,5 +1,5 @@
 ---
-sourcesHash: 72dfdf63f5bea0aec66dc0fa9692b2a55793129e3f51cd26d3c03bc2af2091bf
+sourcesHash: 1f90b1b02bea5805c49f33c5225eb54ea842302ec2ebe407d016e35409c96caf
 id: debugger-workspace
 description: >-
   Arrange the admin shell as a header, filters, a main view, a frame card,
@@ -42,7 +42,7 @@ Import `DebuggerWorkspace` and `DEBUGGER_WORKSPACE_SIDE_MIN` from `src/view/desi
 />
 ```
 
-- `header`, `filter`, `main`, and `status` are the regions. `main` is one element. The shell reparents it when the card opens, closes, or the shell crosses 680px. Keep view state in atoms.
+- `header`, `filter`, `main`, and `status` are the regions. `main` is one element. It stays in one parent so scroll position survives the card opening, closing, or the shell crossing 680px. Keep view state in atoms.
 - `inspector` builds the frame card. It is called when the card is shown and again when the shell crosses 680px. Pass null when there is no card. Keep card state in atoms.
 - `inspectorLabel` names the side region and the drawer dialog. Pass a function when the name changes with the view, such as Frame or Step.
 - `inspectorOpen` is the caller's atom.
@@ -54,7 +54,7 @@ The shell sets `container: admin-shell`. Product CSS that depends on shell width
 
 ### Required
 
-- Order is header, filters, main view, then status. The frame card is either the right side of a [SplitPane](../components/split-pane.md) or a [Drawer](../components/drawer.md). It is not a third place.
+- Order is header, filters, main view, then status. The frame card is either a side pane with the [SplitPane](../components/split-pane.md) resize affordance or a [Drawer](../components/drawer.md). The main view does not move between those placements. It is not a third place.
 - At a shell `clientWidth` of 680 or more, and while the card is open, the card is the side pane. The left minimum is 280px, the right minimum is 240px, and the default ratio is 0.62. Below 680, the card is the drawer.
 - The status region is the caller's [StatusBar](../components/status-bar.md). This layout does not wrap it in another footer.
 - Spacing between the stacked regions uses the space and border tokens. The caller does not add a second shell around this one.

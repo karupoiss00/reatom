@@ -94,5 +94,5 @@ The Gantt UI composes this kit and keeps its own record, time-axis, and selectio
 - A destructive clear uses Button `variant="danger"`, then Toast with an undo action. The toast does not restore records itself.
 - Structured hints, including drop reasons, use Popover. A single short phrase may use Button `title`. Shortcut chords outside SearchField use Kbd.
 - Inspector shows one value as an expandable tree. The cause chain uses RailGraph. A uniform row table uses DataGrid. The waterfall stays in the product Gantt.
-- `main` passed to DebuggerWorkspace is reparented when the card opens or the shell crosses 680px. `inspector` is called again in those cases. Keep both states in atoms.
+- `main` passed to DebuggerWorkspace stays in one parent so scroll position survives the card opening or the shell crossing 680px. `inspector` is called again when the card is shown and when the shell crosses 680px. Keep both states in atoms.
 - Escape inside a Drawer or Popover closes that layer. Escape in the wide shell closes the frame card unless focus is in a text field. The product returns focus to the selected row from `onInspectorClose` when the drawer did not already restore it.

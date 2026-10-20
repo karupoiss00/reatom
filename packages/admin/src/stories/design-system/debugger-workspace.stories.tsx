@@ -73,6 +73,7 @@ export const WideFrame: Story = {
       throw new Error('missing separator')
     }
     expect(canvasElement.querySelector('[role="dialog"]')).toBeNull()
+    expect(separator.getAttribute('aria-hidden')).not.toBe('true')
     expect(canvasElement.textContent).toContain('Timeline')
     expect(canvasElement.textContent).toContain('Selected move')
 
@@ -91,8 +92,10 @@ export const NarrowDrawer: Story = {
       expect(canvasElement.querySelector('[role="dialog"]')).toBeTruthy()
     })
     expect(
-      canvasElement.querySelector('[aria-label="Resize panes"]'),
-    ).toBeNull()
+      canvasElement
+        .querySelector('[aria-label="Resize panes"]')
+        ?.getAttribute('aria-hidden'),
+    ).toBe('true')
     expect(canvasElement.textContent).toContain('Timeline')
     expect(canvasElement.textContent).toContain('Selected move')
 
@@ -114,8 +117,10 @@ export const SearchKeepsFrame: Story = {
     search.focus()
     await userEvent.keyboard('{Escape}')
     expect(
-      canvasElement.querySelector('[aria-label="Resize panes"]'),
-    ).toBeTruthy()
+      canvasElement
+        .querySelector('[aria-label="Resize panes"]')
+        ?.getAttribute('aria-hidden'),
+    ).not.toBe('true')
     expect(canvasElement.textContent).toContain('Selected move')
   },
 }
@@ -138,7 +143,9 @@ export const CrossBreakpoint: Story = {
     expect(canvasElement.textContent).toContain('Timeline')
     expect(canvasElement.textContent).toContain('Selected move')
     expect(
-      canvasElement.querySelector('[aria-label="Resize panes"]'),
-    ).toBeNull()
+      canvasElement
+        .querySelector('[aria-label="Resize panes"]')
+        ?.getAttribute('aria-hidden'),
+    ).toBe('true')
   },
 }

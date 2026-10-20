@@ -216,6 +216,71 @@ test('cause rail keys frame ids by trace so colliding ids do not join', () => {
   expect(unscoped.map((node) => node.label)).not.toContain('devtools.ping')
 })
 
+test('cause rail walks computed.dependency links across traces', () => {
+  const qtyTrace = 'e3f80e40aa791584b0cf76de190c5860'
+  const priceTrace = 'b87110b55a4743558bad836760edf358'
+  const record = (
+    patch: Pick<AdminRecord, 'id' | 'traceId' | 'spanId' | 'name' | 'frameId'> &
+      Partial<AdminRecord>,
+  ): AdminRecord => ({
+    sourceId: 'local',
+    kind: 'span',
+    start: 1,
+    attributes: {},
+    resource: {},
+    links: [],
+    causeIds: [],
+    reatomKind: 'action',
+    atomName: patch.name,
+    ...patch,
+  })
+  const setQty = record({
+    id: 'qty',
+    traceId: qtyTrace,
+    spanId: '2ee337375cfd8185',
+    name: 'cart.setQty',
+    frameId: '3',
+    start: 10,
+  })
+  const setPrice = record({
+    id: 'price',
+    traceId: priceTrace,
+    spanId: '2c8a5498651e6b28',
+    name: 'cart.setPrice',
+    frameId: '5',
+    start: 20,
+  })
+  const diamond = record({
+    id: 'total',
+    traceId: priceTrace,
+    spanId: 'b5c850b17d034d03',
+    name: 'cart.total',
+    frameId: '6',
+    start: 30,
+    reatomKind: 'computed',
+    causeIds: ['3', '5'],
+    links: [
+      {
+        traceId: qtyTrace,
+        spanId: setQty.spanId,
+        reason: 'computed.dependency',
+        frameId: '3',
+      },
+    ],
+  })
+  const records = [setQty, setPrice, diamond]
+
+  const ancestors = causeRailNodes(records, '6', 'ancestors', priceTrace)
+  expect(ancestors.map((node) => node.label)).toEqual(
+    expect.arrayContaining(['cart.setQty', 'cart.setPrice', 'cart.total']),
+  )
+
+  const descendants = causeRailNodes(records, '3', 'descendants', qtyTrace)
+  expect(descendants.map((node) => node.label)).toEqual(
+    expect.arrayContaining(['cart.setQty', 'cart.total']),
+  )
+})
+
 function atomNamesInTree(nodes: OtlpStateNode[]): string[] {
   return nodes.flatMap((node) => [
     ...(node.atomName !== undefined ? [node.atomName] : []),

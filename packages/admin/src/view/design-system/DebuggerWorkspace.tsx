@@ -2,8 +2,9 @@ import { atom, bind, peek, type Atom } from '@reatom/core'
 
 import { Drawer } from './Drawer'
 import { isEditableField } from './layer'
-import { SplitPane } from './SplitPane'
-import { tokens } from './tokens'
+import { focusVisible } from './mixins'
+import { splitPanePointerMove } from './splitPointer'
+import { size, tokens } from './tokens'
 
 /** Shell inline size at which the frame card sits beside the main view. */
 export const DEBUGGER_WORKSPACE_SIDE_MIN = 680
@@ -18,8 +19,9 @@ export interface DebuggerWorkspaceProps {
   header: Element
   filter: Element
   /**
-   * The main view element. The shell reparents this node when the frame card
-   * opens, closes, or the shell crosses 680px. Keep view state in atoms.
+   * The main view element. It stays in one parent so scroll position
+   * survives the frame card opening, closing, or the shell crossing 680px.
+   * Keep view state in atoms.
    */
   main: Element
   /**
@@ -62,18 +64,6 @@ export const DebuggerWorkspace = ({
   )
   const setNarrow = bind((value: boolean) => narrow.set(value))
   const closeInspector = bind(onInspectorClose)
-  const mainPane = (
-    <main
-      css={`
-        height: 100%;
-        min-width: 0;
-        min-height: 0;
-        overflow: hidden;
-      `}
-    >
-      {main}
-    </main>
-  )
 
   const readLabel = () =>
     typeof inspectorLabel === 'function' ? inspectorLabel() : inspectorLabel
@@ -147,51 +137,141 @@ export const DebuggerWorkspace = ({
           position: relative;
         `}
       >
-        {() => {
-          const mode = placement()
-          if (mode === 'side' && inspector) {
-            return (
-              <SplitPane
-                ratio={ratio}
-                left={mainPane}
-                right={
-                  <aside
-                    aria-label={readLabel}
-                    css={`
-                      height: 100%;
-                      min-width: 0;
-                      min-height: 0;
-                      overflow: hidden;
-                    `}
-                  >
-                    {inspector()}
-                  </aside>
-                }
-                minLeft={DEBUGGER_WORKSPACE_MIN_MAIN}
-                minRight={DEBUGGER_WORKSPACE_MIN_INSPECTOR}
-                defaultRatio={DEBUGGER_WORKSPACE_DEFAULT_RATIO}
-              />
+        <div
+          data-reatom-name="workspace-body"
+          css:split={() => {
+            if (placement() !== 'side') return 'minmax(0, 1fr)'
+            return `minmax(${DEBUGGER_WORKSPACE_MIN_MAIN}px, ${ratio() * 100}%) ${size.splitterHit} minmax(${DEBUGGER_WORKSPACE_MIN_INSPECTOR}px, 1fr)`
+          }}
+          css={`
+            display: grid;
+            grid-template-columns: var(--split);
+            min-height: 0;
+            min-width: 0;
+            height: 100%;
+          `}
+          ref={(element) => {
+            const onPointerMove = splitPanePointerMove(
+              element,
+              ratio,
+              DEBUGGER_WORKSPACE_MIN_MAIN,
+              DEBUGGER_WORKSPACE_MIN_INSPECTOR,
             )
-          }
-          return (
-            <div
+            element.addEventListener('pointermove', onPointerMove)
+            return () =>
+              element.removeEventListener('pointermove', onPointerMove)
+          }}
+        >
+          <div
+            data-pane="left"
+            css={`
+              min-width: 0;
+              min-height: 0;
+              overflow: hidden;
+            `}
+          >
+            <main
               css={`
                 height: 100%;
-                min-height: 0;
                 min-width: 0;
+                min-height: 0;
+                overflow: hidden;
               `}
             >
-              {mainPane}
-              {mode === 'drawer' && inspector ? (
-                <Drawer
-                  open={inspectorOpen}
-                  label={readLabel}
-                  onClose={onInspectorClose}
-                >
-                  {inspector()}
-                </Drawer>
-              ) : null}
-            </div>
+              {main}
+            </main>
+          </div>
+          <button
+            type="button"
+            role="separator"
+            aria-label="Resize panes"
+            aria-orientation="vertical"
+            aria-valuemin="20"
+            aria-valuemax="80"
+            aria-hidden={() => (placement() === 'side' ? undefined : 'true')}
+            aria-valuenow={() => String(Math.round(ratio() * 100))}
+            css={`
+              ${focusVisible}
+              appearance: none;
+              border: 0;
+              padding: 0;
+              width: 100%;
+              background: transparent;
+              cursor: col-resize;
+              touch-action: none;
+              position: relative;
+              &[aria-hidden='true'] {
+                display: none;
+              }
+              &::before {
+                content: '';
+                position: absolute;
+                inset-block: 0;
+                inset-inline-start: 50%;
+                width: 1px;
+                background: ${tokens.border1};
+              }
+              &::after {
+                content: '';
+                position: absolute;
+                inset-block-start: 50%;
+                inset-inline-start: 50%;
+                width: 4px;
+                height: 18px;
+                transform: translate(-50%, -50%);
+                border-radius: 999px;
+                background: ${tokens.border2};
+              }
+            `}
+            on:pointerdown={(event: Event) => {
+              const pointerEvent = event instanceof PointerEvent ? event : null
+              if (!pointerEvent) return
+              const pane = event.currentTarget
+              if (pane instanceof Element && pane.parentElement) {
+                pane.parentElement.setPointerCapture(pointerEvent.pointerId)
+              }
+            }}
+            on:dblclick={() => ratio.set(DEBUGGER_WORKSPACE_DEFAULT_RATIO)}
+            on:keydown={(event: KeyboardEvent) => {
+              if (event.key === 'ArrowLeft') {
+                event.preventDefault()
+                ratio.set(Math.max(0.2, ratio() - 0.04))
+                return
+              }
+              if (event.key === 'ArrowRight') {
+                event.preventDefault()
+                ratio.set(Math.min(0.8, ratio() + 0.04))
+              }
+            }}
+          />
+          <aside
+            aria-label={readLabel}
+            aria-hidden={() => (placement() === 'side' ? undefined : 'true')}
+            css={`
+              height: 100%;
+              min-width: 0;
+              min-height: 0;
+              overflow: hidden;
+              &[aria-hidden='true'] {
+                display: none;
+              }
+            `}
+          >
+            {() =>
+              placement() === 'side' && inspector ? inspector() : null
+            }
+          </aside>
+        </div>
+        {() => {
+          if (placement() !== 'drawer' || !inspector) return null
+          return (
+            <Drawer
+              open={inspectorOpen}
+              label={readLabel}
+              onClose={onInspectorClose}
+            >
+              {inspector()}
+            </Drawer>
           )
         }}
       </div>

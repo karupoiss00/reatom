@@ -161,11 +161,23 @@ export function railNodesFromRecords(
 }
 
 function parentKeysOf(record: AdminRecord): string[] {
-  const node = toRailNode(record)
-  if (!node) return []
-  return node.parentIds.map((parentId) =>
-    frameRecordKey(record.traceId, String(parentId)),
-  )
+  const keys: string[] = []
+  const seen = new Set<string>()
+  const push = (key: string) => {
+    if (seen.has(key)) return
+    seen.add(key)
+    keys.push(key)
+  }
+  for (const causeId of record.causeIds) {
+    if (!Number.isFinite(Number(causeId))) continue
+    push(frameRecordKey(record.traceId, causeId))
+  }
+  for (const link of record.links) {
+    if (link.reason !== 'computed.dependency' || !link.frameId) continue
+    if (!Number.isFinite(Number(link.frameId))) continue
+    push(frameRecordKey(link.traceId, link.frameId))
+  }
+  return keys
 }
 
 function childrenIndex(
@@ -235,6 +247,11 @@ function resolveRootKey(
   return undefined
 }
 
+/**
+ * Rail nodes around `rootFrameId`. Cause ids stay in the record's own
+ * trace; `computed.dependency` links may pull in a parent from another
+ * trace. `rootTraceId` picks the root when frame ids collide.
+ */
 export function causeRailNodes(
   records: readonly AdminRecord[],
   rootFrameId: string | null,
@@ -244,11 +261,7 @@ export function causeRailNodes(
   if (rootFrameId === null) return []
   const rootId = Number(rootFrameId)
   if (!Number.isFinite(rootId)) return []
-  const scoped =
-    rootTraceId == null || rootTraceId === ''
-      ? records
-      : records.filter((record) => record.traceId === rootTraceId)
-  const byFrame = framedByFrameId(scoped)
+  const byFrame = framedByFrameId(records)
   const rootKey = resolveRootKey(byFrame, rootFrameId, rootTraceId)
   if (rootKey === undefined) return []
 

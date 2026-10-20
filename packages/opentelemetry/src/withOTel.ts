@@ -565,7 +565,32 @@ export const createWithOTel = ({
   } => {
     if (root) return { reason: 'root' }
     const calling = readTrace(traceVar)
-    if (calling) return { parent: calling, reason: reasonForTrace(calling) }
+    if (calling) {
+      const reason = reasonForTrace(calling)
+      if (reason === 'call') {
+        try {
+          const caller = top().pubs[0]
+          if (
+            caller &&
+            caller !== caller.root.frame &&
+            caller.atom.__reatom.reactive === true
+          ) {
+            const traced = causes.tracedCauses(caller)
+            const fromTracedDependency = traced.some((cause) =>
+              sameSpan(cause, calling),
+            )
+            if (fromTracedDependency) {
+              let latest = traced[0]!
+              for (const cause of traced) {
+                if (cause.changedOrder > latest.changedOrder) latest = cause
+              }
+              return { parent: latest, reason: 'dependency' }
+            }
+          }
+        } catch {}
+      }
+      return { parent: calling, reason }
+    }
     roots?.closePendingRouteSpan()
     const page = roots?.pageTrace()
     if (page) {
@@ -1123,6 +1148,7 @@ export const createWithOTel = ({
             const pair = selected.pair
             const parentReason = pair ? selected.reason : undefined
             causes.markChanged(frame, pair)
+            if (pair) traceVar.set(pair)
             const snapshot = frame.state
             const cross =
               reatomPrimitiveKind(target) === 'computed'

@@ -1,4 +1,15 @@
-import { action, atom, computed, context, getCalls, notify } from '@reatom/core'
+import {
+  action,
+  atom,
+  computed,
+  context,
+  effect,
+  getCalls,
+  notify,
+  withAsync,
+  withAsyncData,
+  wrap,
+} from '@reatom/core'
 import { afterEach, expect, test, vi } from 'vitest'
 
 import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
@@ -451,4 +462,257 @@ test('uninstrumented atoms created before the instance pass the writer trace thr
   expect(viewed[0]!.attributes['reatom.cause.ids']).toContain(
     writeSpan.attributes['reatom.frame.id'],
   )
+})
+
+const settle = () => wrap(new Promise((resolve) => setTimeout(resolve, 10)))
+
+test('async action onFulfill keeps the action as parent and cause', async () => {
+  const { otel, traces } = setup()
+
+  await context.start(async () => {
+    const load = action(async () => {
+      await wrap(Promise.resolve())
+      return 1
+    }, 'load').extend(withAsync())
+    await wrap(load())
+    await settle()
+  })
+
+  await otel.flush()
+
+  const spans = exportedSpans(traces)
+  const loadSpan = namedSpan(spans, 'load')
+  const fulfillSpan = namedSpan(spans, 'load.onFulfill')
+  expect(fulfillSpan.parentSpanId).toBe(loadSpan.spanId)
+  expect(fulfillSpan.traceId).toBe(loadSpan.traceId)
+  expect(fulfillSpan.attributes['reatom.cause.ids']).toEqual(
+    expect.arrayContaining([loadSpan.attributes['reatom.frame.id']]),
+  )
+})
+
+test('async action onReject keeps the action as parent and cause', async () => {
+  const { otel, traces } = setup()
+
+  await context.start(async () => {
+    const load = action(async () => {
+      await wrap(Promise.resolve())
+      throw new Error('load failed')
+    }, 'load').extend(withAsync())
+    await wrap(load().catch(() => undefined))
+    await settle()
+  })
+
+  await otel.flush()
+
+  const spans = exportedSpans(traces)
+  const loadSpan = namedSpan(spans, 'load')
+  const rejectSpan = namedSpan(spans, 'load.onReject')
+  expect(rejectSpan.parentSpanId).toBe(loadSpan.spanId)
+  expect(rejectSpan.traceId).toBe(loadSpan.traceId)
+  expect(rejectSpan.attributes['reatom.cause.ids']).toEqual(
+    expect.arrayContaining([loadSpan.attributes['reatom.frame.id']]),
+  )
+})
+
+test('async computed onFulfill on first connect is parented, not a new root', async () => {
+  const { otel, traces } = setup()
+
+  await context.start(async () => {
+    const dep = atom(1, 'dep')
+    const data = computed(async () => {
+      const value = dep()
+      await wrap(Promise.resolve())
+      return value
+    }, 'data').extend(withAsyncData())
+    const unsubscribe = data.data.subscribe(() => {})
+    await settle()
+    unsubscribe()
+  })
+
+  await otel.flush()
+
+  const spans = exportedSpans(traces)
+  const fulfillSpan = namedSpan(spans, 'data.onFulfill')
+  expect(fulfillSpan.parentSpanId).toMatch(HEX_SPAN_ID)
+})
+
+test('async computed onFulfill after a dependency write keeps non-empty causes', async () => {
+  const { otel, traces } = setup()
+
+  await context.start(async () => {
+    const dep = atom(1, 'dep')
+    const data = computed(async () => {
+      const value = dep()
+      await wrap(Promise.resolve())
+      return value
+    }, 'data').extend(withAsyncData())
+    const unsubscribe = data.data.subscribe(() => {})
+    await settle()
+    action(() => dep.set(2), 'bump')()
+    await settle()
+    unsubscribe()
+  })
+
+  await otel.flush()
+
+  const spans = exportedSpans(traces)
+  const bumpSpan = namedSpan(spans, 'bump')
+  const fulfillSpans = spans.filter((span) => span.name === 'data.onFulfill')
+  expect(fulfillSpans.length).toBeGreaterThan(1)
+  const afterBump = fulfillSpans.find((span) => {
+    const ids = span.attributes['reatom.cause.ids']
+    return Array.isArray(ids) && ids.length > 0
+  })
+  expect(afterBump).toBeDefined()
+  expect(afterBump!.attributes['reatom.cause.ids']).toEqual(
+    expect.arrayContaining([expect.any(String)]),
+  )
+  expect(bumpSpan.attributes['reatom.frame.id']).toEqual(expect.any(String))
+})
+
+test('a dependency that was read but not written is not a cause', async () => {
+  const { otel, traces, logs } = setup()
+
+  context.start(() => {
+    const qty = atom(1, 'cart.qty')
+    const price = atom(10, 'cart.price')
+    const total = computed(() => qty() * price(), 'cart.total')
+    total.subscribe(() => {})
+
+    const setQty = action(() => qty.set(2), 'cart.setQty')
+    expect(setQty()).toBe(2)
+    expect(total()).toBe(20)
+    notify()
+  })
+
+  await otel.flush()
+
+  const spans = exportedSpans(traces)
+  const qtySpan = namedSpan(spans, 'cart.setQty')
+  const qtyWrites = exportedLogs(logs).filter(
+    (record) =>
+      record.eventName === 'reatom.atom.update' &&
+      record.attributes['reatom.name'] === 'cart.qty',
+  )
+  const priceWrites = exportedLogs(logs).filter(
+    (record) =>
+      record.eventName === 'reatom.atom.update' &&
+      record.attributes['reatom.name'] === 'cart.price',
+  )
+  expect(qtyWrites.length).toBeGreaterThan(0)
+  expect(priceWrites).toEqual([])
+
+  const updates = computedUpdatesNamed(exportedLogs(logs), 'cart.total').filter(
+    (record) => record.traceId === qtySpan.traceId,
+  )
+  expect(updates.length).toBeGreaterThan(0)
+  const qtyFrameId = qtyWrites[0]!.attributes['reatom.frame.id']
+  for (const record of updates) {
+    const ids = record.attributes['reatom.cause.ids']
+    expect(ids).toEqual([qtyFrameId])
+  }
+})
+
+test('action called from an effect after two writes includes both dependency cause ids', async () => {
+  const { otel, traces, logs } = setup()
+
+  context.start(() => {
+    const query = atom('', 'query')
+    const other = atom(0, 'other')
+    const report = action((value: string) => value, 'report')
+    effect(() => {
+      other()
+      report(query())
+    }, 'reportEffect')
+    action(() => other.set(1), 'init')()
+    action(() => query.set('a'), 'search')()
+  })
+
+  await otel.flush()
+
+  const otherFrameId = exportedLogs(logs).find(
+    (record) =>
+      record.eventName === 'reatom.atom.update' &&
+      record.attributes['reatom.name'] === 'other',
+  )?.attributes['reatom.frame.id']
+  const queryFrameId = exportedLogs(logs).find(
+    (record) =>
+      record.eventName === 'reatom.atom.update' &&
+      record.attributes['reatom.name'] === 'query',
+  )?.attributes['reatom.frame.id']
+  expect(typeof otherFrameId).toBe('string')
+  expect(typeof queryFrameId).toBe('string')
+
+  const afterWrites = exportedSpans(traces)
+    .filter((span) => span.name === 'report')
+    .find((span) => {
+      const ids = span.attributes['reatom.cause.ids']
+      return Array.isArray(ids) && ids.length > 0
+    })
+  expect(afterWrites).toBeDefined()
+  expect(afterWrites!.attributes['reatom.cause.ids']).toEqual(
+    expect.arrayContaining([otherFrameId, queryFrameId]),
+  )
+})
+
+test('action called from a subscribed computed includes the written dependency cause id', async () => {
+  const { otel, traces, logs } = setup()
+
+  context.start(() => {
+    const query = atom('', 'query')
+    const report = action((value: string) => value, 'report')
+    const derived = computed(() => report(query()), 'derived')
+    derived.subscribe(() => {})
+    action(() => query.set('a'), 'search')()
+  })
+
+  await otel.flush()
+
+  const queryFrameId = exportedLogs(logs).find(
+    (record) =>
+      record.eventName === 'reatom.atom.update' &&
+      record.attributes['reatom.name'] === 'query',
+  )?.attributes['reatom.frame.id']
+  expect(typeof queryFrameId).toBe('string')
+
+  const afterWrite = exportedSpans(traces)
+    .filter((span) => span.name === 'report')
+    .find((span) => {
+      const ids = span.attributes['reatom.cause.ids']
+      return Array.isArray(ids) && ids.length > 0
+    })
+  expect(afterWrite).toBeDefined()
+  expect(afterWrite!.attributes['reatom.cause.ids']).toEqual(
+    expect.arrayContaining([queryFrameId]),
+  )
+})
+
+test('action called from an effect is parented by the last-changed dependency', async () => {
+  const { otel, traces } = setup()
+
+  context.start(() => {
+    const query = atom('', 'query')
+    const other = atom(0, 'other')
+    const report = action((value: string) => value, 'report')
+    effect(() => {
+      other()
+      report(query())
+    }, 'reportEffect')
+    action(() => other.set(1), 'init')()
+    action(() => query.set('a'), 'search')()
+  })
+
+  await otel.flush()
+
+  const spans = exportedSpans(traces)
+  const searchSpan = namedSpan(spans, 'search')
+  const afterWrites = spans
+    .filter((span) => span.name === 'report')
+    .find((span) => {
+      const ids = span.attributes['reatom.cause.ids']
+      return Array.isArray(ids) && ids.length > 0
+    })
+  expect(afterWrites).toBeDefined()
+  expect(afterWrites!.parentSpanId).toBe(searchSpan.spanId)
+  expect(afterWrites!.traceId).toBe(searchSpan.traceId)
 })

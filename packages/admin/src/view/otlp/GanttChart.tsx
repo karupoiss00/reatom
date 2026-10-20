@@ -21,7 +21,9 @@ import {
   ToolbarSpacer,
   focusVisible,
   kindTokens,
+  radius,
   scrollable,
+  space,
   tokens,
   truncate,
   type,
@@ -315,9 +317,12 @@ const GanttRow = ({
     () => hasChildren() && gantt.isExpanded(row),
     `_Admin.gantt.row.expanded`,
   )
+  /** Whole-trace count for waterfall roots. Hidden in log mode; `1` is not shown. */
   const spanCount = computed(
     () =>
-      row.kind === 'span' && depth() === 0
+      row.kind === 'span' &&
+      depth() === 0 &&
+      gantt.mode() === 'waterfall'
         ? admin.spanCountByTrace().get(row.traceId)
         : undefined,
     `_Admin.gantt.row.spanCount`,
@@ -471,16 +476,27 @@ const GanttRow = ({
         >
           {label}
           {row.error?.message ? ` — ${row.error.message}` : ''}
-          {() =>
-            spanCount() !== undefined ? (
-              <span
-                css={`
-                  color: ${tokens.text3};
-                `}
-              >{` ${spanCount()}`}</span>
-            ) : null
-          }
         </span>
+        {() => {
+          const count = spanCount()
+          if (count === undefined || count <= 1) return null
+          return (
+            <span
+              data-testid="gantt-span-count"
+              css={`
+                flex: 0 0 auto;
+                ${type.meta}
+                color: ${tokens.text2};
+                background: ${tokens.surface2};
+                border-radius: ${radius[4]};
+                padding: 0 ${space[4]};
+                white-space: nowrap;
+              `}
+            >
+              {`${count} spans`}
+            </span>
+          )
+        }}
         {statusName ? (
           <span
             data-gantt-status=""

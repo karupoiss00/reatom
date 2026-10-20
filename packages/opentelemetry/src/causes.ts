@@ -47,6 +47,38 @@ const pushCauseId = (ids: string[], seen: Set<string>, cause: Frame | null) => {
 const MAX_UNINSTRUMENTED_CAUSE_DEPTH = 16
 const MAX_UNINSTRUMENTED_CAUSE_FRAMES = 16
 
+/**
+ * `pubs[0]` is the caller. Walk through uninstrumented wrappers
+ * (`abortVar.spawn`, `bind`) and take the first frame that has a frame id,
+ * even after the batch `changed` set was reset. Uninstrumented reactive
+ * callers (effect/computed, no frame id) use `walkUninstrumented` instead.
+ */
+const walkCallerCause = (
+  start: Frame,
+  seen: Set<Frame>,
+  onInstrumented: (cause: Frame) => void,
+) => {
+  let framesLeft = MAX_UNINSTRUMENTED_CAUSE_FRAMES
+  let frame: Frame | null | undefined = start
+  let depth = 1
+  while (
+    frame &&
+    !isRootFrame(frame) &&
+    !seen.has(frame) &&
+    depth <= MAX_UNINSTRUMENTED_CAUSE_DEPTH &&
+    framesLeft > 0
+  ) {
+    framesLeft--
+    seen.add(frame)
+    if (readFrameId(frame) !== undefined) {
+      onInstrumented(frame)
+      return
+    }
+    frame = frame.pubs[0]
+    depth++
+  }
+}
+
 const walkUninstrumented = (
   start: Frame,
   changed: WeakSet<Frame>,
@@ -83,6 +115,13 @@ const walkUninstrumented = (
   walk(start, 1)
 }
 
+/**
+ * Cause frame ids for `reatom.cause.ids`. The caller (`pubs[0]`) is always a
+ * cause once an instrumented ancestor is found. An uninstrumented reactive
+ * caller (effect/computed with no frame id) walks its changed dependencies
+ * instead. Later-index pubs are dependencies: only a `changed` write counts,
+ * so a stale read does not.
+ */
 export const collectCauseIds = (
   frame: Frame,
   changed: WeakSet<Frame>,
@@ -93,10 +132,11 @@ export const collectCauseIds = (
   const take = (cause: Frame) => pushCauseId(ids, seenIds, cause)
   const caller = frame.pubs[0]
   if (caller && !isRootFrame(caller)) {
-    if (changed.has(caller) || readFrameId(caller) !== undefined) {
-      seenFrames.add(caller)
-      take(caller)
-    } else walkUninstrumented(caller, changed, seenFrames, take)
+    const isUninstrumentedReactiveCaller =
+      caller.atom.__reatom.reactive && readFrameId(caller) === undefined
+    if (isUninstrumentedReactiveCaller)
+      walkUninstrumented(caller, changed, seenFrames, take)
+    else walkCallerCause(caller, seenFrames, take)
   }
   for (let i = 1; i < frame.pubs.length; i++) {
     const pub = frame.pubs[i]
@@ -155,7 +195,7 @@ const collectTracedCauses = (
     const traced = traces.get(cause)
     if (traced) result.push(traced)
   }
-  const consider = (cause: Frame | null | undefined) => {
+  const considerDependency = (cause: Frame | null | undefined) => {
     if (!cause || isRootFrame(cause) || seen.has(cause)) return
     if (changed.has(cause)) {
       seen.add(cause)
@@ -165,8 +205,17 @@ const collectTracedCauses = (
     if (readFrameId(cause) !== undefined) return
     walkUninstrumented(cause, changed, seen, take)
   }
-  consider(frame.pubs[0])
-  for (let i = 1; i < frame.pubs.length; i++) consider(frame.pubs[i])
+  const caller = frame.pubs[0]
+  if (caller && !isRootFrame(caller)) {
+    const isUninstrumentedReactiveCaller =
+      caller.atom.__reatom.reactive && readFrameId(caller) === undefined
+    if (isUninstrumentedReactiveCaller)
+      walkUninstrumented(caller, changed, seen, take)
+    else walkCallerCause(caller, seen, take)
+  }
+  for (let i = 1; i < frame.pubs.length; i++) {
+    considerDependency(frame.pubs[i])
+  }
   return result
 }
 
