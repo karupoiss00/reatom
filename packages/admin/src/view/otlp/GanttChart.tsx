@@ -36,11 +36,11 @@ import {
   recordStatusIcon,
 } from './recordKind'
 
-const LABEL_WIDTH = 220
+const LABEL_WIDTH = 300
 const INDENT = 12
 const CHEVRON = 16
 
-const COLUMNS = `${LABEL_WIDTH}px minmax(0, 1fr)`
+const COLUMNS = `var(--admin-gantt-label-width, ${LABEL_WIDTH}px) minmax(0, 1fr)`
 let ganttUiCounter = 0
 
 export function formatAxisOffset(offsetMs: number): string {
@@ -93,8 +93,8 @@ const columnPixels = (width: string) => {
 const ganttGridTemplate = <Node,>(adapter: GanttRowAdapter<Node>) => {
   const widths = (adapter.columns ?? []).map((column) => column.width).join(' ')
   return widths === ''
-    ? `${LABEL_WIDTH}px minmax(0, 1fr)`
-    : `${LABEL_WIDTH}px ${widths} minmax(0, 1fr)`
+    ? `var(--admin-gantt-label-width, ${LABEL_WIDTH}px) minmax(0, 1fr)`
+    : `var(--admin-gantt-label-width, ${LABEL_WIDTH}px) ${widths} minmax(0, 1fr)`
 }
 
 const ganttSideWidth = <Node,>(adapter: GanttRowAdapter<Node>) =>
@@ -251,7 +251,7 @@ export function pathRowAdapter(
       render: (node) => String(node.sessionsWithErrors),
     },
   ]
-  const grid = `${LABEL_WIDTH}px ${columns.map((column) => column.width).join(' ')} minmax(0, 1fr)`
+  const grid = `var(--admin-gantt-label-width, ${LABEL_WIDTH}px) ${columns.map((column) => column.width).join(' ')} minmax(0, 1fr)`
   return {
     labelHeader: 'Step',
     ariaLabel: 'Paths',
@@ -317,12 +317,13 @@ const GanttRow = ({
     () => hasChildren() && gantt.isExpanded(row),
     `_Admin.gantt.row.expanded`,
   )
-  /** Whole-trace count for waterfall roots. Hidden in log mode; `1` is not shown. */
+  /**
+   * Whole-trace count for waterfall roots. Hidden in log mode; `1` is not
+   * shown.
+   */
   const spanCount = computed(
     () =>
-      row.kind === 'span' &&
-      depth() === 0 &&
-      gantt.mode() === 'waterfall'
+      row.kind === 'span' && depth() === 0 && gantt.mode() === 'waterfall'
         ? admin.spanCountByTrace().get(row.traceId)
         : undefined,
     `_Admin.gantt.row.spanCount`,
@@ -410,117 +411,141 @@ const GanttRow = ({
         style:padding-left={() => `${depth() * INDENT + 8}px`}
         css={`
           display: flex;
-          align-items: center;
-          gap: var(--admin-space-4);
+          flex-direction: column;
+          justify-content: center;
+          align-items: stretch;
+          gap: 0;
           min-width: 0;
           height: 100%;
           padding-right: var(--admin-space-8);
         `}
       >
-        {() =>
-          hasChildren() ? (
-            <button
-              type="button"
-              data-testid="gantt-expand"
-              aria-expanded={expanded}
-              aria-label={() =>
-                expanded() ? `Collapse ${label}` : `Expand ${label}`
-              }
-              css={`
-                ${focusVisible}
-                appearance: none;
-                display: inline-flex;
-                align-items: center;
-                justify-content: center;
-                width: ${CHEVRON}px;
-                height: ${CHEVRON}px;
-                padding: 0;
-                border: 0;
-                background: transparent;
-                color: ${tokens.text2};
-                cursor: pointer;
-                flex: 0 0 ${CHEVRON}px;
-              `}
-              on:click={(event: MouseEvent) => {
-                event.stopPropagation()
-                gantt.toggle(row)
-                if (event.currentTarget instanceof HTMLElement) {
-                  event.currentTarget
-                    .closest<HTMLElement>('[data-testid="otlp-gantt"]')
-                    ?.focus()
+        <div css="display: flex; align-items: center; gap: var(--admin-space-4); min-width: 0; width: 100%;">
+          {() =>
+            hasChildren() ? (
+              <button
+                type="button"
+                data-testid="gantt-expand"
+                aria-expanded={expanded}
+                aria-label={() =>
+                  expanded() ? `Collapse ${label}` : `Expand ${label}`
                 }
-              }}
-            >
-              {() => (
-                <Icon name={expanded() ? 'chevron-down' : 'chevron-right'} />
-              )}
-            </button>
-          ) : (
+                css={`
+                  ${focusVisible}
+                  appearance: none;
+                  display: inline-flex;
+                  align-items: center;
+                  justify-content: center;
+                  width: ${CHEVRON}px;
+                  height: ${CHEVRON}px;
+                  padding: 0;
+                  border: 0;
+                  background: transparent;
+                  color: ${tokens.text2};
+                  cursor: pointer;
+                  flex: 0 0 ${CHEVRON}px;
+                `}
+                on:click={(event: MouseEvent) => {
+                  event.stopPropagation()
+                  gantt.toggle(row)
+                  if (event.currentTarget instanceof HTMLElement) {
+                    event.currentTarget
+                      .closest<HTMLElement>('[data-testid="otlp-gantt"]')
+                      ?.focus()
+                  }
+                }}
+              >
+                {() => (
+                  <Icon name={expanded() ? 'chevron-down' : 'chevron-right'} />
+                )}
+              </button>
+            ) : (
+              <span
+                aria-hidden="true"
+                css={`
+                  width: ${CHEVRON}px;
+                  flex: 0 0 ${CHEVRON}px;
+                `}
+              />
+            )
+          }
+          {() => <KindMark kind={kindName()} />}
+          <span
+            data-testid="gantt-row-label"
+            css={`
+              min-width: 0;
+              flex: 1;
+              overflow: hidden;
+              color: ${recordHasError(row) ? tokens.error : tokens.text1};
+            `}
+          >
             <span
-              aria-hidden="true"
               css={`
-                width: ${CHEVRON}px;
-                flex: 0 0 ${CHEVRON}px;
+                display: block;
+                ${truncate} direction: rtl;
+                text-align: left;
               `}
-            />
-          )
-        }
-        {() => <KindMark kind={kindName()} />}
-        <span
-          data-testid="gantt-row-label"
-          css={`
-            min-width: 0;
-            ${truncate}
-            color: ${recordHasError(row) ? tokens.error : tokens.text1};
-          `}
-        >
-          {label}
-          {row.error?.message ? ` — ${row.error.message}` : ''}
-        </span>
-        {() => {
-          const count = spanCount()
-          if (count === undefined || count <= 1) return null
-          return (
+            >
+              {label}
+            </span>
+          </span>
+          {() => {
+            const count = spanCount()
+            if (count === undefined || count <= 1) return null
+            return (
+              <span
+                data-testid="gantt-span-count"
+                css={`
+                  flex: 0 0 auto;
+                  ${type.meta}
+                  color: ${tokens.text2};
+                  background: ${tokens.surface2};
+                  border-radius: ${radius[4]};
+                  padding: 0 ${space[4]};
+                  white-space: nowrap;
+                `}
+              >
+                {`${count} spans`}
+              </span>
+            )
+          }}
+          {statusName ? (
             <span
-              data-testid="gantt-span-count"
+              data-gantt-status=""
+              css={`
+                display: flex;
+                flex: 0 0 auto;
+                color: ${statusName === 'error' ? tokens.error : tokens.text2};
+              `}
+            >
+              <Icon name={statusName} size={12} />
+            </span>
+          ) : null}
+          {duration !== '' && (
+            <span
+              data-gantt-duration=""
               css={`
                 flex: 0 0 auto;
-                ${type.meta}
-                color: ${tokens.text2};
-                background: ${tokens.surface2};
-                border-radius: ${radius[4]};
-                padding: 0 ${space[4]};
-                white-space: nowrap;
+                color: ${tokens.text3};
+                font-variant-numeric: tabular-nums;
               `}
             >
-              {`${count} spans`}
+              {duration}
             </span>
-          )
-        }}
-        {statusName ? (
+          )}
+        </div>
+        {row.error?.message ? (
           <span
-            data-gantt-status=""
+            data-testid="gantt-error-message"
             css={`
-              display: flex;
-              flex: 0 0 auto;
-              color: ${statusName === 'error' ? tokens.error : tokens.text2};
+              display: block;
+              color: ${tokens.error};
+              ${truncate} ${type.meta}
             `}
           >
-            <Icon name={statusName} size={12} />
+            {row.error.message}
           </span>
         ) : null}
-        {duration !== '' && (
-          <span
-            data-gantt-duration=""
-            css={`
-              flex: 0 0 auto;
-              color: ${tokens.text3};
-              font-variant-numeric: tabular-nums;
-            `}
-          >
-            {duration}
-          </span>
-        )}
       </div>
       <div
         data-gantt-track=""
@@ -870,7 +895,18 @@ export const OtlpGanttChart = <Node, Key = Node>({
     return new Map(items.map((row, index) => [row, offset + index + 1]))
   }, `_Admin.gantt.rowIndexes.${uiId}`)
   const columns = ganttGridTemplate(adapter)
-  const sideWidth = ganttSideWidth(adapter)
+  const labelWidth = atom(LABEL_WIDTH, `_Admin.gantt.labelWidth.${uiId}`)
+  const paneWidth = atom(700, `_Admin.gantt.paneWidth.${uiId}`)
+  const effectiveLabelWidth = () =>
+    Math.min(
+      labelWidth(),
+      Math.max(
+        140,
+        paneWidth() - 160 - (ganttSideWidth(adapter) - LABEL_WIDTH),
+      ),
+    )
+  const sideWidth = () =>
+    ganttSideWidth(adapter) + effectiveLabelWidth() - LABEL_WIDTH
   const rowElements = gantt.virtual.reatomMap(
     (row) =>
       adapter.renderRow(row, {
@@ -897,9 +933,9 @@ export const OtlpGanttChart = <Node, Key = Node>({
       return
     }
     const rect = host.getBoundingClientRect()
-    const trackWidth = rect.width - sideWidth
+    const trackWidth = rect.width - sideWidth()
     if (trackWidth <= 0) return
-    const ratio = (event.clientX - rect.left - sideWidth) / trackWidth
+    const ratio = (event.clientX - rect.left - sideWidth()) / trackWidth
     if (ratio < 0 || ratio > 1) {
       gantt.cursor.set(null)
       return
@@ -910,6 +946,14 @@ export const OtlpGanttChart = <Node, Key = Node>({
   return (
     <section
       data-testid="otlp-gantt"
+      style={() => `--admin-gantt-label-width: ${effectiveLabelWidth()}px`}
+      ref={(element) => {
+        const sync = wrap(() => paneWidth.set(element.clientWidth))
+        sync()
+        const observer = new ResizeObserver(sync)
+        observer.observe(element)
+        return () => observer.disconnect()
+      }}
       data-reatom-name="OtlpGanttChart"
       tabindex={0}
       role="treegrid"
@@ -936,11 +980,27 @@ export const OtlpGanttChart = <Node, Key = Node>({
       >
         <div
           css={`
-            width: max-content;
-            min-width: 100%;
+            width: 100%;
+            min-width: 0;
           `}
         >
           <Toolbar>
+            <label css="display: flex; align-items: center; gap: var(--admin-space-4);">
+              Name width
+              <input
+                type="range"
+                aria-label="Timeline name width"
+                min="180"
+                max="540"
+                value={LABEL_WIDTH}
+                css="width: 64px;"
+                on:input={(event: Event) => {
+                  const input = event.currentTarget
+                  if (!(input instanceof HTMLInputElement)) return
+                  labelWidth.set(Number(input.value))
+                }}
+              />
+            </label>
             <ToolbarGroup>
               <Button
                 variant="secondary"
@@ -1168,7 +1228,7 @@ export const OtlpGanttChart = <Node, Key = Node>({
             {() => {
               const time = gantt.visibleTime()
               if (time === null) return null
-              const count = 4
+              const count = paneWidth() - sideWidth() < 240 ? 2 : 4
               return (
                 <div
                   css={`
@@ -1220,7 +1280,9 @@ export const OtlpGanttChart = <Node, Key = Node>({
             return (
               <div
                 data-testid="gantt-cursor"
-                style:left={`calc(${sideWidth}px + (100% - ${sideWidth}px) * ${fraction})`}
+                style:left={() =>
+                  `calc(${sideWidth()}px + (100% - ${sideWidth()}px) * ${fraction})`
+                }
                 css={`
                   position: absolute;
                   top: 0;
@@ -1248,11 +1310,11 @@ export const OtlpGanttChart = <Node, Key = Node>({
                 const time = gantt.visibleTime()
                 if (time === null || !(time.end > time.start)) return
                 const rect = scroller.getBoundingClientRect()
-                const trackWidth = rect.width - sideWidth
+                const trackWidth = rect.width - sideWidth()
                 const ratio =
                   trackWidth <= 0
                     ? 0.5
-                    : (event.clientX - rect.left - sideWidth) / trackWidth
+                    : (event.clientX - rect.left - sideWidth()) / trackWidth
                 const anchor =
                   time.start +
                   (time.end - time.start) * Math.min(1, Math.max(0, ratio))

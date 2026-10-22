@@ -1,9 +1,9 @@
 ---
-sourcesHash: c7a586aa2f53bc6e58abe90c826ebb215b037ddc59e06bdad3bea04ea69ca5e7
+sourcesHash: e5447bbc78d4d37ed69af928bdb6e501ebdbf7ff1fe1724e1aa3b08416378d6b
 id: toolbar
 description: >-
-  Lay out one row of controls at the toolbar height, with groups and a
-  flexible spacer. The row does not wrap.
+  Lay out controls with groups and a flexible spacer, wrapping whole groups
+  when the available width is narrow.
 status: discoverable
 sources:
   - src/view/design-system/Toolbar.tsx
@@ -21,7 +21,7 @@ examples:
 
 - The bottom status line. Use [StatusBar](./status-bar.md).
 - A labelled search or number by itself. Use [Field](./field.md). Place a search in a toolbar only when it sits in that control row.
-- A second wrapping line of the same actions. Keep one toolbar and let the shell scroll horizontally if it must.
+- A form or editor with independently labelled sections.
 
 ## Public API
 
@@ -47,7 +47,7 @@ Background, border, and padding come from [tokens.ts](../../src/view/design-syst
 
 ## Behaviour and states
 
-The toolbar does not wrap and does not scroll itself. Controls keep their own hover, pressed, and disabled states. The spacer is not interactive.
+The toolbar wraps controls and groups onto additional lines and does not scroll itself. Its height is a minimum; each group stays together. Controls keep their own hover, pressed, and disabled states. The spacer is not interactive.
 
 ## Accessibility
 

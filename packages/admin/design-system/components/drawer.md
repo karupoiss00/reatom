@@ -1,5 +1,5 @@
 ---
-sourcesHash: bd43b57fcbea6854ad6f867d5ce681f5573194c8bf2eaaf50f727a2892be6359
+sourcesHash: 7f8fa4a2859e3fb2603c6925368b1eb5b256244f9493e9414089d98e4130f466
 id: drawer
 description: >-
   Cover the bottom of the current shell with a dialog the person can dismiss.
@@ -46,7 +46,7 @@ The component does not move its node to `document.body`.
 
 ## Behaviour and states
 
-While `open` is false, nothing is shown. While open, a scrim covers the shell and the panel sits at the bottom. Escape, Close, and Dismiss call `onClose`. Focus moves to Close when the dialog opens and returns to the previously focused element when it closes, if that element is still connected. Tab stays inside the dialog. A transition on the panel is removed under reduced motion.
+While `open` is false, nothing is shown. While open, a scrim covers the shell and the panel occupies the bottom 70% of the shell. The heading stays visible while the bounded body scrolls; an editor may divide that body into scrolling content and a pinned footer. Escape, Close, and Dismiss call `onClose`. Focus moves to Close when the dialog opens and returns to the previously focused element when it closes, if that element is still connected. When drawers overlap, the most recently mounted open drawer paints on top. Covered drawers are inert; only the top drawer handles Escape and Tab. Closing it restores focus inside the remaining top drawer, or to its opener when no drawer remains. Tab stays inside the dialog. A transition on the panel is removed under reduced motion.
 
 ## Accessibility
 

@@ -279,6 +279,37 @@ export const NetworkAnd402Errors: Story = {
       expect(text).toContain('Connection lost')
       expect(text).toContain("You're out of OpenRouter credits.")
     })
+    const width = adminUi().getByRole('slider', {
+      name: 'Timeline name width',
+    }) as HTMLInputElement
+    const firstLabel = getAdminRoot().querySelector('[data-gantt-label]')!
+    width.value = '180'
+    width.dispatchEvent(new Event('input', { bubbles: true }))
+    await waitFor(() =>
+      expect(firstLabel.getBoundingClientRect().width).toBe(180),
+    )
+    const initialWidth = firstLabel.getBoundingClientRect().width
+    width.value = '420'
+    width.dispatchEvent(new Event('input', { bubbles: true }))
+    await waitFor(() => {
+      expect(firstLabel.getBoundingClientRect().width).toBeGreaterThan(
+        initialWidth,
+      )
+      const messages = [
+        ...getAdminRoot().querySelectorAll<HTMLElement>(
+          '[data-testid="gantt-error-message"]',
+        ),
+      ]
+      expect(messages.length).toBeGreaterThan(1)
+      for (const message of messages) {
+        const rect = message.getBoundingClientRect()
+        const labelRect =
+          message.previousElementSibling!.getBoundingClientRect()
+        expect(rect.top).toBeGreaterThanOrEqual(labelRect.bottom)
+        expect(rect.width).toBeGreaterThan(120)
+        expect(rect.height).toBeGreaterThan(0)
+      }
+    })
     const errorRow = getAdminRoot().querySelector('[data-outcome="error"]')
     if (errorRow instanceof HTMLElement) errorRow.click()
     await waitFor(() => {
@@ -422,5 +453,147 @@ export const TypingInAdminSearchStaysInTheAdmin: Story = {
     expect((search as HTMLInputElement).value).toBe('/?')
     expect(adminUi().queryByRole('dialog', { name: 'Help' })).toBeNull()
     expect(document.querySelector('dialog[open]')).toBeNull()
+  },
+}
+
+export const DebuggerFilterWorkspace: Story = {
+  name: 'Debugger filters keep views and controls usable',
+  render: StreamingReplyInProgress.render,
+  play: async ({ canvasElement }) => {
+    await boot(canvasElement)
+    const ui = adminUi()
+    ui.getByRole('tab', { name: 'State', exact: true }).click()
+    filterAdmin('Name', 'zzzz_no_matching_record')
+    await waitFor(() =>
+      expect(ui.getByText('No matching last-write state')).toBeVisible(),
+    )
+    ui.getByRole('tab', { name: 'Graph', exact: true }).click()
+    await waitFor(() =>
+      expect(ui.getByText('No matching cause graph')).toBeVisible(),
+    )
+    ui.getByRole('button', { name: 'Reset filters' }).click()
+    await userEvent.click(
+      ui.getByRole('tab', { name: 'Timeline', exact: true }),
+    )
+    await userEvent.click(ui.getByRole('button', { name: 'Advanced filters' }))
+    await waitFor(() =>
+      expect(
+        ui.getByRole('dialog', { name: 'Advanced filters' }),
+      ).toBeVisible(),
+    )
+    const dialog = ui.getByRole('dialog', { name: 'Advanced filters' })
+    const apply = within(dialog).getByRole('button', {
+      name: 'Apply expression',
+    })
+    const reset = within(dialog).getByRole('button', {
+      name: 'Reset expression',
+    })
+    await waitFor(() => {
+      const bounds = dialog.getBoundingClientRect()
+      for (const control of [apply, reset]) {
+        const rect = control.getBoundingClientRect()
+        expect(rect.top).toBeGreaterThanOrEqual(bounds.top)
+        expect(rect.bottom).toBeLessThanOrEqual(bounds.bottom)
+      }
+    })
+    const expression = within(dialog).getByRole('textbox', {
+      name: 'Filter expression',
+    }) as HTMLInputElement
+    const setExpression = (value: string) => {
+      expression.value = value
+      expression.dispatchEvent(new Event('input', { bubbles: true }))
+    }
+    setExpression('(')
+    await waitFor(() => expect(apply).toBeDisabled())
+    setExpression('name:zzzz_no_matching_record')
+    await waitFor(() => expect(apply).toBeEnabled())
+    await userEvent.click(apply)
+    await waitFor(() =>
+      expect(
+        ui.getByRole('button', {
+          name: 'Remove applied expression name:zzzz_no_matching_record',
+        }),
+      ).toBeTruthy(),
+    )
+    await userEvent.click(reset)
+    await waitFor(() => {
+      expect(expression.value).toBe('')
+      expect(
+        ui.queryByRole('button', {
+          name: 'Remove applied expression name:zzzz_no_matching_record',
+        }),
+      ).toBeNull()
+    })
+    const host = (getAdminRoot().getRootNode() as ShadowRoot)
+      .host as HTMLElement
+    const previousStyle = host.getAttribute('style')
+    host.style.width = '390px'
+    host.style.height = '320px'
+    await waitFor(() => {
+      const bounds = dialog.getBoundingClientRect()
+      for (const control of [apply, reset]) {
+        const rect = control.getBoundingClientRect()
+        expect(rect.top).toBeGreaterThanOrEqual(bounds.top)
+        expect(rect.bottom).toBeLessThanOrEqual(bounds.bottom)
+        expect(rect.right).toBeLessThanOrEqual(bounds.right)
+      }
+    })
+    if (previousStyle === null) host.removeAttribute('style')
+    else host.setAttribute('style', previousStyle)
+    await userEvent.keyboard('{Escape}')
+    await waitFor(() =>
+      expect(ui.queryByRole('dialog', { name: 'Advanced filters' })).toBeNull(),
+    )
+    const follow = ui.getByRole('button', { name: 'Follow live' })
+    const shell = getAdminRoot().querySelector(
+      '[data-reatom-name="DebuggerWorkspace"]',
+    )!
+    await waitFor(() => {
+      expect(follow.getBoundingClientRect().right).toBeLessThanOrEqual(
+        shell.getBoundingClientRect().right,
+      )
+    })
+  },
+}
+
+export const NarrowStackedFilterDrawers: Story = {
+  name: 'Advanced filters stay above the selected frame on narrow shells',
+  render: NetworkAnd402Errors.render,
+  play: async (context) => {
+    await NetworkAnd402Errors.play!(context)
+    const root = getAdminRoot()
+    const host = (root.getRootNode() as ShadowRoot).host as HTMLElement
+    host.style.width = '390px'
+    host.style.height = '600px'
+    const ui = adminUi()
+    await waitFor(() => expect(ui.getByRole('dialog')).toBeVisible())
+    // Opening the editor is an external-panel boundary: the frame drawer already
+    // covers the filter bar, as when the shell is resized with a selection open.
+    ui.getByRole('button', { name: 'Advanced filters' }).click()
+    const advanced = await waitFor(() =>
+      ui.getByRole('dialog', { name: 'Advanced filters' }),
+    )
+    const apply = within(advanced).getByRole('button', {
+      name: 'Apply expression',
+    })
+    await waitFor(() => {
+      const rect = apply.getBoundingClientRect()
+      const hit = (root.getRootNode() as ShadowRoot).elementFromPoint(
+        rect.left + rect.width / 2,
+        rect.top + rect.height / 2,
+      )
+      expect(apply.contains(hit)).toBe(true)
+      expect(root.querySelectorAll('[role="dialog"][inert]').length).toBe(1)
+    })
+    await userEvent.keyboard('{Escape}')
+    await waitFor(() => {
+      expect(ui.queryByRole('dialog', { name: 'Advanced filters' })).toBeNull()
+      const frame = ui.getByRole('dialog')
+      expect(
+        frame.contains((root.getRootNode() as ShadowRoot).activeElement),
+      ).toBe(true)
+    })
+    await userEvent.keyboard('{Escape}')
+    await waitFor(() => expect(ui.queryByRole('dialog')).toBeNull())
   },
 }

@@ -128,8 +128,8 @@ export const StateInspector = ({ admin }: { admin: OtlpAdmin }) => {
         `}
       >
         <EmptyState
-          title="No last-write state yet"
-          description="Replay and live records are last-write-only. Atoms that have not emitted reatom.atom.update or reatom.computed.update since connect have no row."
+          title="No matching last-write state"
+          description="Only the latest write for each atom is shown. Reset filters to restore matching state. Atoms that have not emitted an update since connect have no row."
         />
       </div>
       <div

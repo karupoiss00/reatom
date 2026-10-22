@@ -61,8 +61,8 @@ export const OtlpGraphView = ({ admin }: { admin: OtlpAdmin }) => {
           if (nodes.length === 0) {
             return (
               <EmptyState
-                title="No cause graph"
-                description="Select a record, then open it in the graph to see causes and effects."
+                title="No matching cause graph"
+                description="Select a record to see its causes and effects. Filters limit the graph to matching records; reset filters to restore context."
               />
             )
           }

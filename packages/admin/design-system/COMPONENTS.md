@@ -67,5 +67,5 @@
   - Contract: [contract](components/toast.md)
 
 - **Toolbar**
-  - Description: Lay out one row of controls at the toolbar height, with groups and a flexible spacer. The row does not wrap.
+  - Description: Lay out controls with groups and a flexible spacer, wrapping whole groups when the available width is narrow.
   - Contract: [contract](components/toolbar.md)

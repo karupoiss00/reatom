@@ -6,6 +6,16 @@ import { focusVisible, reducedMotion, scrollable } from './mixins'
 import { soft, tokens, type } from './tokens'
 
 let drawerCounter = 0
+let drawerLayerOrder = 2
+const drawerStacks = new WeakMap<Node, HTMLElement[]>()
+
+function updateDrawerStack(stack: HTMLElement[]) {
+  stack.forEach((dialog, index) => {
+    const covered = index !== stack.length - 1
+    dialog.inert = covered
+    dialog.setAttribute('aria-modal', String(!covered))
+  })
+}
 
 export interface DrawerProps {
   /** Atom that is true while the drawer is open. */
@@ -45,6 +55,12 @@ export const Drawer = ({ open, label, onClose, children }: DrawerProps) => {
             `}
             ref={(dialog) => {
               const previous = activeElementOf(dialog)
+              const root = dialog.getRootNode()
+              const stack = drawerStacks.get(root) ?? []
+              drawerStacks.set(root, stack)
+              stack.push(dialog)
+              dialog.style.zIndex = String(++drawerLayerOrder)
+              updateDrawerStack(stack)
               const restore =
                 previous instanceof HTMLElement && !dialog.contains(previous)
                   ? previous
@@ -52,7 +68,11 @@ export const Drawer = ({ open, label, onClose, children }: DrawerProps) => {
               dialog.querySelector<HTMLElement>('[aria-label="Close"]')?.focus()
 
               const onKeyDown = (event: Event) => {
-                if (!(event instanceof KeyboardEvent)) return
+                if (
+                  !(event instanceof KeyboardEvent) ||
+                  stack.at(-1) !== dialog
+                )
+                  return
                 if (event.key !== 'Escape' && event.defaultPrevented) return
                 if (event.key === 'Escape') {
                   event.preventDefault()
@@ -78,7 +98,18 @@ export const Drawer = ({ open, label, onClose, children }: DrawerProps) => {
               dialog.addEventListener('keydown', onKeyDown)
               return () => {
                 dialog.removeEventListener('keydown', onKeyDown)
-                if (restore?.isConnected) restore.focus()
+                const wasTop = stack.at(-1) === dialog
+                const index = stack.indexOf(dialog)
+                if (index !== -1) stack.splice(index, 1)
+                updateDrawerStack(stack)
+                if (!wasTop) return
+                const top = stack.at(-1)
+                if (restore?.isConnected && (!top || top.contains(restore)))
+                  restore.focus()
+                else
+                  top
+                    ?.querySelector<HTMLElement>('[aria-label="Close"]')
+                    ?.focus()
               }
             }}
           >
@@ -99,10 +130,15 @@ export const Drawer = ({ open, label, onClose, children }: DrawerProps) => {
             />
             <div
               css={`
-                ${scrollable}
                 ${reducedMotion}
+                display: flex;
+                flex-direction: column;
+                min-height: 0;
+                box-sizing: border-box;
+                overflow: hidden;
                 position: relative;
                 z-index: 1;
+                height: 70%;
                 max-height: 70%;
                 padding: var(--admin-space-12);
                 background: ${tokens.surface1};
@@ -120,6 +156,7 @@ export const Drawer = ({ open, label, onClose, children }: DrawerProps) => {
                   justify-content: space-between;
                   gap: var(--admin-space-8);
                   margin-bottom: var(--admin-space-8);
+                  flex: none;
                 `}
               >
                 <h2
@@ -133,7 +170,14 @@ export const Drawer = ({ open, label, onClose, children }: DrawerProps) => {
                 </h2>
                 <Button variant="ghost" label="Close" onClick={close} />
               </div>
-              {children}
+              <div
+                css={`
+                  ${scrollable} flex: 1;
+                  min-height: 0;
+                `}
+              >
+                {children}
+              </div>
             </div>
           </div>
         ) : null

@@ -2,12 +2,13 @@
 id: filter-records
 description: >-
   Narrow the visible records with a name search, a value search, on/off
-  chips, and an advanced section that starts collapsed.
+  chips, and an advanced dialog that starts closed.
 status: discoverable
 sources: []
 examples:
   - src/stories/design-system/chips.stories.tsx
-  - src/stories/design-system/disclosure.stories.tsx
+  - src/stories/design-system/overlays.stories.tsx
+  - src/stories/chat/chat.stories.ts
 ---
 
 # Filter records
@@ -32,7 +33,7 @@ Regions, in the filter bar, in order:
 1. Name search, a [SearchField](../components/field.md).
 2. Value search, a second `SearchField`.
 3. Quick chips, each a [Button](../components/button.md) with `variant="ghost"` and `pressed`.
-4. Advanced, a [Disclosure](../components/disclosure.md) labelled "Advanced filters", collapsed by default. The calculator inside it is product UI.
+4. Advanced, a [Drawer](../components/drawer.md) labelled "Advanced filters", closed by default, opened by a button. Apply and Reset stay visible while its editor scrolls. The calculator inside it is product UI.
 5. Reset, a Button without `pressed`, shown when any filter is active.
 
 ```tsx
@@ -50,7 +51,8 @@ Regions, in the filter bar, in order:
     pressed={errorsOn}
     onClick={toggleErrors}
   />
-  <Disclosure label="Advanced filters">{calculator}</Disclosure>
+  <Button label="Advanced filters" onClick={() => open.set(true)} />
+  <Drawer open={open} label="Advanced filters" onClose={() => open.set(false)}>{calculator}</Drawer>
   <Button label="Reset filters" onClick={reset} />
 </>
 ```
@@ -74,7 +76,7 @@ SearchField still draws its own shortcut glyph. That is [a recorded gap](../gaps
 
 ## Verification
 
-A valid composition uses a ghost chip that reports `aria-pressed`, proved by "Ghost chip toggles with click and Enter", and an advanced section that starts closed, proved by "Disclosure opens and closes from the keyboard".
+A valid composition uses a ghost chip that reports `aria-pressed`, proved by "Ghost chip toggles with click and Enter", and an advanced dialog that starts closed and dismisses with Escape, proved by "Debugger filters keep views and controls usable".
 
 A violation is a chip that uses `variant="secondary"` with `pressed`, or an advanced section that starts open. The secondary chip also hits the [pressed-hover gap](../gaps.md#non-ghost-pressed-buttons-lose-their-pressed-fill-on-hover).
 

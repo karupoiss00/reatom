@@ -248,15 +248,16 @@ function resolveRootKey(
 }
 
 /**
- * Rail nodes around `rootFrameId`. Cause ids stay in the record's own
- * trace; `computed.dependency` links may pull in a parent from another
- * trace. `rootTraceId` picks the root when frame ids collide.
+ * Rail nodes around `rootFrameId`. Cause ids stay in the record's own trace;
+ * `computed.dependency` links may pull in a parent from another trace.
+ * `rootTraceId` picks the root when frame ids collide.
  */
 export function causeRailNodes(
   records: readonly AdminRecord[],
   rootFrameId: string | null,
   direction: OtlpGraphDirection,
   rootTraceId?: string | null,
+  visibleFrameKeys?: ReadonlySet<string>,
 ): OtlpRailNode[] {
   if (rootFrameId === null) return []
   const rootId = Number(rootFrameId)
@@ -278,7 +279,7 @@ export function causeRailNodes(
   const nodes: OtlpRailNode[] = []
   for (const key of keys) {
     const record = byFrame.get(key)
-    if (!record) continue
+    if (!record || (visibleFrameKeys && !visibleFrameKeys.has(key))) continue
     const node = toRailNode(record)
     if (node) nodes.push(node)
   }

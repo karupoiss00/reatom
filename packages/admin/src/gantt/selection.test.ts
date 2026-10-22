@@ -162,3 +162,25 @@ test('unsubscribe stops pushing admin selection into the gantt', () => {
     expect(gantt.selected()).toBe(parent)
   })
 })
+
+test('selection is revealed when its record becomes available after selection sync', () => {
+  const { admin, gantt, selection } = setup()
+  ADMIN_FRAME.run(() => {
+    const child = recordNamed(admin, 'child.log')
+    gantt.virtual.viewportSize.set(1)
+    admin.filterName.set('parent')
+    const stop = selection.connect()
+    admin.selectRecord(child)
+    notify()
+    expect(gantt.rows().includes(child)).toBe(false)
+    admin.resetFilter()
+    notify()
+    expect(gantt.rows()[gantt.virtual.scrollOffset()]).toBe(child)
+    // Later stream updates must not pull the person back after they scroll away.
+    gantt.virtual.scrollToIndex(0, 'start')
+    admin.ingest([otlpSpan('later', 'later', 1200, 1210)])
+    notify()
+    expect(gantt.virtual.scrollOffset()).toBe(0)
+    stop()
+  })
+})

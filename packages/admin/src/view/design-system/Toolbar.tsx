@@ -5,19 +5,16 @@ export interface ToolbarProps {
   children?: Element | Array<Element | false | null>
 }
 
-export const Toolbar = ({
-  height = size.toolbar,
-  children,
-}: ToolbarProps) => {
+export const Toolbar = ({ height = size.toolbar, children }: ToolbarProps) => {
   return (
     <div
       css={`
         display: flex;
         align-items: center;
-        flex-wrap: nowrap;
+        flex-wrap: wrap;
         gap: var(--admin-space-6);
         min-height: ${height};
-        height: ${height};
+        padding-block: var(--admin-space-4);
         padding-inline: var(--admin-space-8);
         background: ${tokens.surface1};
         border-bottom: 1px solid ${tokens.border1};

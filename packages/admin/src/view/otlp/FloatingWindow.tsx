@@ -12,7 +12,11 @@ import {
   sizeFromResizePointer,
   type ResizeOrigin,
 } from '../resizeDrag'
-import { adminSettings, bindAdminPalette, isAdminPanelCorner } from '../settings'
+import {
+  adminSettings,
+  bindAdminPalette,
+  isAdminPanelCorner,
+} from '../settings'
 
 const FLOATING_MARGIN = 16
 const MIN_FLOATING_WIDTH = 360
@@ -219,9 +223,7 @@ export function floatAdminHost(
 
   const settings = adminSettings()
   const applyCorner = (value: unknown) => {
-    host.dataset['corner'] = isAdminPanelCorner(value)
-      ? value
-      : 'bottom-right'
+    host.dataset['corner'] = isAdminPanelCorner(value) ? value : 'bottom-right'
     resizeTo(width, height)
   }
   applyCorner(settings.corner())
@@ -244,8 +246,8 @@ export function floatAdminHost(
       css={`
         position: absolute;
         z-index: 1;
-        width: 14px;
-        height: 14px;
+        width: 28px;
+        height: 28px;
         touch-action: none;
         ${focusVisible}
       `}
@@ -254,7 +256,9 @@ export function floatAdminHost(
         if (!(event.currentTarget instanceof Element)) return
         event.preventDefault()
         const hostBox = host.getBoundingClientRect()
-        const anchors = panelCornerAnchors(readPanelCorner(host.dataset['corner']))
+        const anchors = panelCornerAnchors(
+          readPanelCorner(host.dataset['corner']),
+        )
         drag = {
           pointerId: event.pointerId,
           ...anchors,

@@ -2,7 +2,7 @@ import type { AdminRecord } from '../otlp/ingest'
 import type { GanttOptions } from './reatomGantt'
 
 /** Height of a Gantt row in CSS pixels, shared by the model and the chart. */
-export const ADMIN_GANTT_ROW_HEIGHT = 26
+export const ADMIN_GANTT_ROW_HEIGHT = 42
 
 /** Rows rendered beyond each edge of the Gantt viewport. */
 export const ADMIN_GANTT_OVERSCAN = 6

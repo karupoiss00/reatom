@@ -418,3 +418,72 @@ test('free text matches masked attributes and local value text', () => {
   expect(matchesQuery(entry, '***')).toBe(true)
   expect(matchesQuery(entry, 'missing-token')).toBe(false)
 })
+
+test('State and Graph follow filters and reset without resurrecting old state', () => {
+  const { admin } = ingestAll()
+  ADMIN_FRAME.run(() => {
+    const framed = admin
+      .records()
+      .find((record) => record.atomName === 'tree#12.toggle')!
+    admin.selectRecord(framed)
+    const beforeState = admin.stateTree()
+    const beforeGraph = admin.railNodes()
+    expect(beforeState.length).toBeGreaterThan(0)
+    expect(beforeGraph.length).toBeGreaterThan(0)
+    admin.graphDirection.set('descendants')
+    admin.filterName.set('tree.checked')
+    expect(admin.railNodes().map((node) => node.label)).toEqual([
+      'tree.checked',
+    ])
+    admin.resetFilter()
+    admin.graphDirection.set('full')
+    admin.filterName.set('zzzz_no_matching_record')
+    expect(admin.stateTree()).toEqual([])
+    expect(admin.railNodes()).toEqual([])
+    admin.view.set('state')
+    admin.view.set('graph')
+    expect(admin.stateTree()).toEqual([])
+    admin.resetFilter()
+    expect(admin.stateTree()).toEqual(beforeState)
+    expect(admin.railNodes()).toEqual(beforeGraph)
+    admin.ingest([
+      {
+        ...(atomUpdate.log as object),
+        body: 'current state',
+        timeUnixNano: '1791351231723000000',
+      },
+    ])
+    admin.filterQuery.set('true')
+    expect(admin.stateTree()).toEqual([])
+    admin.resetFilter()
+    expect(JSON.stringify(admin.stateTree())).toContain('current state')
+  })
+})
+
+test('Graph filtering keeps trace identity when frame ids are reused', () => {
+  const { admin } = ingestAll()
+  ADMIN_FRAME.run(() => {
+    const selected = admin
+      .records()
+      .find((record) => record.atomName === 'tree#12.toggle')!
+    admin.selectRecord(selected)
+    admin.ingest([
+      {
+        ...(atomUpdate.span as object),
+        traceId: 'ffffffffffffffffffffffffffffffff',
+        spanId: 'ffffffffffffffff',
+        name: 'other trace matching record',
+        attributes: {
+          'reatom.name': 'other trace matching record',
+          'reatom.kind': 'action',
+          'reatom.frame.id': '1',
+        },
+      },
+    ])
+    admin.filterName.set('other trace matching record')
+    expect(admin.visibleRecords().length).toBeGreaterThan(0)
+    expect(admin.railNodes()).toEqual([])
+    admin.resetFilter()
+    expect(admin.railNodes().length).toBeGreaterThan(0)
+  })
+})

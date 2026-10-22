@@ -40,6 +40,7 @@ export const Tabs = <T extends string>({
       css={`
         display: flex;
         align-items: stretch;
+        flex-wrap: wrap;
         min-height: ${size.tabs};
         min-width: 0;
         overflow-x: auto;
@@ -87,7 +88,8 @@ export const Tabs = <T extends string>({
             ${interactive}
             ${focusVisible}
             appearance: none;
-            flex: none;
+            flex: 1 0 auto;
+            min-height: ${size.tabs};
             white-space: nowrap;
             border: 0;
             background: transparent;

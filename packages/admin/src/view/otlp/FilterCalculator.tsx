@@ -190,337 +190,411 @@ export const FilterCalculator = ({ admin, draft }: FilterCalculatorProps) => {
         gap: var(--admin-space-12);
         min-width: min(100%, 26rem);
         max-width: 48rem;
-        max-height: min(24rem, 45vh);
-        overflow-y: auto;
+        grid-template-rows: minmax(0, 1fr) auto;
+        height: 100%;
+        max-height: 100%;
+        min-height: 0;
+        overflow: hidden;
         overscroll-behavior: contain;
         scrollbar-width: thin;
         padding-right: var(--admin-space-4);
         color: ${tokens.text2};
       `}
     >
-      <section
-        aria-label="Calculator display"
-        css={`
-          display: grid;
-          grid-template-columns: minmax(0, 1fr) auto auto;
-          gap: var(--admin-space-4);
-          align-items: start;
-        `}
-      >
-        <div
+      <div css="display: grid; gap: var(--admin-space-12); min-height: 0; overflow-y: auto; overscroll-behavior: contain;">
+        <section
+          aria-label="Calculator display"
           css={`
-            position: relative;
-            min-width: 0;
-            background: ${tokens.surface2};
-            border-radius: var(--admin-radius-4);
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto auto;
+            gap: var(--admin-space-4);
+            align-items: start;
           `}
         >
           <div
-            aria-hidden="true"
             css={`
-              ${displayChrome}
-              position: absolute;
-              inset: 0;
+              position: relative;
+              min-width: 0;
+              background: ${tokens.surface2};
+              border-radius: var(--admin-radius-4);
+            `}
+          >
+            <div
+              aria-hidden="true"
+              css={`
+                ${displayChrome}
+                position: absolute;
+                inset: 0;
+                display: flex;
+                align-items: center;
+                overflow: hidden;
+                white-space: pre;
+                pointer-events: none;
+                border-color: transparent;
+                color: ${tokens.text1};
+                [data-kind='keyword'] {
+                  color: ${tokens.accent};
+                  font-weight: 600;
+                }
+                [data-kind='field'] {
+                  color: ${tokens.info};
+                }
+                [data-kind='op'] {
+                  color: ${tokens.warning};
+                }
+                [data-kind='string'] {
+                  color: ${tokens.success};
+                }
+                [data-kind='paren'] {
+                  color: ${tokens.text2};
+                }
+                [data-kind='error'] {
+                  color: ${tokens.error};
+                  text-decoration: underline wavy;
+                }
+              `}
+            >
+              {() =>
+                highlightCalculator(draft()).map((span) => (
+                  <span data-kind={span.kind}>{span.text}</span>
+                ))
+              }
+            </div>
+            <input
+              type="text"
+              aria-label="Filter expression"
+              aria-describedby={`filter-calculator-result-${calculatorId}`}
+              spellcheck={false}
+              autocomplete="off"
+              placeholder="Press keys below or type: name:makeMove AND kind:action"
+              model:value={draft}
+              ref={(element: HTMLInputElement) => {
+                displayInput = element
+              }}
+              on:scroll={syncHighlightScroll}
+              on:keydown={(event: KeyboardEvent) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  apply()
+                  return
+                }
+                if (event.key === 'Escape' && !isApplied()) {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  draft.set(admin.filterCalculator())
+                }
+              }}
+              css={`
+                ${displayChrome}
+                position: relative;
+                z-index: 1;
+                display: block;
+                background: transparent;
+                color: transparent;
+                caret-color: ${tokens.text1};
+                &::placeholder {
+                  color: ${tokens.text3};
+                  opacity: 1;
+                }
+              `}
+            />
+          </div>
+          <Button
+            variant="icon"
+            label="Delete last token"
+            title="Delete last token"
+            disabled={() => draft() === ''}
+            onClick={() => {
+              draft.set(backspaceCalculator(draft()))
+              focusDisplayEnd()
+            }}
+          >
+            ⌫
+          </Button>
+          <Button
+            variant="icon"
+            label="Clear expression"
+            title="Clear expression"
+            disabled={() => draft() === ''}
+            onClick={() => {
+              draft.set('')
+              focusDisplayEnd()
+            }}
+          >
+            C
+          </Button>
+          <p
+            id={`filter-calculator-result-${calculatorId}`}
+            aria-live="polite"
+            css={`
+              grid-column: 1 / -1;
               display: flex;
-              align-items: center;
-              overflow: hidden;
-              white-space: pre;
-              pointer-events: none;
-              border-color: transparent;
-              color: ${tokens.text1};
-              [data-kind='keyword'] {
-                color: ${tokens.accent};
-                font-weight: 600;
+              flex-wrap: wrap;
+              gap: var(--admin-space-8);
+              margin: 0;
+              ${type.ui}
+              color: ${tokens.text2};
+              [data-tone='error'] {
+                color: ${tokens.error};
               }
-              [data-kind='field'] {
-                color: ${tokens.info};
+              [data-tone='result'] {
+                color: ${tokens.text1};
+                font-variant-numeric: tabular-nums;
               }
-              [data-kind='op'] {
+              [data-tone='pending'] {
                 color: ${tokens.warning};
               }
-              [data-kind='string'] {
-                color: ${tokens.success};
-              }
-              [data-kind='paren'] {
-                color: ${tokens.text2};
-              }
-              [data-kind='error'] {
-                color: ${tokens.error};
-                text-decoration: underline wavy;
+              [data-tone='muted'] {
+                color: ${tokens.text3};
               }
             `}
           >
-            {() =>
-              highlightCalculator(draft()).map((span) => (
-                <span data-kind={span.kind}>{span.text}</span>
-              ))
-            }
-          </div>
-          <input
-            type="text"
-            aria-label="Filter expression"
-            aria-describedby={`filter-calculator-result-${calculatorId}`}
-            spellcheck={false}
-            autocomplete="off"
-            placeholder="Press keys below or type: name:makeMove AND kind:action"
-            model:value={draft}
-            ref={(element: HTMLInputElement) => {
-              displayInput = element
+            {() => {
+              const parsed = parsedDraft()
+              if (!parsed.ok) {
+                return (
+                  <span role="alert" data-tone="error">
+                    {parsed.error}
+                  </span>
+                )
+              }
+              const matched = draftMatchCount()
+              if (matched === null) {
+                return (
+                  <span data-tone="muted">
+                    Empty expression matches every record. Enter applies.
+                  </span>
+                )
+              }
+              const total = chipRecords().length
+              return (
+                <>
+                  <span data-tone="result">{`= ${matched} of ${total} records match`}</span>
+                  {isApplied() ? (
+                    <span data-tone="muted">Applied</span>
+                  ) : (
+                    <span data-tone="pending">
+                      Not applied. Enter or Apply.
+                    </span>
+                  )}
+                </>
+              )
             }}
-            on:scroll={syncHighlightScroll}
-            on:keydown={(event: KeyboardEvent) => {
-              if (event.key === 'Enter') {
-                event.preventDefault()
-                apply()
-                return
-              }
-              if (event.key === 'Escape' && !isApplied()) {
-                event.preventDefault()
-                event.stopPropagation()
-                draft.set(admin.filterCalculator())
-              }
-            }}
-            css={`
-              ${displayChrome}
-              position: relative;
-              z-index: 1;
-              display: block;
-              background: transparent;
-              color: transparent;
-              caret-color: ${tokens.text1};
-              &::placeholder {
-                color: ${tokens.text3};
-                opacity: 1;
-              }
-            `}
-          />
-        </div>
-        <Button
-          variant="icon"
-          label="Delete last token"
-          title="Delete last token"
-          disabled={() => draft() === ''}
-          onClick={() => {
-            draft.set(backspaceCalculator(draft()))
-            focusDisplayEnd()
-          }}
-        >
-          ⌫
-        </Button>
-        <Button
-          variant="icon"
-          label="Clear expression"
-          title="Clear expression"
-          disabled={() => draft() === ''}
-          onClick={() => {
-            draft.set('')
-            focusDisplayEnd()
-          }}
-        >
-          C
-        </Button>
-        <p
-          id={`filter-calculator-result-${calculatorId}`}
-          aria-live="polite"
+          </p>
+        </section>
+
+        <div
+          role="group"
+          aria-label="Calculator keys"
           css={`
-            grid-column: 1 / -1;
-            display: flex;
-            flex-wrap: wrap;
-            gap: var(--admin-space-8);
-            margin: 0;
-            ${type.ui}
-            color: ${tokens.text2};
-            [data-tone='error'] {
-              color: ${tokens.error};
-            }
-            [data-tone='result'] {
-              color: ${tokens.text1};
-              font-variant-numeric: tabular-nums;
-            }
-            [data-tone='pending'] {
-              color: ${tokens.warning};
-            }
-            [data-tone='muted'] {
-              color: ${tokens.text3};
-            }
+            display: grid;
+            grid-template-columns: 4.5rem minmax(0, 1fr);
+            gap: var(--admin-space-6) var(--admin-space-8);
           `}
         >
-          {() => {
-            const parsed = parsedDraft()
-            if (!parsed.ok) {
-              return (
-                <span role="alert" data-tone="error">
-                  {parsed.error}
-                </span>
-              )
-            }
-            const matched = draftMatchCount()
-            if (matched === null) {
-              return (
-                <span data-tone="muted">
-                  Empty expression matches every record. Enter applies.
-                </span>
-              )
-            }
-            const total = chipRecords().length
-            return (
-              <>
-                <span data-tone="result">{`= ${matched} of ${total} records match`}</span>
-                {isApplied() ? (
-                  <span data-tone="muted">Applied</span>
-                ) : (
-                  <span data-tone="pending">Not applied. Enter or Apply.</span>
-                )}
-              </>
-            )
-          }}
-        </p>
-      </section>
-
-      <div
-        role="group"
-        aria-label="Calculator keys"
-        css={`
-          display: grid;
-          grid-template-columns: 4.5rem minmax(0, 1fr);
-          gap: var(--admin-space-6) var(--admin-space-8);
-        `}
-      >
-        <span css={keyRowLabel}>Logic</span>
-        <div role="group" aria-label="Logic keys" css={keyRow}>
-          <Key
-            calculatorKey={{ kind: 'logic', value: 'AND' }}
-            text="AND"
-            hint="both sides match"
-          />
-          <Key
-            calculatorKey={{ kind: 'logic', value: 'OR' }}
-            text="OR"
-            hint="either side matches"
-          />
-          <Key
-            calculatorKey={{ kind: 'logic', value: 'NOT' }}
-            text="NOT"
-            hint="the next clause does not match"
-          />
-          <Key
-            calculatorKey={{ kind: 'paren', value: '(' }}
-            text="("
-            hint="open a group"
-          />
-          <Key
-            calculatorKey={{ kind: 'paren', value: ')' }}
-            text=")"
-            hint="close the group"
-          />
-        </div>
-
-        <span css={keyRowLabel}>Field</span>
-        <div role="group" aria-label="Field keys" css={keyRow}>
-          {CALCULATOR_FIELD_KEYS.map((fieldKey) => (
+          <span css={keyRowLabel}>Logic</span>
+          <div role="group" aria-label="Logic keys" css={keyRow}>
             <Key
-              calculatorKey={{ kind: 'field', value: fieldKey.field }}
-              text={fieldKey.field}
-              hint={fieldKey.hint}
+              calculatorKey={{ kind: 'logic', value: 'AND' }}
+              text="AND"
+              hint="both sides match"
             />
-          ))}
-        </div>
-
-        <span css={keyRowLabel}>Compare</span>
-        <div role="group" aria-label="Compare keys" css={keyRow}>
-          {CALCULATOR_OP_KEYS.map((opKey) => (
             <Key
-              calculatorKey={{ kind: 'op', value: opKey.op }}
-              text={opKey.op}
-              label={`Insert ${opKey.hint} (${opKey.op})`}
-              hint={opKey.hint}
-            >
-              <span>{opKey.op}</span>
-              <span
-                css={`
-                  ${type.meta}
-                  color: ${tokens.text3};
-                `}
-              >
-                {opKey.hint}
-              </span>
-            </Key>
-          ))}
-        </div>
+              calculatorKey={{ kind: 'logic', value: 'OR' }}
+              text="OR"
+              hint="either side matches"
+            />
+            <Key
+              calculatorKey={{ kind: 'logic', value: 'NOT' }}
+              text="NOT"
+              hint="the next clause does not match"
+            />
+            <Key
+              calculatorKey={{ kind: 'paren', value: '(' }}
+              text="("
+              hint="open a group"
+            />
+            <Key
+              calculatorKey={{ kind: 'paren', value: ')' }}
+              text=")"
+              hint="close the group"
+            />
+          </div>
 
-        <span css={keyRowLabel}>Value</span>
-        <div role="group" aria-label="Value keys" css={keyRow}>
-          {() => {
-            const state = inputState()
-            const takesValue =
-              state.expect === 'value' ||
-              (state.expect === 'connector' && state.field !== undefined)
-            if (!takesValue) {
-              return (
-                <span css={keyRowLabel}>
-                  Pick a field and a comparison to see values from the records.
-                </span>
-              )
-            }
-            const suggestions = calculatorValueSuggestions(
-              state.field,
-              admin.records(),
-            )
-            if (suggestions.length === 0) {
-              return (
-                <span css={keyRowLabel}>
-                  {`Type a value for ${state.field ?? 'this field'}. Quote it if it has spaces.`}
-                </span>
-              )
-            }
-            return suggestions.map((suggestion) => (
+          <span css={keyRowLabel}>Field</span>
+          <div role="group" aria-label="Field keys" css={keyRow}>
+            {CALCULATOR_FIELD_KEYS.map((fieldKey) => (
               <Key
-                calculatorKey={{ kind: 'value', value: suggestion }}
-                text={suggestion}
-                hint={
-                  state.expect === 'connector'
-                    ? 'replaces the last value'
-                    : 'seen in the records'
-                }
+                calculatorKey={{ kind: 'field', value: fieldKey.field }}
+                text={fieldKey.field}
+                hint={fieldKey.hint}
+              />
+            ))}
+          </div>
+
+          <span css={keyRowLabel}>Compare</span>
+          <div role="group" aria-label="Compare keys" css={keyRow}>
+            {CALCULATOR_OP_KEYS.map((opKey) => (
+              <Key
+                calculatorKey={{ kind: 'op', value: opKey.op }}
+                text={opKey.op}
+                label={`Insert ${opKey.hint} (${opKey.op})`}
+                hint={opKey.hint}
               >
+                <span>{opKey.op}</span>
                 <span
                   css={`
-                    ${truncate}
-                    max-width: 14rem;
+                    ${type.meta}
+                    color: ${tokens.text3};
                   `}
                 >
-                  {suggestion}
+                  {opKey.hint}
                 </span>
               </Key>
-            ))
-          }}
-        </div>
-      </div>
+            ))}
+          </div>
 
-      {() => {
-        const root = breakdown()
-        if (root === null) return null
-        const total = chipRecords().length
-        return (
-          <section aria-label="Expression breakdown">
-            <span css={keyRowLabel}>Breakdown</span>
-            <ul
+          <span css={keyRowLabel}>Value</span>
+          <div role="group" aria-label="Value keys" css={keyRow}>
+            {() => {
+              const state = inputState()
+              const takesValue =
+                state.expect === 'value' ||
+                (state.expect === 'connector' && state.field !== undefined)
+              if (!takesValue) {
+                return (
+                  <span css={keyRowLabel}>
+                    Pick a field and a comparison to see values from the
+                    records.
+                  </span>
+                )
+              }
+              const suggestions = calculatorValueSuggestions(
+                state.field,
+                admin.records(),
+              )
+              if (suggestions.length === 0) {
+                return (
+                  <span css={keyRowLabel}>
+                    {`Type a value for ${state.field ?? 'this field'}. Quote it if it has spaces.`}
+                  </span>
+                )
+              }
+              return suggestions.map((suggestion) => (
+                <Key
+                  calculatorKey={{ kind: 'value', value: suggestion }}
+                  text={suggestion}
+                  hint={
+                    state.expect === 'connector'
+                      ? 'replaces the last value'
+                      : 'seen in the records'
+                  }
+                >
+                  <span
+                    css={`
+                      ${truncate}
+                      max-width: 14rem;
+                    `}
+                  >
+                    {suggestion}
+                  </span>
+                </Key>
+              ))
+            }}
+          </div>
+        </div>
+
+        {() => {
+          const root = breakdown()
+          if (root === null) return null
+          const total = chipRecords().length
+          return (
+            <section aria-label="Expression breakdown">
+              <span css={keyRowLabel}>Breakdown</span>
+              <ul
+                css={`
+                  margin: var(--admin-space-4) 0 0;
+                  padding: 0;
+                  list-style: none;
+                  display: grid;
+                  gap: var(--admin-space-2);
+                `}
+              >
+                <BreakdownRow node={root} depth={0} total={total} />
+              </ul>
+            </section>
+          )
+        }}
+
+        {() =>
+          saved().length === 0 ? null : (
+            <section
+              aria-label="Saved expressions"
               css={`
-                margin: var(--admin-space-4) 0 0;
-                padding: 0;
-                list-style: none;
                 display: grid;
-                gap: var(--admin-space-2);
+                gap: var(--admin-space-4);
               `}
             >
-              <BreakdownRow node={root} depth={0} total={total} />
-            </ul>
-          </section>
-        )
-      }}
-
+              <span css={keyRowLabel}>Saved</span>
+              <ul
+                css={`
+                  display: flex;
+                  flex-wrap: wrap;
+                  gap: var(--admin-space-6);
+                  margin: 0;
+                  padding: 0;
+                  list-style: none;
+                `}
+              >
+                {saved().map((source) => (
+                  <li
+                    css={`
+                      display: inline-flex;
+                      gap: var(--admin-space-2);
+                      min-width: 0;
+                    `}
+                  >
+                    <Button
+                      variant="ghost"
+                      label={`Use saved expression ${source}`}
+                      title={source}
+                      pressed={() => admin.filterCalculator() === source}
+                      onClick={() => {
+                        draft.set(source)
+                        admin.filterCalculator.set(source)
+                      }}
+                    >
+                      <span
+                        css={`
+                          ${type.data}
+                          ${truncate}
+                        max-width: 18rem;
+                        `}
+                      >
+                        {source}
+                      </span>
+                    </Button>
+                    <Button
+                      variant="icon"
+                      label={`Remove saved expression ${source}`}
+                      onClick={() =>
+                        saved.set(saved().filter((entry) => entry !== source))
+                      }
+                    >
+                      ×
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )
+        }
+      </div>
       <div
         css={`
+          flex: none;
+          background: ${tokens.surface1};
+          padding-block: var(--admin-space-8);
           display: flex;
           flex-wrap: wrap;
           align-items: center;
@@ -581,6 +655,16 @@ export const FilterCalculator = ({ admin, draft }: FilterCalculatorProps) => {
           Save
         </Button>
         <Button
+          label="Reset expression"
+          onClick={() => {
+            draft.set('')
+            admin.filterCalculator.set('')
+            admin.filterMode.set('show')
+          }}
+        >
+          Reset
+        </Button>
+        <Button
           variant="primary"
           label="Apply expression"
           title="Apply (Enter)"
@@ -590,70 +674,6 @@ export const FilterCalculator = ({ admin, draft }: FilterCalculatorProps) => {
           = Apply
         </Button>
       </div>
-
-      {() =>
-        saved().length === 0 ? null : (
-          <section
-            aria-label="Saved expressions"
-            css={`
-              display: grid;
-              gap: var(--admin-space-4);
-            `}
-          >
-            <span css={keyRowLabel}>Saved</span>
-            <ul
-              css={`
-                display: flex;
-                flex-wrap: wrap;
-                gap: var(--admin-space-6);
-                margin: 0;
-                padding: 0;
-                list-style: none;
-              `}
-            >
-              {saved().map((source) => (
-                <li
-                  css={`
-                    display: inline-flex;
-                    gap: var(--admin-space-2);
-                    min-width: 0;
-                  `}
-                >
-                  <Button
-                    variant="ghost"
-                    label={`Use saved expression ${source}`}
-                    title={source}
-                    pressed={() => admin.filterCalculator() === source}
-                    onClick={() => {
-                      draft.set(source)
-                      admin.filterCalculator.set(source)
-                    }}
-                  >
-                    <span
-                      css={`
-                        ${type.data}
-                        ${truncate}
-                        max-width: 18rem;
-                      `}
-                    >
-                      {source}
-                    </span>
-                  </Button>
-                  <Button
-                    variant="icon"
-                    label={`Remove saved expression ${source}`}
-                    onClick={() =>
-                      saved.set(saved().filter((entry) => entry !== source))
-                    }
-                  >
-                    ×
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )
-      }
     </div>
   )
 }

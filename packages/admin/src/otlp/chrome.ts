@@ -30,6 +30,7 @@ import {
   suggestedBucketSize,
   visibleFeed,
   type OtlpGraphDirection,
+  type OtlpStateNode,
 } from './bind.ts'
 import { fetchClickHouseExport } from './clickhouse.ts'
 import { parseCalculator } from './calculator.ts'
@@ -306,12 +307,21 @@ function reatomOtlpAdminModel(options: OtlpAdminOptions) {
   }, `${PREFIX}.selectedRecord`)
 
   const railNodes = computed(() => {
-    return causeRailNodes(
+    const visibleFrameKeys = new Set(
+      visibleRecords().map((record) => `${record.traceId}:${record.frameId}`),
+    )
+    const nodes = causeRailNodes(
       store.records(),
       selectedRootFrameId(),
       graphDirection(),
       selectedTraceId(),
+      visibleFrameKeys,
     )
+    const ids = new Set(nodes.map((node) => node.id))
+    return nodes.map((node) => ({
+      ...node,
+      parentIds: node.parentIds.filter((id) => ids.has(id)),
+    }))
   }, `${PREFIX}.railNodes`)
 
   const allRailNodes = computed(() => {
@@ -324,7 +334,15 @@ function reatomOtlpAdminModel(options: OtlpAdminOptions) {
   }, `${PREFIX}.allRailNodes`)
 
   const stateTree = computed(() => {
-    return buildLastWriteStateTree(store.records())
+    const visibleIds = new Set(visibleRecords().map((record) => record.id))
+    const prune = (nodes: OtlpStateNode[]): OtlpStateNode[] =>
+      nodes.flatMap((node) => {
+        if (node.kind === 'atom')
+          return node.recordId && visibleIds.has(node.recordId) ? [node] : []
+        const children = prune(node.children)
+        return children.length ? [{ ...node, children }] : []
+      })
+    return prune(buildLastWriteStateTree(store.records()))
   }, `${PREFIX}.stateTree`)
 
   const timeRange = computed(() => {

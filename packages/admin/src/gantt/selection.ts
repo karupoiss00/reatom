@@ -82,11 +82,18 @@ export function reatomGanttRecordSelection(
   let stop: (() => void) | undefined
   const connect = () => {
     stop?.()
+    let revealed: AdminRecord | null = null
     const sync = effect(() => {
       const record = source.selectedRecord()
-      if (gantt.selected() === record) return
-      gantt.select(record)
-      if (record !== null) reveal(record)
+      const records = source.visibleRecords()
+      if (gantt.selected() !== record) gantt.select(record)
+      if (record === null) {
+        revealed = null
+        return
+      }
+      if (record === revealed || !records.includes(record)) return
+      reveal(record)
+      revealed = record
     }, `${name}.sync`)
     stop = () => sync.unsubscribe()
     return stop

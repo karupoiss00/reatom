@@ -1,5 +1,5 @@
 ---
-sourcesHash: 1e45c9f6103d7db58b30613752a79bb2e5c007a88261e7b0ee26f452e34b8f2e
+sourcesHash: b72f35924da4eb5d24d1bd7df4ecab28a695550a26e0568db3d268ef4a59df0c
 id: tabs
 description: >-
   Switch one visible section among peer sections. Arrow keys move the
@@ -51,7 +51,7 @@ Clicking a tab selects it. Arrow Right and Arrow Down select the next tab and wr
 
 The selected tab uses the accent token as an underline. Transitions stop under reduced motion.
 
-Tabs stay in one row and do not wrap or overlap. When the row is narrower than the tabs, the tab list scrolls horizontally.
+Tabs wrap onto additional rows when needed so every section remains visible. Each tab keeps the minimum tab height and does not overlap its peers.
 
 ## Accessibility
 

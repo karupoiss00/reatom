@@ -137,8 +137,8 @@ export function createAdminDevtools(
           position: absolute;
           top: 0;
           left: 0;
-          width: 16px;
-          height: 16px;
+          width: 28px;
+          height: 28px;
           background: transparent;
           cursor: nwse-resize;
           touch-action: none;
@@ -181,7 +181,11 @@ export function createAdminDevtools(
         }}
         on:pointermove={(event: Event) => {
           const pointerEvent = getPointerEvent(event)
-          if (!drag || !pointerEvent || pointerEvent.pointerId !== drag.pointerId) {
+          if (
+            !drag ||
+            !pointerEvent ||
+            pointerEvent.pointerId !== drag.pointerId
+          ) {
             return
           }
           const captured =

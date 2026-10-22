@@ -3,13 +3,7 @@ import { atom, peek } from '@reatom/core'
 import type { OtlpAdmin } from '../../otlp'
 import { hasActiveFilter } from '../../otlp'
 import type { AdminRecord, AdminRecordKind, AdminReatomKind } from '../../otlp'
-import {
-  Button,
-  Disclosure,
-  SearchField,
-  truncate,
-  type,
-} from '../design-system'
+import { Button, Drawer, SearchField, truncate, type } from '../design-system'
 import { FilterCalculator } from './FilterCalculator'
 import { KindMark } from './KindMark'
 import type { RecordKindName } from './recordKind'
@@ -39,6 +33,7 @@ function countRecords(
 
 export const OtlpFilterBar = ({ admin }: { admin: OtlpAdmin }) => {
   const barId = ++filterBarCounter
+  const editorOpen = atom(false, `_Admin.filter.editor.${barId}`)
   const draft = atom(
     peek(admin.filterCalculator),
     `_Admin.filter.draft.${barId}`,
@@ -236,19 +231,16 @@ export const OtlpFilterBar = ({ admin }: { admin: OtlpAdmin }) => {
           </Button>
         )
       }}
-      <div
-        css={`
-          min-width: 0;
-          &:has(> details[open]) {
-            flex-basis: 100%;
-            order: 1;
-          }
-        `}
+      <Button label="Advanced filters" onClick={() => editorOpen.set(true)}>
+        Advanced filters
+      </Button>
+      <Drawer
+        open={editorOpen}
+        label="Advanced filters"
+        onClose={() => editorOpen.set(false)}
       >
-        <Disclosure label="Advanced filters">
-          <FilterCalculator admin={admin} draft={draft} />
-        </Disclosure>
-      </div>
+        <FilterCalculator admin={admin} draft={draft} />
+      </Drawer>
       {() =>
         hasActiveFilter(admin.filter()) ||
         admin.showAbortAndSuspense() ||
