@@ -50,11 +50,16 @@ const ParamRow = ({ label, value }: ParamEntry) => {
 }
 
 export const ParamList = ({ value }: { value: AtomLike<unknown> }) => (
-  <>
+  <div
+    data-reatom-name="ParamList"
+    css={`
+      display: contents;
+    `}
+  >
     {() =>
       paramEntries(value()).map((entry) => (
         <ParamRow label={entry.label} value={entry.value} />
       ))
     }
-  </>
+  </div>
 )

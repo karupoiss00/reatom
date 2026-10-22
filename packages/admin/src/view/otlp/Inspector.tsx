@@ -1,6 +1,6 @@
 import { computed, type AtomLike } from '@reatom/core'
 
-import type { AdminRecord, OtlpAdmin } from '../../otlp'
+import { isEventLog, type AdminRecord, type OtlpAdmin } from '../../otlp'
 import {
   EmptyState,
   InspectorTabs,
@@ -11,6 +11,7 @@ import {
 } from '../design-system'
 import { formatPreview, formatTimestamp } from '../format'
 import { Inspector, ParamList } from '../inspector'
+import { EventOverview } from './EventOverview'
 import {
   frameValueView,
   overviewDataValue,
@@ -87,17 +88,18 @@ export const OtlpInspector = ({ admin }: OtlpInspectorProps) => {
                 border-bottom: 1px solid ${tokens.border1};
               `}
             >
-              <strong
+              <h2
                 css={`
                   ${type.ui}
                   min-width: 0;
                   overflow: hidden;
                   text-overflow: ellipsis;
                   white-space: nowrap;
+                  margin: 0;
                 `}
               >
                 {label}
-              </strong>
+              </h2>
               <span
                 css={`
                   ${type.meta}
@@ -204,28 +206,31 @@ const RecordOverview = ({
   record: AdminRecord
   data: AtomLike<unknown>
   params: AtomLike<unknown>
-}) => (
-  <div
-    css={`
-      display: grid;
-      gap: var(--admin-space-8);
-      min-width: 0;
-    `}
-  >
-    {record.error ? (
-      <p
-        role="alert"
-        css={`
-          margin: 0;
-          color: ${tokens.error};
-          ${type.body}
-        `}
-      >
-        {record.error.type ?? 'Error'}
-        {record.error.message ? `: ${record.error.message}` : ''}
-      </p>
-    ) : null}
-    <ValueField value={data} />
-    <ParamList value={params} />
-  </div>
-)
+}) =>
+  isEventLog(record) ? (
+    <EventOverview record={record} />
+  ) : (
+    <div
+      css={`
+        display: grid;
+        gap: var(--admin-space-8);
+        min-width: 0;
+      `}
+    >
+      {record.error ? (
+        <p
+          role="alert"
+          css={`
+            margin: 0;
+            color: ${tokens.error};
+            ${type.body}
+          `}
+        >
+          {record.error.type ?? 'Error'}
+          {record.error.message ? `: ${record.error.message}` : ''}
+        </p>
+      ) : null}
+      <ValueField value={data} />
+      <ParamList value={params} />
+    </div>
+  )

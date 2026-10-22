@@ -43,6 +43,22 @@ function kpiText(root: ParentNode, id: string): string {
   )
 }
 
+function expectEventOverview(panel: Element | null, path: string) {
+  expect(
+    panel?.querySelector('[data-reatom-name="EventOverview"]'),
+  ).toBeInstanceOf(HTMLElement)
+  expect(panel?.querySelector('[data-reatom-name="ParamList"]')).toBeNull()
+  expect(
+    [...(panel?.querySelectorAll('h3') ?? [])].map(
+      (heading) => heading.textContent,
+    ),
+  ).toEqual(expect.arrayContaining(['Page', 'Identity']))
+  const term = [...(panel?.querySelectorAll('dt') ?? [])].find(
+    (entry) => entry.textContent === 'url.path',
+  )
+  expect(term?.nextElementSibling?.textContent).toBe(path)
+}
+
 export const AnalyticsTab: Story = {
   name: 'Analytics tab scopes entry sessions',
   play: async ({ canvasElement }) => {
@@ -170,9 +186,23 @@ export const PathsUnit: Story = {
         'app.page_view',
         'app.page.engagement',
       ])
+    })
+
+    const pageView = [
+      ...root.querySelectorAll('[data-testid="gantt-row"][data-record-id]'),
+    ].find(
+      (row) =>
+        row.querySelector('[data-testid="gantt-row-label"]')?.textContent ===
+        'app.page_view',
+    )
+    if (!(pageView instanceof HTMLElement)) {
+      throw new Error('app.page_view row missing')
+    }
+    clickElement(pageView)
+    await waitFor(() => {
       const card = root.querySelector('[data-reatom-name="FrameCard"]')
       expect(card?.textContent).toContain('app.page_view')
-      expect(card?.textContent).toContain('url.path')
+      expectEventOverview(card, '/')
     })
   },
 }

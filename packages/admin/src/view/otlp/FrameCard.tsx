@@ -1,7 +1,8 @@
-import { atom, computed, type AtomLike } from '@reatom/core'
+import { computed, type AtomLike } from '@reatom/core'
 
 import type { OtlpAdmin } from '../../otlp'
 import {
+  isEventLog,
   isStateWrite,
   recordHasError,
   recordLabel,
@@ -17,12 +18,14 @@ import {
   type,
 } from '../design-system'
 import { Inspector, ParamList } from '../inspector'
+import { EventOverview } from './EventOverview'
+import { SnapshotInspector } from './SnapshotInspector'
 import { KindMark } from './KindMark'
 import { kindColorVar, recordKindIcon } from './recordKind'
 import {
   frameValueView,
+  formatEventDurationMs,
   overviewDataValue,
-  overviewEventAttributes,
   overviewParamsValue,
   recordFieldValue,
   type FrameValueTitle,
@@ -30,10 +33,7 @@ import {
 
 function durationLabel(record: AdminRecord): string {
   if (record.end === undefined) return 'open'
-  const ms = Math.max(0, record.end - record.start)
-  if (ms < 1000) return `${Math.round(ms)}ms`
-  const seconds = ms / 1000
-  return `${seconds < 10 ? seconds.toFixed(1) : Math.round(seconds)}s`
+  return formatEventDurationMs(record.end - record.start)
 }
 
 function kindLabel(record: AdminRecord): string {
@@ -220,14 +220,6 @@ const FrameField = ({
   </>
 )
 
-let snapshotSerial = 0
-
-const SnapshotInspector = ({ value }: { value: unknown }) => {
-  snapshotSerial += 1
-  const source = atom(value, `_Admin.frameCard.snapshot.${snapshotSerial}`)
-  return <Inspector value={source} defaultExpanded />
-}
-
 const SnapshotField = ({
   value,
   emptyLabel,
@@ -247,7 +239,7 @@ const Overview = ({
   record: AdminRecord
   sources: ReturnType<typeof frameSources>
 }) => {
-  const eventAttributes = overviewEventAttributes(record)
+  if (isEventLog(record)) return <EventOverview record={record} />
   return (
     <div
       css={`
@@ -267,9 +259,6 @@ const Overview = ({
         >
           {record.error?.message ?? record.outcome ?? 'error'}
         </p>
-      ) : null}
-      {eventAttributes !== undefined ? (
-        <SnapshotField value={eventAttributes} emptyLabel="" />
       ) : null}
       <FrameField value={sources.data} emptyLabel="" />
       <ParamList value={sources.params} />

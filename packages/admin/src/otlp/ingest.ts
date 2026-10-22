@@ -430,7 +430,7 @@ function decodeLinks(raw: unknown): AdminRecordLink[] {
   return links
 }
 
-function errorFromExceptionLog(record: AdminRecord): AdminRecordError {
+export function errorFromExceptionLog(record: AdminRecord): AdminRecordError {
   const type = record.attributes['exception.type']
   const message = record.attributes['exception.message']
   const stack = record.attributes['exception.stacktrace']

@@ -8,6 +8,25 @@ export const ANALYTICS_EVENTS = {
   exceptionSuppressed: 'exception.suppressed',
 } as const
 
+/**
+ * A log from `connectWebAnalytics` or a manual `otel.log`, inferred from the
+ * wire without a dedicated origin attribute. Model logs carry a `reatom.*`
+ * event name, `reatom.kind` / `reatom.name` / `reatom.frame.id`, or
+ * `reatom.cause.ids` (present on tracer exceptions even when the array is
+ * empty). Root tracer exceptions are excluded by `reatom.frame.id`.
+ */
+export function isEventLog(record: AdminRecord): boolean {
+  if (record.kind !== 'log') return false
+  const eventName = record.eventName ?? ''
+  if (eventName.startsWith('reatom.')) return false
+  const attributes = record.attributes
+  if (attributes['reatom.kind'] !== undefined) return false
+  if (attributes['reatom.name'] !== undefined) return false
+  if (attributes['reatom.frame.id'] !== undefined) return false
+  if (attributes['reatom.cause.ids'] !== undefined) return false
+  return true
+}
+
 export const ENGAGED_ACTIVE_MS = 10_000
 export const ENGAGED_PAGE_VIEWS = 2
 export const NO_SOURCE = '(none)'

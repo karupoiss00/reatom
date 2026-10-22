@@ -31,7 +31,7 @@ Regions, in order:
 
 1. The main view, which owns selection. The product Gantt is this view. It is not a kit component.
 2. The frame card, placed by [debugger workspace](../layouts/debugger-workspace.md). Wide shells use the side pane. Narrow shells use [Drawer](../components/drawer.md).
-3. Inside the card, the caller shows name, kind, outcome, and duration, then [InspectorTabs](../components/inspector-tabs.md). Overview shows the error if there is one, then state or payload, then params, in one column and without headings. [Inspector](../components/inspector.md) reads each value with the tree open, including nested collections. Cause Chain uses [RailGraph](../components/rail-graph.md). History and JSON are the other sections. Attributes, causes, effects, and resource are not on Overview.
+3. Inside the card, the caller shows name, kind, outcome, and duration, then [InspectorTabs](../components/inspector-tabs.md). Overview for a model record shows the error if there is one, then state or payload, then params, in one column and without headings. [Inspector](../components/inspector.md) reads each value with the tree open, including nested collections. Event logs show the error if there is one, then grouped attributes under headings (Exception, Page, Metrics, Attribution, Identity, Other). Cause Chain uses [RailGraph](../components/rail-graph.md). History and JSON are the other sections. Attributes, causes, effects, and resource stay off the model Overview.
 
 ```tsx
 <DebuggerWorkspace

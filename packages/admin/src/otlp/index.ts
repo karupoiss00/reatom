@@ -98,6 +98,7 @@ export type {
   AdminMcpPathsInput,
   OtlpMcp,
 } from '../mcp/index.ts'
+export { isEventLog } from './analytics.ts'
 export type {
   AnalyticsBreakdownRow,
   AnalyticsDimension,
@@ -122,4 +123,4 @@ export type {
   AdminReatomKind,
   OtlpStoreOptions,
 } from './ingest.ts'
-export { LOCAL_VALUES, localValuesOf } from './ingest.ts'
+export { errorFromExceptionLog, LOCAL_VALUES, localValuesOf } from './ingest.ts'

@@ -2,10 +2,11 @@ import { expect, test } from 'test'
 
 import { LOCAL_VALUES, type AdminRecord } from '../../otlp'
 import {
+  eventOverviewError,
   frameValueView,
   overviewDataTitle,
   overviewDataValue,
-  overviewEventAttributes,
+  overviewEventSections,
   overviewParamsValue,
   recordFieldValue,
 } from './frameValues'
@@ -92,52 +93,170 @@ test('overview and field values prefer live values over masked attributes', () =
   expect(JSON.stringify(action)).not.toContain('live-token')
 })
 
-test('analytics event logs expose their attributes on Overview', () => {
+test('event overview groups attributes, formats durations, and sorts leftover keys', () => {
   const pageView = record({
     eventName: 'app.page_view',
     attributes: {
       'event.name': 'app.page_view',
       'url.path': '/cart',
       'session.id': 's1',
+      'app.utm.source': 'google',
     },
   })
-  expect(overviewEventAttributes(pageView)).toEqual({
-    'url.path': '/cart',
-    'session.id': 's1',
+  expect(overviewEventSections(pageView)).toEqual([
+    {
+      title: 'Page',
+      entries: [{ key: 'url.path', value: '/cart', display: '/cart' }],
+    },
+    {
+      title: 'Attribution',
+      entries: [
+        { key: 'app.utm.source', value: 'google', display: 'google' },
+      ],
+    },
+    {
+      title: 'Identity',
+      entries: [{ key: 'session.id', value: 's1', display: 's1' }],
+    },
+  ])
+
+  const engagement = record({
+    eventName: 'app.page.engagement',
+    attributes: {
+      'event.name': 'app.page.engagement',
+      'app.engagement.visible_ms': 3800,
+      'app.engagement.active_ms': '2500',
+      'custom.note': 'hello',
+      'zz.extra': 1,
+    },
   })
+  expect(overviewEventSections(engagement)).toEqual([
+    {
+      title: 'Metrics',
+      entries: [
+        {
+          key: 'app.engagement.visible_ms',
+          value: 3800,
+          display: '3.8s',
+          title: '3800',
+        },
+        {
+          key: 'app.engagement.active_ms',
+          value: '2500',
+          display: '2.5s',
+          title: '2500',
+        },
+      ],
+    },
+    {
+      title: 'Other',
+      entries: [
+        { key: 'custom.note', value: 'hello', display: 'hello' },
+        { key: 'zz.extra', value: 1, display: '1' },
+      ],
+    },
+  ])
+
+  const exception = record({
+    eventName: 'exception',
+    attributes: {
+      'event.name': 'exception',
+      'exception.type': 'TypeError',
+      'app.exception.count': 3,
+    },
+  })
+  expect(overviewEventSections(exception)).toEqual([
+    {
+      title: 'Exception',
+      entries: [
+        {
+          key: 'exception.type',
+          value: 'TypeError',
+          display: 'TypeError',
+        },
+        {
+          key: 'app.exception.count',
+          value: 3,
+          display: '3',
+        },
+      ],
+    },
+  ])
+})
+
+test('event overview labels analytics exceptions and groups leftover keys', () => {
   expect(
-    overviewEventAttributes(
-      record({
-        eventName: 'session.start',
-        attributes: { 'event.name': 'session.start', 'session.id': 's1' },
-      }),
-    ),
-  ).toEqual({ 'session.id': 's1' })
-  expect(
-    overviewEventAttributes(
-      record({ kind: 'span', eventName: 'app.page_view' }),
-    ),
-  ).toBeUndefined()
-  expect(
-    overviewEventAttributes(
+    eventOverviewError(
       record({
         eventName: 'exception',
         attributes: {
-          'event.name': 'exception',
           'exception.type': 'TypeError',
+          'exception.message': 'boom',
         },
       }),
+    ),
+  ).toBe('TypeError: boom')
+  expect(
+    eventOverviewError(
+      record({
+        eventName: 'exception.suppressed',
+        attributes: { 'exception.type': 'TypeError' },
+      }),
+    ),
+  ).toBe('TypeError')
+  expect(
+    eventOverviewError(
+      record({ eventName: 'app.page_view', attributes: { 'url.path': '/' } }),
     ),
   ).toBeUndefined()
   expect(
-    overviewEventAttributes(
+    overviewEventSections(
       record({
-        eventName: 'reatom.atom.update',
-        attributes: {
-          'event.name': 'reatom.atom.update',
-          'reatom.name': 'board',
-        },
+        eventName: 'checkout.clicked',
+        attributes: { 'event.name': 'checkout.clicked' },
       }),
     ),
-  ).toBeUndefined()
+  ).toEqual([])
+
+  const mixed = record({
+    eventName: 'checkout.failed',
+    attributes: {
+      'event.name': 'checkout.failed',
+      'user.id': 'u1',
+      'browser.web_vital.name': 'LCP',
+      'browser.language': 'en',
+      'app.engagement.visible_ms': ' ',
+    },
+  })
+  expect(overviewEventSections(mixed)).toEqual([
+    {
+      title: 'Metrics',
+      entries: [
+        {
+          key: 'browser.web_vital.name',
+          value: 'LCP',
+          display: 'LCP',
+        },
+        {
+          key: 'app.engagement.visible_ms',
+          value: ' ',
+          display: ' ',
+        },
+      ],
+    },
+    {
+      title: 'Identity',
+      entries: [{ key: 'user.id', value: 'u1', display: 'u1' }],
+    },
+    {
+      title: 'Other',
+      entries: [
+        {
+          key: 'browser.language',
+          value: 'en',
+          display: 'en',
+        },
+      ],
+    },
+  ])
 })

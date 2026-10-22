@@ -16,6 +16,7 @@ import {
   analyticsTrend,
   cleanAnalyticsPath,
   compareAnalyticsPathNodes,
+  isEventLog,
   NO_SOURCE,
   selectAnalyticsSessions,
   typicalAnalyticsPath,
@@ -652,5 +653,140 @@ describe('trend and session selection', () => {
     expect(
       ids(selectAnalyticsSessions(sessions, { range: { start, end } })),
     ).toEqual(['s4', 's5'])
+  })
+})
+
+const eventLog = (
+  patch: Partial<AdminRecord> & { eventName?: string },
+): AdminRecord => ({
+  id: 'record',
+  sourceId: 'local',
+  kind: 'log',
+  traceId: 'trace',
+  spanId: 'span',
+  name: patch.eventName ?? 'event',
+  start: T0,
+  attributes: {},
+  resource: {},
+  links: [],
+  causeIds: [],
+  ...patch,
+})
+
+describe('event logs', () => {
+  test('infers analytics and manual logs from the wire', () => {
+    expect(
+      isEventLog(
+        analyticsLog(
+          'app.page_view',
+          T0,
+          { 'url.path': '/' },
+          'page',
+        ),
+      ),
+    ).toBe(true)
+    expect(
+      isEventLog(
+        analyticsLog(
+          'exception',
+          T0,
+          { 'exception.type': 'TypeError' },
+          'analytics-error',
+        ),
+      ),
+    ).toBe(true)
+    expect(
+      isEventLog(
+        eventLog({
+          eventName: 'browser.web_vital',
+          attributes: { 'browser.web_vital.name': 'LCP' },
+        }),
+      ),
+    ).toBe(true)
+    expect(
+      isEventLog(
+        eventLog({
+          eventName: 'checkout.failed',
+          attributes: { order: '1' },
+        }),
+      ),
+    ).toBe(true)
+  })
+
+  test('keeps model logs and spans on the model overview', () => {
+    expect(
+      isEventLog(
+        eventLog({
+          eventName: 'reatom.log',
+          attributes: { 'reatom.log.label': 'note' },
+        }),
+      ),
+    ).toBe(false)
+    expect(
+      isEventLog(
+        eventLog({
+          eventName: 'reatom.atom.update',
+          reatomKind: 'atom',
+          attributes: { 'reatom.kind': 'atom', 'reatom.name': 'board' },
+        }),
+      ),
+    ).toBe(false)
+    expect(
+      isEventLog(
+        eventLog({
+          eventName: 'exception',
+          attributes: {
+            'exception.type': 'TypeError',
+            'reatom.frame.id': '1',
+            'reatom.cause.ids': [],
+          },
+          causeIds: [],
+        }),
+      ),
+    ).toBe(false)
+    const store = ADMIN_FRAME.run(() =>
+      reatomOtlpStore({ sourceId: 'local', resource: {} }),
+    )
+    ADMIN_FRAME.run(() =>
+      store.ingest([
+        {
+          eventName: 'exception',
+          traceId: '5b8efff798038103d269b633813fc60c',
+          spanId: 'eee19b7ec3c1b174',
+          timeUnixNano: '1761000000123500000',
+          attributes: [
+            { key: 'event.name', value: { stringValue: 'exception' } },
+            { key: 'exception.type', value: { stringValue: 'TypeError' } },
+            { key: 'reatom.frame.id', value: { stringValue: '1' } },
+            {
+              key: 'reatom.cause.ids',
+              value: { arrayValue: { values: [] } },
+            },
+          ],
+        },
+      ]),
+    )
+    const ingested = ADMIN_FRAME.run(() => store.records()[0]!)
+    expect(isEventLog(ingested)).toBe(false)
+    expect(ingested.causeIds).toEqual([])
+    expect(ingested.attributes['reatom.frame.id']).toBe('1')
+    expect(
+      isEventLog(
+        eventLog({
+          eventName: 'app.page_view',
+          attributes: { 'reatom.frame.id': '12' },
+        }),
+      ),
+    ).toBe(false)
+    expect(
+      isEventLog(
+        eventLog({
+          kind: 'span',
+          eventName: undefined,
+          name: 'checkout.purchase',
+          reatomKind: 'action',
+        }),
+      ),
+    ).toBe(false)
   })
 })
