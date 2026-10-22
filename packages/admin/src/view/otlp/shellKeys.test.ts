@@ -26,16 +26,37 @@ function key(
   target: EventTarget | null = null,
   defaultPrevented = false,
   metaKey = false,
+  init: Partial<KeyboardEvent> = {},
 ): KeyboardEvent {
   return {
     key: keyName,
     altKey: false,
+    shiftKey: false,
     metaKey,
     ctrlKey: false,
+    isComposing: false,
     defaultPrevented,
     target,
     preventDefault() {},
+    ...init,
   } as KeyboardEvent
+}
+
+function shellWithSelection(text: string): HTMLElement {
+  const anchor = new DomElement()
+  return {
+    querySelector: () => null,
+    contains: (node: Node) => node === anchor,
+    ownerDocument: {
+      defaultView: {
+        getSelection: () => ({
+          isCollapsed: false,
+          anchorNode: anchor,
+          toString: () => text,
+        }),
+      },
+    },
+  } as unknown as HTMLElement
 }
 
 test('shortcuts still run when the event was already cancelled', () => {
@@ -142,5 +163,111 @@ test('paths unit keys move and expand the path gantt', () => {
     handleAdminShellKey(shell, key('Enter'), admin, helpOpen)
     expect(admin.analytics.paths.selected()?.label).toBe('All sessions')
     expect(admin.cardOpen()).toBe(true)
+  })
+})
+
+test('ctrl and meta chords stay with the browser', () => {
+  vi.stubGlobal('Element', DomElement)
+  const admin = reatomOtlpAdmin({
+    sourceId: 'keys-copy',
+    resource: { 'service.name': 'keys-copy' },
+  })
+  const helpOpen = ADMIN_FRAME.run(() => atom(false, '_test.shell.help.copy'))
+  const settings = adminSettings()
+  const preventDefault = vi.fn()
+  const chord = (
+    keyName: string,
+    mods: { ctrl?: boolean; meta?: boolean; shift?: boolean } = {},
+  ) =>
+    key(keyName, null, false, mods.meta ?? false, {
+      ctrlKey: mods.ctrl ?? false,
+      shiftKey: mods.shift ?? false,
+      preventDefault,
+    })
+
+  ADMIN_FRAME.run(() => {
+    settings.icons.setTrue()
+    settings.colors.setTrue()
+    handleAdminShellKey(shell, chord('c', { ctrl: true }), admin, helpOpen)
+    handleAdminShellKey(shell, chord('c', { meta: true }), admin, helpOpen)
+    handleAdminShellKey(
+      shell,
+      chord('C', { ctrl: true, shift: true }),
+      admin,
+      helpOpen,
+    )
+    handleAdminShellKey(shell, chord('a', { meta: true }), admin, helpOpen)
+    handleAdminShellKey(shell, chord('v', { ctrl: true }), admin, helpOpen)
+    handleAdminShellKey(shell, chord('x', { meta: true }), admin, helpOpen)
+    handleAdminShellKey(shell, chord('j', { ctrl: true }), admin, helpOpen)
+    handleAdminShellKey(shell, chord('?', { meta: true }), admin, helpOpen)
+    handleAdminShellKey(
+      shell,
+      key('c', null, false, false, { isComposing: true, preventDefault }),
+      admin,
+      helpOpen,
+    )
+  })
+  expect(preventDefault).not.toHaveBeenCalled()
+  expect(ADMIN_FRAME.run(() => settings.colors())).toBe(true)
+  expect(ADMIN_FRAME.run(() => settings.icons())).toBe(true)
+  expect(ADMIN_FRAME.run(() => helpOpen())).toBe(false)
+  ADMIN_FRAME.run(() => {
+    settings.icons.setTrue()
+    settings.colors.setTrue()
+  })
+})
+
+test('a text selection keeps character keys', () => {
+  vi.stubGlobal('Element', DomElement)
+  const admin = reatomOtlpAdmin({
+    sourceId: 'keys-selection',
+    resource: { 'service.name': 'keys-selection' },
+  })
+  const helpOpen = ADMIN_FRAME.run(() =>
+    atom(false, '_test.shell.help.selection'),
+  )
+  const settings = adminSettings()
+  const preventDefault = vi.fn()
+  const selected = shellWithSelection('trace id')
+  const press = (keyName: string, shiftKey = false) =>
+    key(keyName, null, false, false, { shiftKey, preventDefault })
+
+  ADMIN_FRAME.run(() => {
+    settings.icons.setTrue()
+    settings.colors.setTrue()
+    handleAdminShellKey(selected, press('c'), admin, helpOpen)
+    handleAdminShellKey(selected, press('i'), admin, helpOpen)
+    handleAdminShellKey(selected, press('j'), admin, helpOpen)
+    handleAdminShellKey(selected, press('/'), admin, helpOpen)
+    handleAdminShellKey(selected, press('?'), admin, helpOpen)
+  })
+  expect(preventDefault).not.toHaveBeenCalled()
+  expect(ADMIN_FRAME.run(() => settings.colors())).toBe(true)
+  expect(ADMIN_FRAME.run(() => settings.icons())).toBe(true)
+  expect(ADMIN_FRAME.run(() => helpOpen())).toBe(false)
+
+  const arrowPrevent = vi.fn()
+  ADMIN_FRAME.run(() => {
+    handleAdminShellKey(
+      selected,
+      key('ArrowDown', null, false, false, { preventDefault: arrowPrevent }),
+      admin,
+      helpOpen,
+    )
+    handleAdminShellKey(
+      selected,
+      key('ArrowDown', null, false, false, {
+        shiftKey: true,
+        preventDefault: arrowPrevent,
+      }),
+      admin,
+      helpOpen,
+    )
+  })
+  expect(arrowPrevent).toHaveBeenCalledTimes(1)
+  ADMIN_FRAME.run(() => {
+    settings.icons.setTrue()
+    settings.colors.setTrue()
   })
 })
