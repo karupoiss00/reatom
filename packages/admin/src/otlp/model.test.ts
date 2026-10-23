@@ -30,11 +30,15 @@ const log = (eventName: string, spanId: string, time = 15) => ({
   body: eventName,
 })
 
-const setup = () =>
-  reatomOtlpAdmin({
+// These tests exercise the legacy waterfall tree and its expansion state.
+const setup = () => {
+  const admin = reatomOtlpAdmin({
     sourceId: 'local',
     resource: { 'service.name': 'local' },
   })
+  ADMIN_FRAME.run(() => admin.causalEnabled.setFalse())
+  return admin
+}
 
 test('gantt, view, and selection history live on the admin model', () => {
   const admin = setup()

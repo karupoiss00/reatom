@@ -14,22 +14,39 @@ function browserOwnsKey(event: KeyboardEvent): boolean {
   return (
     event.isComposing ||
     event.key === 'Process' ||
+    event.key === 'Meta' ||
+    event.key === 'Control' ||
     event.ctrlKey ||
     event.metaKey
   )
 }
 
 function selectedTextInside(root: HTMLElement): boolean {
-  const getSelection = root.ownerDocument?.defaultView?.getSelection
-  if (typeof getSelection !== 'function') return false
-  const selection = getSelection()
-  if (selection === null || selection.isCollapsed) return false
+  // Browsers expose shadow selections differently. Prefer the tree's own
+  // selection when available and keep native methods bound to their receiver.
+  const tree = root.getRootNode?.() as
+    (Node & { host?: Element; getSelection?(): Selection | null }) | undefined
+  const selection =
+    tree?.getSelection?.() ?? root.ownerDocument?.defaultView?.getSelection?.()
+  if (!selection || selection.isCollapsed) return false
   if (selection.toString().length === 0) return false
-  const anchor = selection.anchorNode
-  if (anchor === null) return false
-  if (root.contains(anchor)) return true
-  const parent = anchor instanceof Element ? null : anchor.parentElement
-  return parent !== null && root.contains(parent)
+  const inside = (node: Node | null) => node !== null && root.contains(node)
+  if (inside(selection.anchorNode) || inside(selection.focusNode)) return true
+  // A document selection can retarget its endpoints to the shadow host. Ask
+  // for the composed endpoints inside this tree before treating it as external.
+  const composed = selection as Selection & {
+    getComposedRanges?(options: {
+      shadowRoots: ShadowRoot[]
+    }): readonly Pick<StaticRange, 'startContainer' | 'endContainer'>[]
+  }
+  return !!(
+    tree?.host &&
+    composed
+      .getComposedRanges?.({ shadowRoots: [tree as ShadowRoot] })
+      .some(
+        (range) => inside(range.startContainer) || inside(range.endContainer),
+      )
+  )
 }
 
 function claim(event: KeyboardEvent): void {
@@ -59,7 +76,7 @@ export function handleAdminShellKey(
   ) {
     return
   }
-  if (selectedTextInside(shell) && event.key.length === 1) return
+  if (event.key.length === 1 && selectedTextInside(shell)) return
 
   if (event.altKey) {
     if (event.key === 'ArrowLeft') {
@@ -92,20 +109,29 @@ export function handleAdminShellKey(
     adminSettings().colors.toggle()
     return
   }
+  if (
+    event.target instanceof Element &&
+    event.target.closest('[role="separator"]')
+  )
+    return
   if (event.shiftKey && event.key.startsWith('Arrow')) return
 
   const pathsUnit =
     admin.view() === 'timeline' && admin.timelineUnit() === 'paths'
   const paths = admin.analytics.paths
+  const causal =
+    admin.view() === 'timeline' && !pathsUnit && admin.causalEnabled()
   if (event.key === 'ArrowDown' || event.key === 'j' || event.key === 'J') {
     claim(event)
     if (pathsUnit) paths.moveSelection(1)
+    else if (causal) admin.causal.move(1)
     else admin.ganttSelection.move(1)
     return
   }
   if (event.key === 'ArrowUp' || event.key === 'k' || event.key === 'K') {
     claim(event)
     if (pathsUnit) paths.moveSelection(-1)
+    else if (causal) admin.causal.move(-1)
     else admin.ganttSelection.move(-1)
     return
   }
@@ -118,6 +144,7 @@ export function handleAdminShellKey(
       else paths.collapse(selected)
       return
     }
+    if (causal) return
     const selected = admin.gantt.selected()
     if (!selected) return
     claim(event)
@@ -138,6 +165,9 @@ export function handleAdminShellKey(
     if (paths.selected() !== null) admin.cardOpen.setTrue()
     return
   }
-  if (admin.selectedRecord() === null) admin.ganttSelection.move(1)
+  if (admin.selectedRecord() === null) {
+    if (causal) admin.causal.move(1)
+    else admin.ganttSelection.move(1)
+  }
   if (admin.selectedRecord() !== null) admin.cardOpen.setTrue()
 }

@@ -1,8 +1,13 @@
 import type { Meta, StoryObj } from '@storybook/html'
 import { expect, waitFor } from 'storybook/test'
 
+import { button, createActor } from '../../../.storybook/helpers'
+import { ADMIN_FRAME } from '../../root'
+import { getAdminRoot } from '../../testing/admin-root'
 import { renderOtlpChrome } from './boot'
 import { STORY_ANALYTICS_BATCH, STORY_RESOURCE } from './fixtures'
+
+const I = createActor()
 
 const meta = {
   title: 'OTLP/Analytics',
@@ -12,6 +17,7 @@ const meta = {
     vitest: { testTimeout: 30_000 },
   },
   render: () => renderOtlpChrome(STORY_ANALYTICS_BATCH, STORY_RESOURCE),
+  beforeEach: (context) => void I.init(context),
 } satisfies Meta
 
 export default meta
@@ -99,12 +105,15 @@ export const AnalyticsTab: Story = {
 
 export const PathsUnit: Story = {
   name: 'Paths unit opens the typical session',
+  render: () =>
+    renderOtlpChrome(STORY_ANALYTICS_BATCH, STORY_RESOURCE, {
+      onReady: ({ admin }) =>
+        ADMIN_FRAME.run(() => admin.causalEnabled.setFalse()),
+    }),
   play: async ({ canvasElement }) => {
     const root = adminRoot(canvasElement)
     clickElement(tabByLabel(root, 'Timeline'))
-    const paths = root.querySelector('[data-testid="gantt-mode-paths"]')
-    if (!(paths instanceof HTMLElement)) throw new Error('Paths missing')
-    clickElement(paths)
+    await I.click(button('Paths').within(getAdminRoot()).wait())
 
     await waitFor(() => {
       const labels = [

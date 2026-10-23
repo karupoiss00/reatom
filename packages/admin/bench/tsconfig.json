@@ -1,0 +1,12 @@
+{
+  "extends": "../../../tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "paths": {
+      "@reatom/core": ["../../core/src/index.ts"],
+      "@reatom/jsx": ["../../jsx/src/index.ts"],
+      "@reatom/opentelemetry/gdpr": ["../../opentelemetry/src/gdpr/index.ts"]
+    }
+  },
+  "include": ["./causal-model.ts", "./causal-rails.ts"]
+}

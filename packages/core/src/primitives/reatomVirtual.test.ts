@@ -163,6 +163,109 @@ describe('scrollToIndex', () => {
 })
 
 describe('sizes', () => {
+  test('a uniform number atom updates extents, padding and index alignment', () => {
+    const rowHeight = atom(26, 'reactiveSize.rowHeight')
+    const virtual = reatomVirtual(atom(createRows(10)), {
+      itemSize: rowHeight,
+      viewportSize: 52,
+      overscan: 0,
+    })
+    expect(virtual.totalSize()).toBe(260)
+    expect(virtual.items().map(({ id }) => id)).toEqual([0, 1])
+    expect(virtual.padding()).toEqual({ before: 0, after: 208 })
+    rowHeight.set(36)
+    expect(virtual.totalSize()).toBe(360)
+    expect(virtual.padding()).toEqual({ before: 0, after: 288 })
+    virtual.scrollToIndex(4)
+    expect(virtual.scrollOffset()).toBe(144)
+    expect(virtual.items().map(({ id }) => id)).toEqual([4, 5])
+    expect(virtual.padding()).toEqual({ before: 144, after: 144 })
+  })
+
+  test('reactive uniform geometry never scans source item slots on append', () => {
+    let itemReads = 0
+    const observe = (items: Row[]) =>
+      new Proxy(items, {
+        get(target, key, receiver) {
+          if (typeof key === 'string' && /^\d+$/.test(key)) itemReads++
+          return Reflect.get(target, key, receiver)
+        },
+      })
+    const initial = createRows(10_000),
+      rows = atom(observe(initial), 'arithmetic.rows'),
+      rowHeight = atom(26, 'arithmetic.rowHeight')
+    const virtual = reatomVirtual(rows, {
+      itemSize: rowHeight,
+      viewportSize: 100,
+    })
+    const watch = subscribe(virtual.totalSize)
+    expect(virtual.totalSize()).toBe(260_000)
+    rowHeight.set(36)
+    notify()
+    expect(virtual.totalSize()).toBe(360_000)
+    rows.set(observe([...initial, { id: 10_000 }]))
+    notify()
+    expect(virtual.totalSize()).toBe(360_036)
+    virtual.scrollToIndex(9000)
+    expect(virtual.scrollOffset()).toBe(324_000)
+    expect(itemReads).toBe(0)
+    watch.unsubscribe()
+  })
+
+  test('zero-argument ordinary callbacks remain per-item estimates', () => {
+    const rows = atom(createRows(3)),
+      rowHeight = atom(26)
+    let estimates = 0
+    const itemSize = () => {
+      estimates++
+      return rowHeight()
+    }
+    expect(itemSize.length).toBe(0)
+    const virtual = reatomVirtual(rows, { itemSize })
+    expect(virtual.totalSize()).toBe(78)
+    expect(estimates).toBe(3)
+    rowHeight.set(36)
+    expect(virtual.totalSize()).toBe(108)
+    expect(estimates).toBe(6)
+    rows.set([...rows(), { id: 3 }])
+    expect(virtual.totalSize()).toBe(144)
+    expect(estimates).toBe(10)
+  })
+
+  test('reactive uniform sizes validate lazily and recover after invalid values', () => {
+    const rowHeight = atom(0, 'invalid.rowHeight')
+    const virtual = reatomVirtual(
+      atom(createRows(1)),
+      { itemSize: rowHeight },
+      'reactive',
+    )
+    for (const invalid of [0, -1, Infinity, NaN]) {
+      rowHeight.set(invalid)
+      expect(() => virtual.totalSize()).toThrow(
+        `The "itemSize" of the virtual "reactive" should be a positive number, received "${invalid}".`,
+      )
+    }
+    rowHeight.set(26)
+    expect(virtual.totalSize()).toBe(26)
+  })
+
+  test('uniform size edits preserve measured overrides and update unmeasured defaults', () => {
+    const rows = atom(createRows(3)),
+      rowHeight = atom(26),
+      virtual = reatomVirtual(rows, { itemSize: rowHeight })
+    virtual.measure(rows()[0]!, 26) // Exact estimates are not explicit overrides.
+    rowHeight.set(36)
+    expect(virtual.totalSize()).toBe(108)
+    virtual.measure(rows()[0]!, 40)
+    expect(virtual.totalSize()).toBe(112)
+    rowHeight.set(26)
+    expect(virtual.totalSize()).toBe(92)
+    rowHeight.set(36)
+    expect(virtual.totalSize()).toBe(112)
+    virtual.measure(rows()[0]!, 36)
+    expect(virtual.totalSize()).toBe(108)
+  })
+
   test('an itemSize function estimates every item', () => {
     const sizes = [10, 20, 30, 40, 50]
     const rows = atom(sizes.map((size, id): Row => ({ id, size })))
@@ -286,5 +389,269 @@ describe('reatomMap', () => {
     unsubscribe()
     notify()
     expect(rendered().size).toBe(0)
+  })
+})
+
+describe('bindScroller acknowledgements', () => {
+  const setupBinding = (following: boolean | 'default' = true) => {
+    let frameId = 0
+    const frames = new Map<number, FrameRequestCallback>()
+    let readViewport = () => {}
+    const mocks = {
+      requestAnimationFrame: (callback: FrameRequestCallback) => {
+        frames.set(++frameId, callback)
+        return frameId
+      },
+      cancelAnimationFrame: (id: number) => {
+        frames.delete(id)
+      },
+      ResizeObserver: class {
+        constructor(callback: () => void) {
+          readViewport = callback
+        }
+        observe() {}
+        disconnect() {}
+      },
+    }
+    const originals = Object.keys(mocks).map(
+      (key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)] as const,
+    )
+    for (const [key] of originals)
+      Object.defineProperty(globalThis, key, {
+        configurable: true,
+        writable: true,
+        value: mocks[key as keyof typeof mocks],
+      })
+
+    const rows = atom(createRows(100), 'binding.rows')
+    const virtual = reatomVirtual(
+      rows,
+      {
+        itemSize: 20,
+        overscan: 0,
+        stickToEnd:
+          following === 'default'
+            ? undefined
+            : atom(following, 'binding.following'),
+      },
+      'binding.virtual',
+    )
+    const scroller = Object.assign(new EventTarget(), {
+      style: { overflowAnchor: 'auto' },
+      clientHeight: 100,
+      scrollHeight: 2000,
+      scrollTop: 0,
+      scrollLeft: 0,
+    })
+    let position = 0
+    const clamp = (value: number) =>
+      Math.max(
+        0,
+        Math.min(value, scroller.scrollHeight - scroller.clientHeight),
+      )
+    Object.defineProperty(scroller, 'scrollTop', {
+      get: () => (position = clamp(position)),
+      set: (value: number) => {
+        position = clamp(value)
+      },
+    })
+    const unbind = virtual.bindScroller(scroller as unknown as HTMLElement)
+    return {
+      rows,
+      virtual,
+      scroller,
+      resize: () => readViewport(),
+      scroll: () => scroller.dispatchEvent(new Event('scroll')),
+      frame: () => {
+        notify()
+        const callbacks = [...frames.values()]
+        frames.clear()
+        for (const callback of callbacks) callback(0)
+        notify()
+      },
+      dispose: () => {
+        unbind()
+        for (const [key, descriptor] of originals) {
+          if (descriptor) Object.defineProperty(globalThis, key, descriptor)
+          else Reflect.deleteProperty(globalThis, key)
+        }
+      },
+    }
+  }
+
+  test('a delayed own-scroll event after geometry growth does not disable following', () => {
+    const binding = setupBinding()
+    const { rows, virtual, scroller, frame, scroll, dispose } = binding
+    try {
+      frame()
+      expect(scroller.scrollTop).toBe(1900)
+      rows.set([...rows(), { id: 100 }])
+      scroller.scrollHeight = 2020
+      notify()
+      scroll() // Native acknowledgement of our previous 1900px write.
+      expect(virtual.stickToEnd()).toBe(true)
+      expect(virtual.scrollOffset()).toBe(1920)
+      frame()
+      expect(scroller.scrollTop).toBe(1920)
+    } finally {
+      dispose()
+    }
+  })
+
+  test('a real user scroll wins over a pending follow alignment', () => {
+    const { rows, virtual, scroller, frame, scroll, dispose } = setupBinding()
+    try {
+      frame()
+      rows.set([...rows(), { id: 100 }])
+      scroller.scrollHeight = 2020
+      notify()
+      scroller.scrollTop = 1800
+      scroll()
+      expect(virtual.stickToEnd()).toBe(false)
+      expect(virtual.scrollOffset()).toBe(1800)
+      frame()
+      expect(scroller.scrollTop).toBe(1800)
+    } finally {
+      dispose()
+    }
+  })
+
+  test('a native return to the bottom resumes following and pins later appends', () => {
+    const { rows, virtual, scroller, frame, scroll, dispose } = setupBinding()
+    try {
+      frame()
+      scroller.scrollTop = 1200
+      scroll()
+      expect(virtual.stickToEnd()).toBe(false)
+      frame()
+      scroller.scrollTop = 1900
+      scroll()
+      expect(virtual.stickToEnd()).toBe(true)
+      rows.set([...rows(), { id: 100 }])
+      scroller.scrollHeight = 2020
+      frame()
+      expect(virtual.scrollOffset()).toBe(1920)
+      expect(scroller.scrollTop).toBe(1920)
+    } finally {
+      dispose()
+    }
+  })
+
+  test('default lists remain paused after native bottom scrolling and append', () => {
+    const { rows, virtual, scroller, frame, scroll, dispose } =
+      setupBinding('default')
+    try {
+      frame()
+      scroller.scrollTop = 1900
+      scroll()
+      expect(virtual.stickToEnd()).toBe(false)
+      rows.set([...rows(), { id: 100 }])
+      scroller.scrollHeight = 2020
+      frame()
+      expect(virtual.scrollOffset()).toBe(1900)
+      expect(scroller.scrollTop).toBe(1900)
+      virtual.stickToEnd.set(true)
+      frame()
+      expect(scroller.scrollTop).toBe(1920)
+    } finally {
+      dispose()
+    }
+  })
+
+  test('native bottom detection uses the same one-pixel tolerance in both directions', () => {
+    const { virtual, scroller, frame, scroll, dispose } = setupBinding(false)
+    try {
+      frame()
+      scroller.scrollTop = 1898.9
+      scroll()
+      expect(virtual.stickToEnd()).toBe(false)
+      scroller.scrollTop = 1899
+      scroll()
+      expect(virtual.stickToEnd()).toBe(true)
+      frame()
+      scroller.scrollTop = 1898.9
+      scroll()
+      expect(virtual.stickToEnd()).toBe(false)
+    } finally {
+      dispose()
+    }
+  })
+
+  test('model navigation to the tail and horizontal events do not enable following', () => {
+    const { rows, virtual, scroller, frame, scroll, dispose } =
+      setupBinding(false)
+    try {
+      frame()
+      virtual.scrollToIndex(99)
+      scroller.scrollLeft = 40
+      scroll() // No vertical movement; keep the pending model scroll.
+      expect(virtual.scrollOffset()).toBe(1900)
+      expect(virtual.stickToEnd()).toBe(false)
+      frame()
+      scroll() // Acknowledge the model's write to the tail.
+      expect(virtual.stickToEnd()).toBe(false)
+      scroller.scrollLeft = 80
+      scroll()
+      expect(virtual.stickToEnd()).toBe(false)
+      rows.set([...rows(), { id: 100 }])
+      scroller.scrollHeight = 2020
+      frame()
+      expect(scroller.scrollTop).toBe(1900)
+      expect(virtual.stickToEnd()).toBe(false)
+    } finally {
+      dispose()
+    }
+  })
+
+  test('an unchanged event does not overwrite a pending programmatic scroll', () => {
+    const { virtual, scroller, frame, scroll, dispose } = setupBinding(false)
+    try {
+      frame()
+      virtual.scrollTo(600)
+      scroll()
+      expect(virtual.scrollOffset()).toBe(600)
+      frame()
+      expect(scroller.scrollTop).toBe(600)
+    } finally {
+      dispose()
+    }
+  })
+
+  test('resize and native clamping preserve following and paused positions', () => {
+    const { rows, virtual, scroller, frame, scroll, resize, dispose } =
+      setupBinding()
+    try {
+      frame()
+      scroller.clientHeight = 200
+      resize()
+      scroll()
+      frame()
+      expect(virtual.stickToEnd()).toBe(true)
+      expect(scroller.scrollTop).toBe(1800)
+
+      scroller.clientHeight = 100
+      resize()
+      scroll()
+      frame()
+      expect(virtual.stickToEnd()).toBe(true)
+      expect(scroller.scrollTop).toBe(1900)
+
+      virtual.scrollToIndex(45)
+      frame()
+      expect(virtual.stickToEnd()).toBe(false)
+      expect(scroller.scrollTop).toBe(900)
+      rows.set(rows().slice(0, 20))
+      scroller.scrollHeight = 400
+      scroll()
+      frame()
+      expect(virtual.scrollOffset()).toBe(300)
+      rows.set(createRows(100))
+      scroller.scrollHeight = 2000
+      frame()
+      expect(scroller.scrollTop).toBe(300)
+      expect(virtual.stickToEnd()).toBe(false)
+    } finally {
+      dispose()
+    }
   })
 })

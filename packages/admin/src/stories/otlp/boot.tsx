@@ -9,6 +9,7 @@ export interface OtlpChromeRenderOptions {
   height?: number
   source?: OtlpAdminSource
   fetch?: OtlpAdminOptions['fetch']
+  onReady?: (app: ReturnType<typeof createOtlpAdminApp>) => void
 }
 
 export function renderOtlpChrome(
@@ -30,7 +31,7 @@ export function renderOtlpChrome(
   storyRoot.dataset.testid = 'otlp-chrome-story-root'
   storyRoot.style.width = width === undefined ? '100%' : `${width}px`
   storyRoot.style.height = height === undefined ? '100vh' : `${height}px`
-  storyRoot.style.minWidth = `${Math.max(width ?? 0, 960)}px`
+  storyRoot.style.minWidth = `${width ?? 0}px`
   storyRoot.style.minHeight = height === undefined ? '100vh' : `${height}px`
   storyRoot.style.boxSizing = 'border-box'
 
@@ -43,7 +44,7 @@ export function renderOtlpChrome(
   // then adopts this node; do not copy this into host apps.
   document.body.append(storyRoot)
 
-  const { unmount } = createOtlpAdminApp(
+  const app = createOtlpAdminApp(
     host,
     {
       sourceId: 'local',
@@ -54,8 +55,9 @@ export function renderOtlpChrome(
     records,
   )
 
+  options.onReady?.(app)
   registerStoryCleanup(() => {
-    unmount()
+    app.unmount()
     host.replaceChildren()
     storyRoot.remove()
     urlAtom.sync.set(() => previousSync)

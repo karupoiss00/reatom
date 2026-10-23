@@ -41,6 +41,7 @@ import { OtlpAnalyticsScreen, analystStatusWords } from './AnalyticsScreen'
 import { closeFrameCard, OtlpFrameCard } from './FrameCard'
 import { OtlpFilterBar } from './FilterBar'
 import { floatAdminHost, type FloatingWindowOptions } from './FloatingWindow'
+import { CausalTimeline } from './CausalTimeline'
 import { OtlpGanttChart, pathRowAdapter, recordRowAdapter } from './GanttChart'
 import { PathStepCard } from './PathStepCard'
 import { OtlpRemotePanel } from './RemotePanel'
@@ -94,7 +95,7 @@ function statusWords(
 }
 
 function serviceLabel(admin: OtlpAdmin): string {
-  const name = admin.records()[0]?.resource['service.name']
+  const name = admin.store.recordList().head?.resource['service.name']
   if (typeof name === 'string' && name !== '') return name
   if (admin.source() === 'remote') return 'ClickHouse'
   if (admin.source() === 'replay') return 'Replay'
@@ -112,9 +113,6 @@ export const OtlpApp = ({
   const settings = adminSettings()
   const helpOpen = atom(false, `_Admin.shell.help.${shellId}`)
   const frameCardOpen = atom(false, `_Admin.shell.frameCard.${shellId}`)
-  effect(() => {
-    frameCardOpen.set(admin.view() !== 'settings' && admin.cardOpen())
-  }, `_Admin.shell.frameCard.sync.${shellId}`)
   const undoOpen = atom(false, `_Admin.shell.undoOpen.${shellId}`)
   const undoGeneration = atom(0, `_Admin.shell.undoGeneration.${shellId}`)
   const minimized =
@@ -135,14 +133,6 @@ export const OtlpApp = ({
     closed.set(false)
   }
   let localSnapshot: ReturnType<OtlpAdmin['records']> | null = null
-
-  effect(async () => {
-    if (admin.inProgress().length === 0) return
-    while (admin.inProgress().length > 0) {
-      admin.ganttNow.set(Date.now())
-      await wrap(sleep(200))
-    }
-  }, `_Admin.shell.tickNow.${shellId}`)
 
   const clearWorkspace = () => {
     undoGeneration.set(undoGeneration() + 1)
@@ -220,7 +210,7 @@ export const OtlpApp = ({
               font-variant-numeric: tabular-nums;
             `}
           >
-            {() => `${admin.summary().totalFrames.toLocaleString()} records`}
+            {() => `${admin.store.recordList().size.toLocaleString()} records`}
           </span>
         </ToolbarGroup>
         <ToolbarSpacer />
@@ -366,6 +356,7 @@ export const OtlpApp = ({
             />
           )
         }
+        if (admin.causalEnabled()) return <CausalTimeline admin={admin} />
         return (
           <OtlpGanttChart
             gantt={admin.gantt}
@@ -387,6 +378,8 @@ export const OtlpApp = ({
             admin.view() === 'analytics' ||
             (admin.view() === 'timeline' && admin.timelineUnit() === 'paths')
           if (analyst) return analystStatusWords(admin)
+          if (admin.view() === 'timeline' && admin.causalEnabled())
+            return `${admin.causal.visible().size} rows · ${admin.store.recordList().size} records`
           const summary = admin.summary()
           return `${summary.visibleFrames} of ${summary.totalFrames}`
         }}
@@ -462,6 +455,30 @@ export const OtlpApp = ({
         }
       `}
       ref={(shell) => {
+        const frameCardSync = effect(() => {
+          frameCardOpen.set(admin.view() !== 'settings' && admin.cardOpen())
+        }, `_Admin.shell.frameCard.sync.${shellId}`)
+        const tickNow = effect(async () => {
+          const pending = () => {
+            if (
+              closed() ||
+              minimized() ||
+              admin.view() !== 'timeline' ||
+              admin.timelineUnit() === 'paths'
+            )
+              return false
+            return admin.causalEnabled()
+              ? admin.causal.sections.time() &&
+                  admin.causal.virtual.items().some((row) => row.synthetic())
+              : admin.inProgress().length > 0
+          }
+          if (admin.source() === 'replay' || !pending()) return
+          while (admin.source() !== 'replay' && pending()) {
+            admin.ganttNow.set(Date.now())
+            await wrap(sleep(200))
+          }
+        }, `_Admin.shell.tickNow.${shellId}`)
+
         const onCapture = wrap((event: Event) => {
           if (!(event instanceof KeyboardEvent)) return
           if (event.key !== 'Escape' || isEditableTarget(event.target)) return
@@ -479,6 +496,8 @@ export const OtlpApp = ({
         connection?.refreshStats()
         const unbindPalette = bindAdminPalette(shell)
         return () => {
+          frameCardSync.unsubscribe()
+          tickNow.unsubscribe()
           unbindPalette()
           shell.removeEventListener('keydown', onCapture, true)
           shell.removeEventListener('keydown', onBubble)
@@ -626,38 +645,35 @@ const HelpBody = () => (
   </div>
 )
 
-const ImportRecords = ({ admin }: { admin: OtlpAdmin }) => (
-  <label
-    css={`
-      ${type.ui}
-      display: inline-flex;
-      align-items: center;
-      cursor: pointer;
-      color: ${tokens.text1};
-    `}
-  >
-    Import
-    <input
-      aria-label="Import"
-      type="file"
-      accept="application/json"
-      css={`
-        position: absolute;
-        width: 1px;
-        height: 1px;
-        overflow: hidden;
-        clip: rect(0, 0, 0, 0);
-      `}
-      on:change={async (event: Event) => {
-        const input = event.currentTarget
-        if (!(input instanceof HTMLInputElement)) return
-        const file = input.files?.[0]
-        if (!file) return
-        await importRecordFile(admin, file)
-      }}
-    />
-  </label>
-)
+const ImportRecords = ({ admin }: { admin: OtlpAdmin }) => {
+  let input: HTMLInputElement | undefined
+  return (
+    <>
+      <Button label="Import" onClick={() => input?.click()} />
+      <input
+        aria-label="Import records file"
+        type="file"
+        accept="application/json"
+        hidden
+        ref={(element) => {
+          input = element
+          return () => {
+            input = undefined
+          }
+        }}
+        on:change={async (event: Event) => {
+          const input = event.currentTarget
+          if (!(input instanceof HTMLInputElement)) return
+          const file = input.files?.[0]
+          if (!file) return
+          // Allow choosing the same capture again after clearing the timeline.
+          input.value = ''
+          await importRecordFile(admin, file)
+        }}
+      />
+    </>
+  )
+}
 
 function downloadRecords(records: readonly unknown[]) {
   const blob = new Blob([JSON.stringify(records, null, 2)], {
@@ -760,6 +776,12 @@ export function createOtlpAdminApp(
   return ADMIN_FRAME.run(() => {
     if (records.length > 0) admin.ingest(records)
     const unmount = mountAdminView(host, admin, null, viewOptions)
-    return { admin, unmount }
+    return {
+      admin,
+      unmount: () => {
+        unmount()
+        ADMIN_FRAME.run(() => admin.disposeModel())
+      },
+    }
   })
 }

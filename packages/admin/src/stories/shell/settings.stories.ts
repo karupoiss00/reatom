@@ -1,6 +1,11 @@
 import { reatomBoolean } from '@reatom/core'
 import type { Meta, StoryObj } from '@storybook/html'
-import { expect, waitFor } from 'storybook/test'
+import {
+  expect as storybookExpect,
+  userEvent,
+  waitFor,
+  within,
+} from 'storybook/test'
 
 import { createActor, heading, role, text } from '../../../.storybook/helpers'
 import { ADMIN_FRAME, resetAdminFrame } from '../../root'
@@ -11,6 +16,7 @@ import { registerLocalWorkOption } from '../../view/settings'
 import { STORY_FIXTURE_BATCH, STORY_RESOURCE } from '../otlp/fixtures'
 
 const I = createActor()
+const expect = storybookExpect as unknown as (typeof import('vitest'))['expect']
 
 const meta = {
   title: 'Admin/Shell',
@@ -82,6 +88,9 @@ export const DisplayAndLocalWork: Story = {
     await I.see(record().wait())
     await I.click(record())
     await I.seeAttribute(record(), 'aria-selected', 'true')
+    const grid = await I.see(role('grid', 'Causal records').within(shell()))
+    const timelineHeight = grid.clientHeight
+    await I.see(role('region', 'Graph continuations').within(shell()))
 
     await I.click(role('tab', 'Settings').within(shell()))
     await I.see(heading('Display').within(shell()).wait())
@@ -92,6 +101,11 @@ export const DisplayAndLocalWork: Story = {
     await I.see(text('Show kind icons next to record names').within(shell()))
     await I.see(
       text('Color records by kind: bars, row bands, chips').within(shell()),
+    )
+    await I.seeAttribute(
+      role('switch', 'Graph continuations').within(shell()),
+      'aria-checked',
+      'true',
     )
     await I.dontSee(role('searchbox', 'Name').within(shell()))
     await I.dontSee(role('complementary', 'Frame').within(shell()))
@@ -105,6 +119,27 @@ export const DisplayAndLocalWork: Story = {
     await I.click(role('tab', 'Timeline').within(shell()))
     await I.seeAttribute(record(), 'aria-selected', 'true')
     await I.click(role('tab', 'Settings').within(shell()))
+
+    await I.click(role('switch', 'Graph continuations').within(shell()))
+    await I.click(role('tab', 'Timeline').within(shell()))
+    await I.dontSee(role('region', 'Graph continuations').within(shell()))
+    await I.seeAttribute(
+      role('button', 'Graph section').within(shell()),
+      'aria-pressed',
+      'true',
+    )
+    await I.seeAttribute(record(), 'aria-selected', 'true')
+    await waitFor(() => {
+      expect(
+        (
+          getAdminRoot().querySelector(
+            '[aria-label="Causal records"]',
+          ) as HTMLElement
+        ).clientHeight,
+      ).toBe(timelineHeight + 36)
+    })
+    await I.click(role('tab', 'Settings').within(shell()))
+    await I.click(role('switch', 'Graph continuations').within(shell()))
 
     await I.click(role('switch', 'Icons').within(shell()))
     await waitFor(() => {
@@ -176,6 +211,7 @@ export const RemountKeepsDisplay: Story = {
     await I.click(role('tab', 'Settings').within(shell()).wait())
     await I.click(role('switch', 'Icons').within(shell()).wait())
     await I.click(role('switch', 'Colors').within(shell()))
+    await I.click(role('switch', 'Graph continuations').within(shell()))
     await waitFor(() => {
       expect(shell().dataset.adminIcons).toBe('false')
       expect(shell().dataset.adminColors).toBe('false')
@@ -201,6 +237,43 @@ export const RemountKeepsDisplay: Story = {
       'aria-checked',
       'false',
     )
+    await I.seeAttribute(
+      role('switch', 'Graph continuations').within(shell()),
+      'aria-checked',
+      'false',
+    )
+  },
+}
+
+export const ImportButton: Story = {
+  name: 'Import looks and activates like a toolbar button',
+  render: DisplayAndLocalWork.render,
+  play: async ({ canvasElement }) => {
+    const story = storyHost(canvasElement)
+    const mounted = mountShell(story)
+    registerStoryCleanup(mounted.unmount)
+    const root = getAdminRoot(),
+      ui = within(root)
+    const control = await I.see(role('button', 'Import').within(root).wait())
+    const input = ui.getByLabelText('Import records file') as HTMLInputElement
+    let requests = 0
+    // Observe picker activation without opening an OS dialog in the runner.
+    input.addEventListener('click', (event) => {
+      event.preventDefault()
+      requests++
+    })
+    expect(control.tagName).toBe('BUTTON')
+    expect(control.getBoundingClientRect().height).toBe(
+      ui.getByRole('button', { name: 'Export' }).getBoundingClientRect().height,
+    )
+    expect(getComputedStyle(control).borderTopStyle).toBe('solid')
+    await I.click(role('button', 'Import').within(root))
+    expect(requests).toBe(1)
+    control.focus()
+    await userEvent.keyboard('{Enter}')
+    expect(requests).toBe(2)
+    await userEvent.keyboard(' ')
+    expect(requests).toBe(3)
   },
 }
 
@@ -253,8 +326,10 @@ export const ColorTheme: Story = {
     await waitFor(() => {
       const nextAccent =
         getComputedStyle(shell()).getPropertyValue('--admin-accent')
-      expect(nextAccent).not.toBe(duskAccent)
-      expect(getComputedStyle(shell()).backgroundColor).not.toBe(duskCanvas)
+      expect(nextAccent === duskAccent).toBe(false)
+      expect(getComputedStyle(shell()).backgroundColor === duskCanvas).toBe(
+        false,
+      )
     })
 
     await I.click(role('radio', 'Light').within(shell()))
@@ -262,7 +337,7 @@ export const ColorTheme: Story = {
       expect(shell().dataset.adminScheme).toBe('light')
     })
     await I.see(text('Showing light').within(shell()))
-    expect(getComputedStyle(shell()).backgroundColor).not.toBe(duskCanvas)
+    expect(getComputedStyle(shell()).backgroundColor === duskCanvas).toBe(false)
     await I.see(role('radio', 'Bottom right').within(shell()))
   },
 }

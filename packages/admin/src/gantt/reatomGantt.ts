@@ -2,8 +2,7 @@ import type {
   Action,
   Atom,
   Computed,
-  LinkedList,
-  LinkedListLikeAtom,
+  LinkedListSource,
   LLNode,
   VirtualAtom,
   VirtualOptions,
@@ -68,7 +67,7 @@ export interface GanttOptions<Node, Key = Node> {
 }
 
 export type GanttSource<Node> =
-  Computed<ReadonlyArray<Node>> | LinkedListLikeAtom<LinkedList<Node & LLNode>>
+  Computed<ReadonlyArray<Node>> | LinkedListSource<Node & LLNode>
 
 export interface Gantt<Node, Key = Node> {
   /** Current row sequence: the same node objects the source holds. */
@@ -224,7 +223,7 @@ export const barGeometry = (
  *   })
  */
 export function reatomGantt<Node extends LLNode, Key = Node>(
-  source: LinkedListLikeAtom<LinkedList<Node>>,
+  source: LinkedListSource<Node>,
   options: GanttOptions<Node, Key>,
   name?: string,
 ): Gantt<Node, Key>

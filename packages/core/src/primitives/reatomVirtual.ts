@@ -1,5 +1,5 @@
-import type { Action, Atom, Computed } from '../core'
-import { action, atom, computed, named, ReatomError } from '../core'
+import type { Action, Atom, AtomLike, Computed } from '../core'
+import { action, atom, computed, isAtom, named, ReatomError } from '../core'
 import { withConnectHook } from '../extensions'
 import { effect, peek, wrap } from '../methods'
 import type { Rec, Unsubscribe } from '../utils'
@@ -20,10 +20,10 @@ export type VirtualAlign = 'start' | 'center' | 'end' | 'nearest'
 export interface VirtualOptions<Item> {
   /**
    * Size of an item along the scroll axis, in the units of `scrollOffset`
-   * (usually CSS pixels). A number makes every item the same size, a function
-   * estimates each item. `measure` corrects both.
+   * (usually CSS pixels). A number or number atom makes every item the same
+   * size; an ordinary function estimates each item. `measure` corrects both.
    */
-  itemSize: number | ((item: Item) => number)
+  itemSize: number | AtomLike<number, []> | ((item: Item) => number)
   /** Items rendered beyond each edge of the viewport. Defaults to `1`. */
   overscan?: number
   /**
@@ -31,7 +31,11 @@ export interface VirtualOptions<Item> {
    * to `0`.
    */
   viewportSize?: number
-  /** Keeps the viewport at the end while `true`. Defaults to an own atom. */
+  /**
+   * Keeps the viewport at the end while `true`. A supplied atom also resumes
+   * following on a native return to the bottom. Defaults to an own paused
+   * atom.
+   */
   stickToEnd?: Atom<boolean>
 }
 
@@ -68,7 +72,9 @@ export interface VirtualAtom<Item> extends ViewAtom<Item> {
   /**
    * Pins `scrollOffset` to the end, for live logs and chats. A user scroll away
    * from the end through `bindScroller`, or a `scrollToIndex` before the end,
-   * sets it to `false`.
+   * sets it to `false`. With a supplied `options.stickToEnd`, a native scroll
+   * down to the bottom resumes it; model navigation to the bottom does not
+   * resume a paused list.
    */
   stickToEnd: Atom<boolean>
   /** Size of the whole content. */
@@ -211,12 +217,12 @@ const isSameWindow = (
  *   the inverse sticky technique. The source is the same as for `reatomView`: a
  *   `reatomLinkedList`, a `reatomMap` list, or an atom of an array.
  *
- *   Sizes start from `itemSize` and are corrected by `measure`. With a numeric
- *   `itemSize` and no measured differences, every lookup is O(1) arithmetic and
- *   a source change costs nothing beyond the view. Otherwise a source or size
- *   change rebuilds a prefix-sum array in O(n), and a scroll costs O(log n).
- *   Measured sizes are kept per item identity, so they survive filtering and
- *   reordering.
+ *   Sizes start from `itemSize` and are corrected by `measure`. With a number or
+ *   number atom and no measured differences, every lookup is O(1) arithmetic
+ *   and a source change costs nothing beyond the view. Otherwise a source or
+ *   size change rebuilds a prefix-sum array in O(n), and a scroll costs O(log
+ *   n). Measured sizes are kept per item identity, so they survive filtering
+ *   and reordering.
  *
  *   The model owns scroll anchoring: a size change above the viewport moves
  *   `scrollOffset` by the same amount. `bindScroller` turns off the browser's
@@ -275,13 +281,19 @@ export function reatomVirtual(
   name: string = named(`${source.name}.virtual`),
 ): VirtualAtom<unknown> {
   const { itemSize, overscan: overscanOption = 1 } = options
-  const isUniform = typeof itemSize === 'number'
+  const isUniform = typeof itemSize === 'number' || isAtom(itemSize)
 
-  if (isUniform && !(itemSize > 0 && itemSize !== Infinity)) {
-    throw new ReatomError(
-      `The "itemSize" of the virtual "${name}" should be a positive number, received "${itemSize}".`,
-    )
+  const readUniformSize = (): number => {
+    const size = isAtom(itemSize) ? itemSize() : itemSize
+    if (typeof size !== 'number' || !(size > 0 && size !== Infinity))
+      throw new ReatomError(
+        `The "itemSize" of the virtual "${name}" should be a positive number, received "${String(size)}".`,
+      )
+    return size
   }
+  // Preserve eager numeric validation without reading a reactive size outside
+  // the layout computed, which owns its dependency and context.
+  if (typeof itemSize === 'number') readUniformSize()
   if (typeof overscanOption !== 'number' || !(overscanOption >= 0)) {
     throw new ReatomError(
       `The "overscan" of the virtual "${name}" should be a non-negative number, received "${overscanOption}".`,
@@ -290,7 +302,7 @@ export function reatomVirtual(
   const overscan = Math.floor(overscanOption)
 
   const estimateSize = (item: unknown): number =>
-    isUniform ? itemSize : itemSize(item)
+    isUniform ? readUniformSize() : itemSize(item)
 
   const readNumber = (value: unknown, field: string): number => {
     if (typeof value !== 'number' || Number.isNaN(value)) {
@@ -326,14 +338,16 @@ export function reatomVirtual(
       ? (sourceState as LinkedList).size
       : (sourceState as ReadonlyArray<unknown>).length
 
-    if (isUniform && !sizes.hasUniformDelta) {
-      return uniformLayout(count, itemSize)
+    const uniformSize = isUniform ? readUniformSize() : undefined
+    if (uniformSize !== undefined && !sizes.hasUniformDelta) {
+      return uniformLayout(count, uniformSize)
     }
 
     const starts = new Float64Array(count + 1)
     let index = 0
     const addItem = (item: unknown) => {
-      const size = readMeasuredSize(sizes, item) ?? estimateSize(item)
+      const size =
+        readMeasuredSize(sizes, item) ?? uniformSize ?? estimateSize(item)
       if (!isSize(size)) {
         throw new ReatomError(
           `The size of the item ${index} in the virtual "${name}" should be a non-negative finite number, received "${String(size)}".`,
@@ -572,10 +586,21 @@ export function reatomVirtual(
     })
 
     const readScroll = wrap(() => {
-      reportedOffset = scroller.scrollTop
+      const offset = scroller.scrollTop
+      // A native event can acknowledge our last write after newer content has
+      // changed the scroll range. Only a changed DOM position is new input;
+      // an acknowledgement must not cancel following or a pending model scroll.
+      if (offset === reportedOffset) return
+      const towardEnd = offset > reportedOffset
+      reportedOffset = offset
       const domMaxOffset = scroller.scrollHeight - scroller.clientHeight
-      if (stickToEnd() && reportedOffset < domMaxOffset - 1) {
+      const atEnd = reportedOffset >= domMaxOffset - 1
+      if (stickToEnd() && !atEnd) {
         stickToEnd.set(false)
+      } else if (options.stickToEnd && !stickToEnd() && atEnd && towardEnd) {
+        // A shrinking scroll range clamps upward too; it must not resume a
+        // paused list. A changed position toward the end is new native input.
+        stickToEnd.set(true)
       }
       if (reportedOffset !== scrollOffset()) scrollTo(reportedOffset)
     })

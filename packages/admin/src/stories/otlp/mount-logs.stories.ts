@@ -1,8 +1,11 @@
 import type { Meta, StoryObj } from '@storybook/html'
-import { expect, userEvent, waitFor, within } from 'storybook/test'
+import { expect } from 'storybook/test'
 
+import { button, createActor, role } from '../../../.storybook/helpers'
 import { getAdminRoot } from '../../testing/admin-root'
 import { renderOtlpChrome } from './boot'
+
+const I = createActor()
 
 const ms = (value: number) => String(BigInt(value) * 1_000_000n)
 
@@ -64,45 +67,29 @@ const meta = {
   globals: { viewport: { value: 'wide', isRotated: false } },
   render: () =>
     renderOtlpChrome(MOUNT_LOG_RECORDS, { 'service.name': 'mount-logs' }),
+  beforeEach: (context) => void I.init(context),
 } satisfies Meta
 
 export default meta
 
 type Story = StoryObj<typeof meta>
 
-function adminUi() {
-  return within(getAdminRoot())
-}
-
 export const MountLogsToggle: Story = {
   name: 'Mount logs stay hidden until the chip shows them',
   play: async () => {
-    const mountLogs = await waitFor(() =>
-      adminUi().getByRole('button', { name: 'Mount logs' }),
-    )
+    const root = getAdminRoot()
+    const toggle = button('Mount logs').within(root)
+    const mountLogs = await I.see(toggle.wait())
     expect(mountLogs).toHaveTextContent('Mount logs 1')
-    expect(mountLogs).toHaveAttribute('aria-pressed', 'false')
+    await I.seeAttribute(toggle, 'aria-pressed', 'false')
+    await I.see(role('row', 'search.query.set').within(root).wait())
+    await I.see(role('row', 'search.query').within(root).wait())
+    await I.dontSee(role('row', 'search.results').within(root))
 
-    await userEvent.click(adminUi().getByRole('button', { name: 'Expand all' }))
-    await waitFor(() => {
-      expect(
-        adminUi().getByRole('row', { name: 'search.query.set' }),
-      ).toBeTruthy()
-      expect(adminUi().getByRole('row', { name: 'search.query' })).toBeTruthy()
-    })
-    expect(adminUi().queryByRole('row', { name: 'search.results' })).toBeNull()
-
-    await userEvent.click(mountLogs)
-    await userEvent.click(adminUi().getByRole('button', { name: 'Expand all' }))
-    await waitFor(() => {
-      expect(
-        adminUi().getByRole('row', { name: 'search.results' }),
-      ).toBeTruthy()
-    })
-    expect(mountLogs).toHaveAttribute('aria-pressed', 'true')
+    await I.click(toggle)
+    await I.see(role('row', 'search.results').within(root).wait())
+    await I.seeAttribute(toggle, 'aria-pressed', 'true')
     expect(mountLogs).toHaveTextContent('Mount logs 1')
-    expect(
-      adminUi().getByRole('row', { name: 'search.query.set' }),
-    ).toBeTruthy()
+    await I.see(role('row', 'search.query.set').within(root))
   },
 }

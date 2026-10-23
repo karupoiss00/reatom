@@ -8,6 +8,7 @@ import {
   overviewDataValue,
   overviewEventSections,
   overviewParamsValue,
+  overviewValues,
   recordFieldValue,
 } from './frameValues'
 
@@ -61,7 +62,7 @@ test('overview keeps state or payload apart from params', () => {
   expect(overviewDataTitle(next)).toBe('State')
   expect(overviewDataValue(next)).toEqual(['X'])
   expect(frameValueView(overviewDataValue(next))).toBe('inspector')
-  expect(overviewParamsValue(next)).toEqual([1])
+  expect(overviewParamsValue(next)).toBeUndefined()
   expect(overviewDataValue(record({ name: 'ping' }))).toBeUndefined()
   expect(overviewParamsValue(record({ name: 'ping' }))).toBeUndefined()
   expect(frameValueView(undefined)).toBe('empty')
@@ -93,6 +94,184 @@ test('overview and field values prefer live values over masked attributes', () =
   expect(JSON.stringify(action)).not.toContain('live-token')
 })
 
+test('state overview excludes internal middleware inputs and never substitutes them for state', () => {
+  const previous = { total: 1 }
+  const current = { total: 2 }
+  const computed = record({
+    atomName: 'total',
+    reatomKind: 'computed',
+    eventName: 'reatom.computed.update',
+    body: '[redacted]',
+    [LOCAL_VALUES]: { state: current, params: [previous] },
+  })
+  expect(overviewValues(computed)).toEqual({
+    data: current,
+    hasData: true,
+    params: undefined,
+  })
+  expect(overviewDataValue(computed)).toBe(current)
+  expect(computed[LOCAL_VALUES]?.params?.[0]).toBe(previous)
+
+  const uncaptured = record({
+    kind: 'span',
+    atomName: 'total',
+    reatomKind: 'computed',
+    attributes: { 'reatom.params': '[1]' },
+  })
+  expect(overviewValues(uncaptured)).toEqual({
+    data: undefined,
+    hasData: false,
+    params: undefined,
+  })
+  expect(uncaptured.attributes['reatom.params']).toBe('[1]')
+
+  for (const reatomKind of ['atom', 'effect', 'route', 'loader'] as const) {
+    expect(
+      overviewParamsValue(
+        record({
+          kind: 'span',
+          reatomKind,
+          [LOCAL_VALUES]: { params: [1] },
+        }),
+      ),
+    ).toBeUndefined()
+  }
+})
+
+test('a local identity action presents its one argument once and preserves the recorded result', () => {
+  const payload = { move: 1 }
+  const echo = record({
+    kind: 'span',
+    reatomKind: 'action',
+    outcome: 'ok',
+    [LOCAL_VALUES]: { params: [payload], payload },
+  })
+  expect(overviewValues(echo)).toEqual({
+    data: undefined,
+    hasData: false,
+    params: [payload],
+  })
+  expect((overviewParamsValue(echo) as unknown[])[0]).toBe(payload)
+  expect(recordFieldValue(echo)).toBe(payload)
+  expect(echo[LOCAL_VALUES]?.payload).toBe(payload)
+
+  for (const primitive of [0, false, '', null, 1n, NaN]) {
+    expect(
+      overviewValues(
+        record({
+          ...echo,
+          [LOCAL_VALUES]: { params: [primitive], payload: primitive },
+        }),
+      ).hasData,
+    ).toBe(false)
+  }
+  expect(
+    overviewValues(
+      record({
+        ...echo,
+        [LOCAL_VALUES]: { params: [0], payload: -0 },
+      }),
+    ).hasData,
+  ).toBe(true)
+  expect(
+    overviewValues(
+      record({
+        ...echo,
+        [LOCAL_VALUES]: { params: [payload, 2], payload },
+      }),
+    ).hasData,
+  ).toBe(true)
+})
+
+test('equal-shaped local objects and all replay values keep their separate result', () => {
+  const input = { value: 1 }
+  const output = { value: 1 }
+  const distinct = record({
+    kind: 'span',
+    reatomKind: 'action',
+    outcome: 'ok',
+    [LOCAL_VALUES]: { params: [input], payload: output },
+  })
+  expect(overviewValues(distinct).hasData).toBe(true)
+  expect(overviewDataValue(distinct)).toBe(output)
+
+  const cycle: { self?: unknown } = {}
+  cycle.self = cycle
+  const cyclicEcho = record({
+    ...distinct,
+    [LOCAL_VALUES]: { params: [cycle], payload: cycle },
+  })
+  expect(overviewValues(cyclicEcho).hasData).toBe(false)
+
+  for (const captured of [
+    '{"value":1}',
+    '1',
+    'false',
+    '"same"',
+    '"[Undefined]"',
+    '"[redacted]"',
+  ]) {
+    const replay = record({
+      kind: 'span',
+      reatomKind: 'action',
+      outcome: 'ok',
+      attributes: {
+        'reatom.params': `[${captured}]`,
+        'reatom.payload': captured,
+      },
+    })
+    expect(overviewValues(replay).hasData).toBe(true)
+    expect(overviewDataValue(replay)).toEqual(JSON.parse(captured))
+    expect(overviewParamsValue(replay)).toEqual([JSON.parse(captured)])
+  }
+})
+
+test('captured undefined and failed or unfinished action results stay visible', () => {
+  const voidAction = record({
+    kind: 'span',
+    reatomKind: 'action',
+    outcome: 'ok',
+    attributes: { 'reatom.payload': '"masked fallback"' },
+    [LOCAL_VALUES]: { params: [undefined], payload: undefined },
+  })
+  expect(overviewValues(voidAction)).toEqual({
+    data: undefined,
+    hasData: true,
+    params: [undefined],
+  })
+  const missing = record({ ...voidAction, [LOCAL_VALUES]: { params: [1] } })
+  expect(overviewValues(missing).hasData).toBe(false)
+  expect(overviewDataValue(missing)).toBeUndefined()
+
+  const undefinedState = stateRecord('masked fallback')
+  undefinedState[LOCAL_VALUES] = { state: undefined, params: [1] }
+  expect(overviewValues(undefinedState)).toEqual({
+    data: undefined,
+    hasData: true,
+    params: undefined,
+  })
+
+  for (const outcome of ['error', 'abort', 'suspense', 'pending'] as const) {
+    const unfinished = record({
+      kind: 'span',
+      reatomKind: 'action',
+      outcome,
+      [LOCAL_VALUES]: { params: ['same'], payload: 'same' },
+    })
+    expect(overviewValues(unfinished).hasData).toBe(true)
+    expect(overviewDataValue(unfinished)).toBe('same')
+  }
+  expect(
+    overviewValues(
+      record({
+        ...voidAction,
+        error: { message: 'failed after the callback' },
+        [LOCAL_VALUES]: { params: ['same'], payload: 'same' },
+      }),
+    ).hasData,
+  ).toBe(true)
+})
+
 test('event overview groups attributes, formats durations, and sorts leftover keys', () => {
   const pageView = record({
     eventName: 'app.page_view',
@@ -110,9 +289,7 @@ test('event overview groups attributes, formats durations, and sorts leftover ke
     },
     {
       title: 'Attribution',
-      entries: [
-        { key: 'app.utm.source', value: 'google', display: 'google' },
-      ],
+      entries: [{ key: 'app.utm.source', value: 'google', display: 'google' }],
     },
     {
       title: 'Identity',

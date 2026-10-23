@@ -1,4 +1,10 @@
-import { action, atom, computed, reatomBoolean } from '@reatom/core'
+import {
+  action,
+  atom,
+  computed,
+  reatomBoolean,
+  reatomLinkedList,
+} from '@reatom/core'
 
 const PREFIX = '_Admin.otlp'
 
@@ -129,7 +135,49 @@ export interface OtlpStoreOptions {
 export function reatomOtlpStore(options: OtlpStoreOptions) {
   const sourceId = options.sourceId
   let resource = { ...options.resource }
-  const records = atom<AdminRecord[]>([], `${PREFIX}.records`)
+  const recordList = reatomLinkedList(
+    (record: AdminRecord) => record,
+    `${PREFIX}.recordList`,
+  )
+  const recordEpoch = atom(0, `${PREFIX}.recordEpoch`)
+  const contentChanges = atom<{
+    revision: number
+    records: readonly AdminRecord[]
+  }>({ revision: 0, records: [] }, `${PREFIX}.contentChanges`)
+  const records = computed(() => {
+    contentChanges()
+    return recordList.array().slice()
+  }, `${PREFIX}.records`)
+  const spanRecords = atom(
+    () => new Map<string, AdminRecord[]>(),
+    `${PREFIX}._spanRecords`,
+  )
+  const touched = new Set<AdminRecord>()
+  const recordIds = atom(
+    () => new Map<string, AdminRecord>(),
+    `${PREFIX}._recordIds`,
+  )
+  const spanKey = (record: AdminRecord) =>
+    `${record.sourceId}:${record.traceId}:${record.spanId}`
+  const publishContent = () => {
+    if (touched.size)
+      contentChanges.set((previous) => ({
+        revision: previous.revision + 1,
+        records: [...touched],
+      }))
+    touched.clear()
+  }
+  const appendRecords = (batch: AdminRecord[]) => {
+    recordList.createMany(batch.map((record) => [record]))
+    const index = spanRecords()
+    for (const record of batch) {
+      recordIds().set(record.id, record)
+      const key = spanKey(record),
+        bucket = index.get(key)
+      if (bucket) bucket.push(record)
+      else index.set(key, [record])
+    }
+  }
   const paused = reatomBoolean(false, `${PREFIX}.paused`)
   const localValuesTrimmed = atom(false, `${PREFIX}.localValuesTrimmed`)
   const localValuesLimit = normalizeLocalValuesLimit(options.localValuesLimit)
@@ -167,7 +215,10 @@ export function reatomOtlpStore(options: OtlpStoreOptions) {
     if (overflow <= 0) return
     for (let index = 0; index < overflow; index += 1) {
       const record = valuedRecords[valuedHead + index]
-      if (record) forgetLocalValues(record)
+      if (record) {
+        forgetLocalValues(record)
+        touched.add(record)
+      }
     }
     valuedHead += overflow
     if (valuedHead > 1024) {
@@ -185,7 +236,7 @@ export function reatomOtlpStore(options: OtlpStoreOptions) {
 
   const recordsFromIncoming = (
     incoming: readonly unknown[],
-    existing: readonly AdminRecord[],
+    existing?: readonly AdminRecord[],
   ) => {
     const batch: AdminRecord[] = []
     for (const item of incoming) {
@@ -204,37 +255,62 @@ export function reatomOtlpStore(options: OtlpStoreOptions) {
         batch.push(record)
       }
     }
-    joinExceptionLogs(batch, existing)
+    const candidates = existing ?? [
+      ...new Set(
+        batch.flatMap((record) => spanRecords().get(spanKey(record)) ?? []),
+      ),
+    ]
+    joinExceptionLogs(batch, candidates, (record) => touched.add(record))
     trimLocalValues()
     return batch
   }
 
   const ingest = action((incoming: readonly unknown[]) => {
     if (paused()) return
-    const batch = recordsFromIncoming(incoming, records())
-    records.set((current) => current.concat(batch))
+    const batch = recordsFromIncoming(incoming)
+    appendRecords(batch)
+    publishContent()
   }, `${PREFIX}.ingest`)
 
   const replace = action((incoming: readonly unknown[]) => {
+    recordEpoch.set((value) => value + 1)
     nextSeq = 0
     resetLocalValues()
-    records.set(recordsFromIncoming(incoming, []))
+    const batch = recordsFromIncoming(incoming, [])
+    recordList.batch(() => {
+      recordList.clear()
+      spanRecords.set(new Map())
+      recordIds.set(new Map())
+      appendRecords(batch)
+    })
+    publishContent()
   }, `${PREFIX}.replace`)
 
   const restoreRecords = action((previous: readonly AdminRecord[]) => {
-    const next = [...previous, ...records()]
-    records.set(next)
+    recordEpoch.set((value) => value + 1)
+    const next = [...new Set([...previous, ...records()])]
+    recordList.batch(() => {
+      recordList.clear()
+      spanRecords.set(new Map())
+      recordIds.set(new Map())
+      appendRecords(next)
+    })
     valuedRecords.length = 0
     valuedHead = 0
     for (const record of next) {
       if (record[LOCAL_VALUES] !== undefined) valuedRecords.push(record)
     }
     trimLocalValues()
+    publishContent()
   }, `${PREFIX}.restoreRecords`)
 
   const clear = action(() => {
-    records.set([])
-    nextSeq = 0
+    recordEpoch.set((value) => value + 1)
+    recordList.clear()
+    spanRecords.set(new Map())
+    recordIds.set(new Map())
+    touched.clear()
+    // Keep generated IDs unique when undo later merges new live arrivals.
     resetLocalValues()
     options.onClear?.()
   }, `${PREFIX}.clear`)
@@ -299,6 +375,14 @@ export function reatomOtlpStore(options: OtlpStoreOptions) {
     setLocalValues,
     localValuesTrimmed,
     records,
+    recordList,
+    recordEpoch,
+    contentChanges,
+    byId: (id: string) => {
+      recordList()
+      contentChanges()
+      return recordIds().get(id) ?? null
+    },
     byTrace,
     bySpan,
     byFrame,
@@ -442,12 +526,17 @@ export function errorFromExceptionLog(record: AdminRecord): AdminRecordError {
 }
 
 function sameExceptionSpan(left: AdminRecord, right: AdminRecord): boolean {
-  return left.spanId === right.spanId && left.traceId === right.traceId
+  return (
+    left.sourceId === right.sourceId &&
+    left.spanId === right.spanId &&
+    left.traceId === right.traceId
+  )
 }
 
 function joinExceptionLogs(
   batch: AdminRecord[],
   existing: readonly AdminRecord[],
+  onChange: (record: AdminRecord) => void,
 ) {
   const batchExceptions: AdminRecord[] = []
   const batchSpans: AdminRecord[] = []
@@ -471,6 +560,7 @@ function joinExceptionLogs(
     for (const record of existing) {
       if (record.kind === 'span' && sameExceptionSpan(record, exception)) {
         record.error = error
+        onChange(record)
       }
     }
   }
@@ -514,6 +604,8 @@ function copyAdminRecord(record: AdminRecord): AdminRecord {
     causeIds: [...(record.causeIds ?? [])],
     ...(record.error ? { error: { ...record.error } } : {}),
   }
+  for (const symbol of Object.getOwnPropertySymbols(copy))
+    if (symbol !== LOCAL_VALUES) Reflect.deleteProperty(copy, symbol)
   const values = record[LOCAL_VALUES]
   if (values !== undefined) copy[LOCAL_VALUES] = values
   return copy

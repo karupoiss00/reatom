@@ -7,6 +7,7 @@ import {
   isAtom,
   named,
   ReatomError,
+  top,
 } from '../core'
 import { withChangeHook } from '../extensions/withChangeHook'
 import { withFromJson } from '../extensions/withFromJson'
@@ -15,6 +16,8 @@ import { peek } from '../methods'
 import type { Fn, Rec } from '../utils'
 import { isObject } from '../utils'
 import {
+  isLinkedListBatching,
+  registerLinkedListSource,
   endLinkedListBatching,
   startLinkedListBatching,
 } from './linkedListBatching'
@@ -36,14 +39,17 @@ export type LinkedListSymbols = {
   readonly LL_NEXT: LL_NEXT
 }
 
-type LLChanges<Node extends LLNode> =
+export type LLChanges<Node extends LLNode> = Readonly<
   | { kind: 'create'; node: Node }
-  | { kind: 'createMany'; nodes: Node[] }
+  | { kind: 'createMany'; nodes: readonly Node[] }
   | { kind: 'remove'; node: Node }
-  | { kind: 'removeMany'; nodes: Node[] }
+  | { kind: 'removeMany'; nodes: readonly Node[] }
   | { kind: 'swap'; a: Node; b: Node }
   | { kind: 'move'; node: Node; after: null | Node }
+  | { kind: 'insert'; nodes: readonly Node[]; after: null | Node }
+  | { kind: 'moveMany'; nodes: readonly Node[]; after: null | Node }
   | { kind: 'clear' }
+>
 
 export interface LinkedList<
   Node extends LLNode = LLNode,
@@ -55,12 +61,65 @@ export interface LinkedList<
   changes: Array<LLChanges<Node>>
 }
 
-export interface LinkedListLikeAtom<T extends LinkedList = LinkedList>
-  extends Atom<T>, LinkedListSymbols {
-  array: Computed<Array<T extends LinkedList<infer LLNode> ? LLNode : never>>
-
+/** Readonly root, mapped, or filtered linked-list source. */
+export interface LinkedListSource<
+  Node extends LLNode = LLNode,
+  Value extends LinkedList = LinkedList<Node>,
+>
+  extends Computed<Value>, LinkedListSymbols {
+  array: Computed<Node[]>
   __reatomLinkedList: true
+  /** Current membership, including singleton lists. */
+  has: (node: Node) => boolean
+  /** Compare present nodes in this sequence; throws for nonmembers. */
+  compare: (a: Node, b: Node) => -1 | 0 | 1
+  reatomMap: <T extends Rec>(
+    cb: (node: Node) => T,
+    options?: string | LinkedListMapOptions<Node, LLNode<T>>,
+  ) => LinkedListDerivedAtom<Node, LLNode<T>>
+  /**
+   * A plain predicate is static. A computed predicate tracks configuration and
+   * returns a new predicate to invalidate membership. Row evaluation is
+   * untracked.
+   */
+  reatomFilter: (
+    predicate: ((node: Node) => boolean) | Computed<(node: Node) => boolean>,
+    name?: string,
+  ) => LinkedListSource<Node>
+  /** Pure incremental fold. Callbacks must not mutate a published accumulator. */
+  reatomReduce: <T>(
+    options: LinkedListReduceOptions<Node, T>,
+    name?: string,
+  ) => Computed<{ readonly state: T; readonly version: number }>
 }
+
+export interface LinkedListMapOptions<Node extends LLNode, T extends LLNode> {
+  name?: string
+  /** Membership entry, including a cached model returning after removal. */
+  onCreate?: (node: T) => void
+  /** Membership exit; cached allocation is retained weakly. */
+  onRemove?: (node: T, origin: Node) => void
+  onSwap?: (payload: { a: T; b: T }) => void
+  onMove?: (node: T) => void
+  /** A real clear/reset, never merely a missed source version. */
+  onClear?: (state: LinkedListDerivedState<Node, T>) => void
+}
+
+export interface LinkedListReduceOptions<Node extends LLNode, T> {
+  init: () => T
+  apply: (
+    previous: Readonly<T>,
+    change: Readonly<LLChanges<Node>>,
+    source: Readonly<LinkedList<Node>>,
+  ) => T
+  rebuild: (
+    previous: Readonly<T> | undefined,
+    source: Readonly<LinkedList<Node>>,
+  ) => T
+}
+
+export type LinkedListLikeAtom<T extends LinkedList = LinkedList> = Atom<T> &
+  LinkedListSource<T extends LinkedList<infer Node> ? Node : never, T>
 
 export interface LinkedListAtom<
   Params extends any[] = any[],
@@ -71,7 +130,9 @@ export interface LinkedListAtom<
    * Applies all mutations of `cb` as one update. Inside `cb`, `find` walks the
    * in-progress state. Mutators relink nodes in place, so `list()`, `array` and
    * `map` mix the old and the new state until `cb` returns, and `reatomMap` and
-   * `reatomView` throw when they have to recompute.
+   * `reatomView` throw when they have to recompute. A throw restores this
+   * list's links and committed state. Nested batches join this transaction.
+   * External side effects and other lists are not rolled back.
    */
   batch: Action<[cb: Fn]>
 
@@ -96,35 +157,16 @@ export interface LinkedListAtom<
     initSnapshot: Array<Params>,
   ) => LinkedList<LLNode<Node>>
 
-  reatomMap: <T extends Rec>(
-    cb: (node: LLNode<Node>) => T,
-    options?:
-      | string
-      | {
-          name?: string
-          onCreate?: (node: LLNode<T>) => void
-          onRemove?: (node: LLNode<T>, origin: LLNode<Node>) => void
-          onSwap?: (payload: { a: LLNode<T>; b: LLNode<T> }) => void
-          onMove?: (node: LLNode<T>) => void
-          onClear?: (
-            lastState: LinkedListDerivedState<LLNode<Node>, LLNode<T>>,
-          ) => void
-        },
-  ) => LinkedListDerivedAtom<LLNode<Node>, LLNode<T>>
-
-  // reatomFilter: (
-  //   cb: (node: Node) => any,
-  //   name?: string,
-  // ) => Atom<ListType<Node>>
-
-  // reatomReduce: <T>(
-  //   options: {
-  //     init: T
-  //     add: (acc: T, node: LLNode<Node>) => T
-  //     del: (acc: T, node: LLNode<Node>) => T
-  //   },
-  //   name?: string,
-  // ) => Atom<T>
+  /** Insert absent nodes after an anchor, or at the head for null. */
+  insertMany: Action<
+    [nodes: readonly Node[], after: null | LLNode<Node>],
+    LLNode<Node>[]
+  >
+  /** Move a contiguous run without recreating its nodes. */
+  moveMany: Action<
+    [nodes: readonly LLNode<Node>[], after: null | LLNode<Node>],
+    void
+  >
 }
 
 // TODO rename to `DerivedLinkedList`
@@ -135,11 +177,80 @@ export interface LinkedListDerivedState<
   map: WeakMap<Node, T>
 }
 
-export interface LinkedListDerivedAtom<Node extends LLNode, T extends LLNode>
-  extends Computed<LinkedListDerivedState<Node, T>>, LinkedListSymbols {
-  array: Computed<Array<T extends LinkedList<infer LLNode> ? LLNode : never>>
+export interface LinkedListDerivedAtom<
+  Node extends LLNode,
+  T extends LLNode,
+> extends LinkedListSource<T, LinkedListDerivedState<Node, T>> {}
 
-  __reatomLinkedList: true
+// Journals only touched links: a failed batch restores pointers as well as its atom.
+// Nested batches of the same list join the outer batch; they are not savepoints.
+type LinkJournal = {
+  root: object
+  symbols: Set<symbol>
+  fields: Map<
+    LLNode,
+    Map<symbol, { descriptor?: PropertyDescriptor; owner?: object }>
+  >
+}
+const linkJournals = new Set<LinkJournal>()
+const nodeOwners = new WeakMap<object, Map<symbol, object>>()
+const checkOwner = (node: object, key: symbol) => {
+  const owner = nodeOwners.get(node)?.get(key)
+  if (owner && owner !== top().root)
+    throw new ReatomError(
+      'A linked list node cannot be shared across contexts. Create a fresh node per context.',
+    )
+}
+const writeLink = (node: LLNode, key: symbol, value: LLNode | null) => {
+  checkOwner(node, key)
+  for (const journal of linkJournals) {
+    if (journal.root !== top().root || !journal.symbols.has(key)) continue
+    let fields = journal.fields.get(node)
+    if (!fields) journal.fields.set(node, (fields = new Map()))
+    if (!fields.has(key))
+      fields.set(key, {
+        descriptor: Object.getOwnPropertyDescriptor(node, key),
+        owner: nodeOwners.get(node)?.get(key),
+      })
+  }
+  if (!Reflect.set(node, key, value))
+    throw new ReatomError('Linked list nodes must allow writing their links.')
+  let owners = nodeOwners.get(node)
+  if (!owners) nodeOwners.set(node, (owners = new Map()))
+  owners.set(key, top().root)
+}
+const journalLinks = <T>(symbols: LinkedListSymbols[], cb: () => T): T => {
+  const journal: LinkJournal = {
+    root: top().root,
+    symbols: new Set(
+      symbols.flatMap(({ LL_PREV, LL_NEXT }) => [LL_PREV, LL_NEXT]),
+    ),
+    fields: new Map(),
+  }
+  linkJournals.add(journal)
+  try {
+    return cb()
+  } catch (error) {
+    for (const [node, fields] of journal.fields)
+      for (const [key, { descriptor, owner }] of fields) {
+        if (descriptor) Object.defineProperty(node, key, descriptor)
+        else Reflect.deleteProperty(node, key)
+        if (owner) nodeOwners.get(node)!.set(key, owner)
+        else nodeOwners.get(node)?.delete(key)
+      }
+    throw error
+  } finally {
+    linkJournals.delete(journal)
+  }
+}
+
+// Versions can restart on replacement. Epochs distinguish that reset from an
+// unchanged source and let downstream caches release the previous allocation era.
+const listEpochs = new WeakMap<LinkedList, object>()
+const epochOf = (state: LinkedList): object => {
+  let epoch = listEpochs.get(state)
+  if (!epoch) listEpochs.set(state, (epoch = {}))
+  return epoch
 }
 
 const addLL = <Node extends LLNode>(
@@ -157,20 +268,20 @@ const addLL = <Node extends LLNode>(
 
   if (after) {
     const nextNode = after[LL_NEXT]
-    node[LL_PREV] = after
-    node[LL_NEXT] = nextNode
-    after[LL_NEXT] = node
+    writeLink(node, LL_PREV, after)
+    writeLink(node, LL_NEXT, nextNode)
+    writeLink(after, LL_NEXT, node)
     if (nextNode) {
-      nextNode[LL_PREV] = node
+      writeLink(nextNode, LL_PREV, node)
     }
     if (state.tail === after) {
       state.tail = node
     }
   } else {
-    node[LL_PREV] = null
-    node[LL_NEXT] = state.head
+    writeLink(node, LL_PREV, null)
+    writeLink(node, LL_NEXT, state.head)
     if (state.head) {
-      state.head[LL_PREV] = node
+      writeLink(state.head, LL_PREV, node)
     }
     if (!state.tail) {
       state.tail = node
@@ -192,17 +303,17 @@ const removeLL = <Node extends LLNode>(
   if (state.head === node) {
     state.head = node[LL_NEXT]
   } else if (node[LL_PREV] !== null) {
-    node[LL_PREV][LL_NEXT] = node[LL_NEXT]
+    writeLink(node[LL_PREV], LL_NEXT, node[LL_NEXT])
   }
 
   if (state.tail === node) {
     state.tail = node[LL_PREV]
   } else if (node[LL_NEXT] !== null) {
-    node[LL_NEXT][LL_PREV] = node[LL_PREV]
+    writeLink(node[LL_NEXT], LL_PREV, node[LL_PREV])
   }
 
-  node[LL_PREV] = null
-  node[LL_NEXT] = null
+  writeLink(node, LL_PREV, null)
+  writeLink(node, LL_NEXT, null)
 
   state.size--
 }
@@ -228,31 +339,31 @@ const swapLL = <Node extends LLNode>(
   const nextB = b[LL_NEXT]
 
   if (nextA === b) {
-    a[LL_NEXT] = nextB
-    b[LL_PREV] = prevA
-    b[LL_NEXT] = a
-    a[LL_PREV] = b
+    writeLink(a, LL_NEXT, nextB)
+    writeLink(b, LL_PREV, prevA)
+    writeLink(b, LL_NEXT, a)
+    writeLink(a, LL_PREV, b)
 
-    if (nextB) nextB[LL_PREV] = a
-    if (prevA) prevA[LL_NEXT] = b
+    if (nextB) writeLink(nextB, LL_PREV, a)
+    if (prevA) writeLink(prevA, LL_NEXT, b)
   } else if (nextB === a) {
-    b[LL_NEXT] = nextA
-    a[LL_PREV] = prevB
-    a[LL_NEXT] = b
-    b[LL_PREV] = a
+    writeLink(b, LL_NEXT, nextA)
+    writeLink(a, LL_PREV, prevB)
+    writeLink(a, LL_NEXT, b)
+    writeLink(b, LL_PREV, a)
 
-    if (nextA) nextA[LL_PREV] = b
-    if (prevB) prevB[LL_NEXT] = a
+    if (nextA) writeLink(nextA, LL_PREV, b)
+    if (prevB) writeLink(prevB, LL_NEXT, a)
   } else {
-    if (prevA) prevA[LL_NEXT] = b
-    if (nextA) nextA[LL_PREV] = b
-    if (prevB) prevB[LL_NEXT] = a
-    if (nextB) nextB[LL_PREV] = a
+    if (prevA) writeLink(prevA, LL_NEXT, b)
+    if (nextA) writeLink(nextA, LL_PREV, b)
+    if (prevB) writeLink(prevB, LL_NEXT, a)
+    if (nextB) writeLink(nextB, LL_PREV, a)
 
-    a[LL_PREV] = prevB
-    a[LL_NEXT] = nextB
-    b[LL_PREV] = prevA
-    b[LL_NEXT] = nextA
+    writeLink(a, LL_PREV, prevB)
+    writeLink(a, LL_NEXT, nextB)
+    writeLink(b, LL_PREV, prevA)
+    writeLink(b, LL_NEXT, nextA)
   }
 
   if (state.head === a) {
@@ -286,8 +397,8 @@ const clearLL = <Node extends LLNode>(state: LinkedList<Node>) => {
   state.size = 0
   while (node) {
     const next = node[LL_NEXT]
-    node[LL_PREV] = null
-    node[LL_NEXT] = null
+    writeLink(node, LL_PREV, null)
+    writeLink(node, LL_NEXT, null)
     node = next
   }
 }
@@ -464,19 +575,21 @@ export function reatomLinkedList<
         }
       : options
 
-  const _name = name
-
   const isInList = (node: Node): boolean => {
     if (!node || !(LL_PREV in node) || !(LL_NEXT in node)) return false
+    if (nodeOwners.get(node)?.get(LL_NEXT) !== top().root) return false
 
     return (
       node[LL_PREV] !== null ||
       node[LL_NEXT] !== null ||
-      (STATE!.head === node && STATE!.tail === node)
+      (STATE?.head === node && STATE?.tail === node)
     )
   }
 
   const throwModel = (node: Node) => {
+    if (!isObject(node) && typeof node !== 'function')
+      throw new ReatomError('Linked list nodes must be objects or functions.')
+    checkOwner(node, LL_NEXT)
     if (isInList(node))
       throw new ReatomError('The data is already in a linked list.')
   }
@@ -491,17 +604,18 @@ export function reatomLinkedList<
 
   // for batching
   let STATE: null | LinkedList<LLNode<Node>> = null
+  let batchRoot: object | null = null
+  let batchFailure: { error: unknown } | null = null
+  const checkBatchFailure = () => {
+    if (batchFailure) throw batchFailure.error
+  }
 
   const linkedList = atom(() => {
-    try {
-      if ('initState' in restOptions)
-        return createLinkedListFromState(restOptions.initState ?? [])
-      else if ('initSnapshot' in restOptions)
-        return createLinkedListFromSnapshot(restOptions.initSnapshot ?? [])
-      else return createLinkedListFromState([])
-    } finally {
-      STATE = null
-    }
+    if ('initState' in restOptions)
+      return createLinkedListFromState(restOptions.initState ?? [])
+    else if ('initSnapshot' in restOptions)
+      return createLinkedListFromSnapshot(restOptions.initSnapshot ?? [])
+    else return createLinkedListFromState([])
   }, name)
 
   const createLinkedListFromState = (
@@ -517,9 +631,19 @@ export function reatomLinkedList<
       tail: null,
     } as LinkedList<LLNode<Node>>
 
-    for (const node of initState) {
-      throwModel(node)
-      addLL(state, node, state.tail)
+    const previousState = STATE
+    STATE = state
+    try {
+      if (new Set(initState).size !== initState.length)
+        throw new ReatomError('Duplicate nodes in initial linked list.')
+      for (const node of initState) throwModel(node)
+      journalLinks([state], () => {
+        for (const node of initState) {
+          addLL(state, node, state.tail)
+        }
+      })
+    } finally {
+      STATE = previousState
     }
 
     return state
@@ -528,51 +652,62 @@ export function reatomLinkedList<
   const createLinkedListFromSnapshot = (
     initSnapshot: Params[],
   ): LinkedList<LLNode<Node>> => {
-    const initState = initSnapshot.map((params) => userCreate(...params))
-    const state = {
-      LL_PREV,
-      LL_NEXT,
-      size: 0,
-      version: 1,
-      changes: [],
-      head: null,
-      tail: null,
-    } as LinkedList<LLNode<Node>>
-
-    for (const node of initState) {
-      throwModel(node)
-      addLL(state, node, state.tail)
-    }
-
-    return state
+    return createLinkedListFromState(
+      initSnapshot.map((params) => userCreate(...params)),
+    )
   }
 
   const batchFn = <T>(cb: Fn): T => {
-    if (STATE) return cb()
+    if (STATE) {
+      if (batchRoot && batchRoot !== top().root)
+        throw new ReatomError('A linked list batch cannot span contexts.')
+      try {
+        return cb()
+      } catch (error) {
+        batchFailure ??= { error }
+        throw error
+      }
+    }
 
     let result: T
+    const committed = peek(linkedList)
+    try {
+      journalLinks([committed], () =>
+        linkedList.set(({ head, tail, size, version, LL_PREV, LL_NEXT }) => {
+          STATE = {
+            LL_PREV,
+            LL_NEXT,
+            size,
+            version: version + 1,
+            changes: [],
+            head,
+            tail,
+          }
+          listEpochs.set(STATE, epochOf(committed))
+          batchRoot = top().root
+          batchFailure = null
+          startLinkedListBatching(linkedList)
 
-    linkedList.set(({ head, tail, size, version, LL_PREV, LL_NEXT }) => {
-      STATE = {
-        LL_PREV,
-        LL_NEXT,
-        size,
-        version: version + 1,
-        changes: [],
-        head,
-        tail,
-      }
-      startLinkedListBatching(linkedList)
+          try {
+            result = cb()
+            // Joined operations are not savepoints. Even if user code caught
+            // their error, a partially completed operation cannot be committed
+            // without its change payload.
+            checkBatchFailure()
 
-      try {
-        result = cb()
-
-        return STATE
-      } finally {
-        STATE = null
-        endLinkedListBatching(linkedList)
-      }
-    })
+            return STATE
+          } finally {
+            STATE = null
+            batchRoot = null
+            batchFailure = null
+            endLinkedListBatching(linkedList)
+          }
+        }),
+      )
+    } catch (error) {
+      linkedList.set(committed)
+      throw error
+    }
 
     return result!
   }
@@ -664,6 +799,8 @@ export function reatomLinkedList<
     return batchFn(() => {
       throwNotModel(a)
       throwNotModel(b)
+      if (!isInList(a) || !isInList(b))
+        throw new ReatomError('Swap requires present nodes.')
 
       if (a === b) return
 
@@ -677,6 +814,9 @@ export function reatomLinkedList<
     (node: LLNode<Node>, after: null | LLNode<Node>): void => {
       return batchFn(() => {
         throwNotModel(node)
+        if (!isInList(node) || (after && !isInList(after)))
+          throw new ReatomError('Move requires present nodes and anchor.')
+        if (node === after || node[LL_PREV] === after) return
 
         moveLL(STATE!, node, after)
 
@@ -689,6 +829,7 @@ export function reatomLinkedList<
   const clear = action((): void => {
     return batchFn(() => {
       clearLL(STATE!)
+      listEpochs.set(STATE!, {})
 
       STATE!.changes.push({ kind: 'clear' })
     })
@@ -697,7 +838,12 @@ export function reatomLinkedList<
   const find = (cb: (node: LLNode<Node>) => boolean): null | LLNode<Node> => {
     // read the atom anyway to keep the dependency of a calling computed
     const committed = linkedList()
-    for (let { head } = STATE ?? committed; head; head = head[LL_NEXT]) {
+    for (
+      let { head } =
+        batchRoot === top().root ? (STATE ?? committed) : committed;
+      head;
+      head = head[LL_NEXT]
+    ) {
       if (cb(head)) return head
     }
     return null
@@ -721,232 +867,58 @@ export function reatomLinkedList<
       ) as LinkedListAtom<Params, Node, Key>['map'])
     : (undefined as never)
 
-  const reatomMap = <T extends Rec>(
-    cb: (node: LLNode<Node>) => T,
-    options:
-      | string
-      | {
-          name?: string
-          onCreate?: (node: LLNode<T>) => void
-          onRemove?: (node: LLNode<T>, origin: LLNode<Node>) => void
-          onSwap?: (payload: { a: LLNode<T>; b: LLNode<T> }) => void
-          onMove?: (node: LLNode<T>) => void
-          onClear?: (
-            lastState: LinkedListDerivedState<LLNode<Node>, LLNode<T>>,
-          ) => void
-        } = {},
-  ): LinkedListDerivedAtom<LLNode<Node>, LLNode<T>> => {
-    const mapLL_PREV: LL_PREV = Symbol('Reatom linked list prev') as any
-    const mapLL_NEXT: LL_NEXT = Symbol('Reatom linked list next') as any
-
-    const { name = named(`${_name}.reatomMap`), ...hooks } =
-      typeof options === 'string' ? { name: options } : options
-
-    type State = LinkedListDerivedState<LLNode<Node>, LLNode<T>>
-
-    const mapList = computed((mapList?: State): State => {
-      if (STATE) {
-        throw new ReatomError(
-          `Can't compute the map of the linked list inside the batching.`,
-        )
-      }
-
-      const ll = linkedList()
-
-      if (
-        !mapList ||
-        /* some update was missed */ ll.version - 1 > mapList.version
-      ) {
-        if (mapList) hooks.onClear?.(mapList)
-
-        mapList = {
-          LL_PREV: mapLL_PREV,
-          LL_NEXT: mapLL_NEXT,
-          size: ll.size,
-          version: ll.version,
-          changes: [],
-          head: null,
-          tail: null,
-          map: new WeakMap(),
+  const insertMany = action(
+    (input: readonly Node[], after: null | LLNode<Node>) =>
+      batchFn(() => {
+        const nodes = [...input] as LLNode<Node>[]
+        if (after && !isInList(after))
+          throw new ReatomError('Insert anchor is not in this list.')
+        if (new Set(nodes).size !== nodes.length)
+          throw new ReatomError('Duplicate nodes in insert run.')
+        for (const node of nodes) {
+          if (!isObject(node) && typeof node !== 'function')
+            throw new ReatomError('Linked list nodes must be objects.')
+          throwModel(node)
         }
-
-        for (let head = ll.head; head; head = head[LL_NEXT]) {
-          const node = peek(cb, head) as LLNode<T>
-          addLL(mapList, node, mapList.tail)
-          mapList.map.set(head, node)
-          hooks.onCreate?.(node)
+        let anchor = after
+        for (const node of nodes) {
+          addLL(STATE!, node, anchor)
+          anchor = node
         }
-        // cover extra size changes from `addLL`
-        mapList.size = ll.size
-      } else {
-        mapList = {
-          LL_PREV: mapLL_PREV,
-          LL_NEXT: mapLL_NEXT,
-          head: mapList.head,
-          tail: mapList.tail,
-          size: mapList.size,
-          version: ll.version,
-          changes: [],
-          map: mapList.map,
+        if (nodes.length)
+          STATE!.changes.push({ kind: 'insert', nodes: [...nodes], after })
+        return nodes
+      }),
+    `${name}.insertMany`,
+  )
+
+  const moveMany = action(
+    (input: readonly LLNode<Node>[], after: null | LLNode<Node>) =>
+      batchFn(() => {
+        const nodes = [...input]
+        if (after && !isInList(after))
+          throw new ReatomError('Move anchor is not in this list.')
+        if (!nodes.length) return
+        if (new Set(nodes).size !== nodes.length || nodes.includes(after!))
+          throw new ReatomError('Invalid move run or anchor.')
+        for (let i = 0; i < nodes.length; i++) {
+          if (
+            !isInList(nodes[i]!) ||
+            (i && nodes[i - 1]![LL_NEXT] !== nodes[i])
+          )
+            throw new ReatomError('Move requires a contiguous ordered run.')
         }
-
-        for (const change of ll.changes) {
-          switch (change.kind) {
-            case 'create': {
-              const node = peek(cb, change.node) as LLNode<T>
-              addLL(mapList, node, mapList.tail)
-              mapList.map.set(change.node, node)
-              mapList.changes.push({ kind: 'create', node })
-              hooks.onCreate?.(node)
-              break
-            }
-            case 'createMany': {
-              const nodes: Array<LLNode<T>> = []
-              for (const originNode of change.nodes) {
-                const node = peek(cb, originNode) as LLNode<T>
-                addLL(mapList, node, mapList.tail)
-                mapList.map.set(originNode, node)
-                nodes.push(node)
-                hooks.onCreate?.(node)
-              }
-              mapList.changes.push({ kind: 'createMany', nodes })
-              break
-            }
-            case 'remove': {
-              const node = mapList.map.get(change.node)!
-              removeLL(mapList, node)
-              mapList.map.delete(change.node)
-              mapList.changes.push({ kind: 'remove', node })
-              hooks.onRemove?.(node, change.node)
-              break
-            }
-            case 'removeMany': {
-              const nodes: Array<LLNode<T>> = []
-              for (const originNode of change.nodes) {
-                const node = mapList.map.get(originNode)!
-                removeLL(mapList, node)
-                mapList.map.delete(originNode)
-                nodes.push(node)
-                hooks.onRemove?.(node, originNode)
-              }
-              mapList.changes.push({ kind: 'removeMany', nodes })
-              break
-            }
-            case 'swap': {
-              const a = mapList.map.get(change.a)!
-              const b = mapList.map.get(change.b)!
-              swapLL(mapList, a, b)
-              mapList.changes.push({ kind: 'swap', a, b })
-              hooks.onSwap?.({ a, b })
-              break
-            }
-            case 'move': {
-              const node = mapList.map.get(change.node)!
-              const after = change.after ? mapList.map.get(change.after)! : null
-              moveLL(mapList, node, after)
-              mapList.changes.push({ kind: 'move', node, after })
-              hooks.onMove?.(node)
-              break
-            }
-            case 'clear': {
-              hooks.onClear?.(mapList)
-              clearLL(mapList)
-              mapList.map = new WeakMap()
-              mapList.changes.push({ kind: 'clear' })
-              break
-            }
-            default: {
-              const kind: never = change
-              const error = new Error(`Unhandled linked list change "${kind}"`)
-              throw error
-            }
-          }
+        if (nodes[0]![LL_PREV] === after) return
+        for (const node of nodes) removeLL(STATE!, node)
+        let anchor = after
+        for (const node of nodes) {
+          addLL(STATE!, node, anchor)
+          anchor = node
         }
-      }
-
-      if (mapList.size !== ll.size)
-        throw new ReatomError(
-          "Inconsistent linked list, is's a bug, please report an issue",
-        )
-
-      return mapList
-    }, name)
-
-    // @ts-ignore
-    const array: LinkedListDerivedAtom<LLNode<Node>, LLNode<T>>['array'] =
-      computed(
-        (state: Array<LLNode<T>> = []) => toArray(mapList(), state),
-        `${name}.array`,
-      )
-
-    return Object.assign(mapList, {
-      LL_PREV: mapLL_PREV,
-      LL_NEXT: mapLL_NEXT,
-      array,
-      __reatomLinkedList: true as const,
-    }) as LinkedListDerivedAtom<LLNode<Node>, LLNode<T>>
-  }
-
-  // TODO there is a bug with `del` logic
-  // const reatomReduce = <T>(
-  //   {
-  //     init,
-  //     add,
-  //     del,
-  //   }: {
-  //     init: T
-  //     add: (ctx: CtxSpy, acc: T, node: LLNode<Node>) => T
-  //     del: (acc: T, node: LLNode<Node>) => T
-  //   },
-  //   name = named(`${_name}.reatomReduce`),
-  // ): Atom<T> => {
-  //   const acc = atom(init, `${name}._acc`)
-  //   const controllers = reatomMap(
-  //     (node) =>
-  //       atom(
-  //         (ctx) => {
-  //           acc((state) =>
-  //             add(
-  //               ctx,
-  //               /* is the first calc */ ctx.cause.listeners.size
-  //                 ? del(state, node)
-  //                 : state,
-  //               node,
-  //             ),
-  //           )
-  //         },
-  //         named(`${name}._controllers`),
-  //       ).extend(
-  //         (target) => ({
-  //           unsubscribe: ctx.subscribe(target, noop),
-  //         }),
-  //       ),
-  //     {
-  //       name: `${name}._controllers`,
-  //       onRemove(node, origin) {
-  //         acc((state) => del(state, origin))
-  //         node.unsubscribe()
-  //       },
-  //       onClear(mapList) {
-  //         for (let head = mapList.head; head; head = head[LL_NEXT]) {
-  //           head.unsubscribe()
-  //         }
-  //         acc(() => init)
-  //       },
-  //     },
-  //   )
-
-  //   onDisconnect(controllers, (ctx) => {
-  //     for (let head = ctx.get(controllers).head; head; head = head[LL_NEXT]) {
-  //       head.unsubscribe()
-  //     }
-  //   })
-
-  //   return atom((ctx) => {
-  //     ctx.spy(controllers)
-  //     return ctx.spy(acc)
-  //   }, name)
-  // }
+        STATE!.changes.push({ kind: 'moveMany', nodes, after })
+      }),
+    `${name}.moveMany`,
+  )
 
   return linkedList.extend(
     () => ({
@@ -968,9 +940,12 @@ export function reatomLinkedList<
       initiateFromState: createLinkedListFromState,
       initiateFromSnapshot: createLinkedListFromSnapshot,
 
-      reatomMap,
-      // reatomFilter,
-      // reatomReduce,
+      ...linkedListDerivations(
+        linkedList as LinkedListSource<LLNode<Node>>,
+        name,
+      ),
+      insertMany,
+      moveMany,
 
       __reatomLinkedList: true as const,
     }),
@@ -1003,5 +978,630 @@ export function reatomLinkedList<
  *   const canReorder = (value: unknown) =>
  *     isLinkedListAtom(value) && value().size > 1
  */
-export const isLinkedListAtom = (thing: any): thing is LinkedListLikeAtom =>
+export const isLinkedListAtom = (thing: any): thing is LinkedListSource =>
   thing?.__reatomLinkedList === true
+
+const guardList = (source: object) => {
+  if (isLinkedListBatching(source))
+    throw new ReatomError(
+      "Can't compute a linked list derivation inside batching.",
+    )
+}
+
+const emptyList = <Node extends LLNode>(
+  symbols: LinkedListSymbols,
+): LinkedList<Node> => ({
+  ...symbols,
+  head: null,
+  tail: null,
+  size: 0,
+  version: 0,
+  changes: [],
+})
+const containsLL = <Node extends LLNode>(
+  state: LinkedList<Node>,
+  node: Node,
+): boolean =>
+  !!node &&
+  nodeOwners.get(node)?.get(state.LL_NEXT) === top().root &&
+  (state.head === node ||
+    node[state.LL_PREV] != null ||
+    node[state.LL_NEXT] != null)
+
+/** Reconcile a reset/predicate edit without removing retained members. */
+const reconcileLL = <Node extends LLNode>(
+  state: LinkedList<Node>,
+  desired: Node[],
+) => {
+  const wanted = new Set(desired)
+  if (wanted.size !== desired.length)
+    throw new ReatomError('A derived list must contain distinct nodes.')
+  const removed: Node[] = []
+  for (let node = state.head; node;) {
+    const next = node[state.LL_NEXT] as Node | null
+    if (!wanted.has(node)) {
+      removed.push(node)
+      removeLL(state, node)
+    }
+    node = next
+  }
+  if (removed.length) state.changes.push({ kind: 'removeMany', nodes: removed })
+  let after: Node | null = null
+  for (let i = 0; i < desired.length;) {
+    const node = desired[i]!
+    const expected: Node | null = (
+      after ? after[state.LL_NEXT] : state.head
+    ) as Node | null
+    if (expected === node) {
+      after = node
+      i++
+      continue
+    }
+    if (containsLL(state, node)) {
+      moveLL(state, node, after)
+      state.changes.push({ kind: 'move', node, after })
+      after = node
+      i++
+      continue
+    }
+    const nodes: Node[] = []
+    const anchor = after
+    while (i < desired.length && !containsLL(state, desired[i]!)) {
+      const next = desired[i++]!
+      addLL(state, next, after)
+      nodes.push(next)
+      after = next
+    }
+    state.changes.push({ kind: 'insert', nodes, after: anchor })
+  }
+}
+
+const attachList = <Node extends LLNode, Value extends LinkedList<Node>>(
+  target: Computed<Value>,
+  symbols: LinkedListSymbols,
+  source: object,
+): LinkedListSource<Node, Value> => {
+  registerLinkedListSource(target, source)
+  return Object.assign(
+    target,
+    symbols,
+    {
+      array: computed(
+        (previous?: Node[]) => toArray(target(), previous) as Node[],
+        `${target.name}.array`,
+      ),
+      __reatomLinkedList: true as const,
+    },
+    linkedListDerivations(target as LinkedListSource<Node, Value>, target.name),
+  )
+}
+
+const linkedListDerivations = <Node extends LLNode>(
+  source: LinkedListSource<Node>,
+  name: string,
+) => {
+  // Labels are private per-context cache data, never persistent event identities.
+  const order = computed(
+    (previous?: {
+      version: number
+      epoch: object
+      labels: WeakMap<Node, number>
+      tail: Node | null
+    }) => {
+      guardList(source)
+      const state = source()
+      const epoch = epochOf(state)
+      if (previous?.version === state.version && previous.epoch === epoch)
+        return previous
+      if (previous?.epoch !== epoch) previous = undefined
+      const labels = previous?.labels ?? new WeakMap<Node, number>()
+      let tail = previous?.tail ?? null
+      let append = !!previous && state.version === previous.version + 1
+      const additions: Node[] = []
+      for (const change of state.changes) {
+        if (change.kind === 'create') {
+          additions.push(change.node)
+          tail = change.node
+        } else if (
+          change.kind === 'createMany' ||
+          (change.kind === 'insert' && change.after === tail)
+        ) {
+          for (const node of change.nodes) additions.push(node)
+          tail = change.nodes.at(-1) ?? tail
+        } else {
+          append = false
+          break
+        }
+      }
+      if (append) {
+        let label = previous!.tail ? labels.get(previous!.tail)! : 0
+        for (const node of additions) labels.set(node, (label += 1024))
+        if (!Number.isFinite(label) || label > Number.MAX_SAFE_INTEGER)
+          append = false
+      }
+      // A single positional run has known final boundaries. Allocate within
+      // that gap without scanning unaffected nodes; exhausted gaps relabel.
+      if (
+        !append &&
+        previous &&
+        state.version === previous.version + 1 &&
+        state.changes.length === 1
+      ) {
+        const change = state.changes[0]!
+        const nodes =
+          change.kind === 'insert' || change.kind === 'moveMany'
+            ? change.nodes
+            : change.kind === 'move'
+              ? [change.node]
+              : []
+        if (nodes.length) {
+          const leftNode = nodes[0]![state.LL_PREV] as Node | null
+          const rightNode = nodes.at(-1)![state.LL_NEXT] as Node | null
+          const left = leftNode ? labels.get(leftNode)! : 0
+          const right = rightNode
+            ? labels.get(rightNode)!
+            : left + 1024 * (nodes.length + 1)
+          const gap = (right - left) / (nodes.length + 1)
+          if (gap >= 1 && right <= Number.MAX_SAFE_INTEGER) {
+            for (let i = 0; i < nodes.length; i++)
+              labels.set(nodes[i]!, left + gap * (i + 1))
+            append = true
+          }
+        }
+      }
+      if (!append) {
+        // Preserve labels where a newly inserted run fits in the surrounding gap.
+        let left = 0
+        let pending: Node[] = []
+        let valid = !!previous
+        for (
+          let node = state.head;
+          node;
+          node = node[state.LL_NEXT] as Node | null
+        ) {
+          const label = labels.get(node)
+          if (label === undefined) {
+            pending.push(node)
+            continue
+          }
+          if (
+            label <= left ||
+            (pending.length && (label - left) / (pending.length + 1) < 1)
+          ) {
+            valid = false
+            break
+          }
+          for (let i = 0; i < pending.length; i++)
+            labels.set(
+              pending[i]!,
+              left + ((label - left) * (i + 1)) / (pending.length + 1),
+            )
+          pending = []
+          left = label
+        }
+        if (valid) for (const node of pending) labels.set(node, (left += 1024))
+        else {
+          let label = 0
+          for (
+            let node = state.head;
+            node;
+            node = node[state.LL_NEXT] as Node | null
+          )
+            labels.set(node, (label += 1024))
+        }
+      }
+      return { version: state.version, epoch, labels, tail: state.tail }
+    },
+    `${name}._order`,
+  )
+
+  return {
+    has: (node: Node) => {
+      guardList(source)
+      return containsLL(source(), node)
+    },
+    compare: (a: Node, b: Node): -1 | 0 | 1 => {
+      guardList(source)
+      const state = source()
+      if (!containsLL(state, a) || !containsLL(state, b))
+        throw new ReatomError(
+          `Comparison in "${name}" requires two present linked list nodes.`,
+        )
+      const labels = order().labels
+      return a === b ? 0 : labels.get(a)! < labels.get(b)! ? -1 : 1
+    },
+    reatomMap: <T extends Rec>(
+      cb: (node: Node) => T,
+      options: string | LinkedListMapOptions<Node, LLNode<T>> = {},
+    ): LinkedListDerivedAtom<Node, LLNode<T>> => {
+      const { name: mapName = named(`${name}.reatomMap`), ...hooks } =
+        typeof options === 'string' ? { name: options } : options
+      const symbols = {
+        LL_PREV: Symbol('map prev') as LL_PREV,
+        LL_NEXT: Symbol('map next') as LL_NEXT,
+      }
+      type Value = LinkedListDerivedState<Node, LLNode<T>> & {
+        sourceVersion: number
+        sourceEpoch: object
+        origins: WeakMap<LLNode<T>, Node>
+      }
+      const target = computed((previous?: Value): Value => {
+        guardList(source)
+        const input = source()
+        const sourceEpoch = epochOf(input)
+        if (
+          previous?.sourceVersion === input.version &&
+          previous.sourceEpoch === sourceEpoch
+        )
+          return previous
+        return journalLinks([symbols], () => {
+          const state: Value = previous
+            ? {
+                ...previous,
+                changes: [],
+                sourceVersion: input.version,
+                sourceEpoch,
+              }
+            : {
+                ...emptyList<LLNode<T>>(symbols),
+                map: new WeakMap(),
+                origins: new WeakMap(),
+                sourceVersion: input.version,
+                sourceEpoch,
+              }
+          const reset = !!previous && previous.sourceEpoch !== sourceEpoch
+          if (reset) {
+            hooks.onClear?.(previous)
+            clearLL(state)
+            state.map = new WeakMap()
+            state.origins = new WeakMap()
+            state.changes.push({ kind: 'clear' })
+          }
+          listEpochs.set(state, reset || !previous ? {} : epochOf(previous))
+          const get = (origin: Node): LLNode<T> => {
+            let node = state.map.get(origin)
+            if (!node) {
+              node = peek(cb, origin) as LLNode<T>
+              if (!isObject(node) && typeof node !== 'function')
+                throw new ReatomError(
+                  'A linked list mapper must return an object or function.',
+                )
+              checkOwner(node, symbols.LL_NEXT)
+              if (state.origins.has(node) && state.origins.get(node) !== origin)
+                throw new ReatomError(
+                  'A linked list mapper must return distinct nodes.',
+                )
+              state.map.set(origin, node)
+              state.origins.set(node, origin)
+            }
+            return node
+          }
+          const incremental =
+            previous && !reset && input.version === previous.sourceVersion + 1
+          if (!incremental) {
+            const before = toArray(state)
+            const desired: LLNode<T>[] = []
+            for (
+              let node = input.head;
+              node;
+              node = node[input.LL_NEXT] as Node | null
+            )
+              desired.push(get(node))
+            const old = new Set(before),
+              wanted = new Set(desired)
+            reconcileLL(state, desired)
+            for (const change of state.changes)
+              if (change.kind === 'move') hooks.onMove?.(change.node)
+            for (const node of before)
+              if (!wanted.has(node))
+                hooks.onRemove?.(node, state.origins.get(node)!)
+            for (const node of desired)
+              if (!old.has(node)) hooks.onCreate?.(node)
+          } else
+            for (const change of input.changes) {
+              switch (change.kind) {
+                case 'create':
+                case 'createMany':
+                case 'insert': {
+                  const origins =
+                    change.kind === 'create' ? [change.node] : change.nodes
+                  const nodes = origins.map(get)
+                  const after =
+                    change.kind === 'insert'
+                      ? change.after
+                        ? get(change.after)
+                        : null
+                      : state.tail
+                  let anchor = after
+                  for (const node of nodes) {
+                    addLL(state, node, anchor)
+                    anchor = node
+                    hooks.onCreate?.(node)
+                  }
+                  if (change.kind === 'create')
+                    state.changes.push({ kind: 'create', node: nodes[0]! })
+                  else if (change.kind === 'createMany')
+                    state.changes.push({ kind: 'createMany', nodes })
+                  else state.changes.push({ kind: 'insert', nodes, after })
+                  break
+                }
+                case 'remove':
+                case 'removeMany': {
+                  const origins =
+                    change.kind === 'remove' ? [change.node] : change.nodes
+                  const nodes = origins.map(get)
+                  for (let i = 0; i < nodes.length; i++) {
+                    removeLL(state, nodes[i]!)
+                    hooks.onRemove?.(nodes[i]!, origins[i]!)
+                  }
+                  state.changes.push(
+                    change.kind === 'remove'
+                      ? { kind: 'remove', node: nodes[0]! }
+                      : { kind: 'removeMany', nodes },
+                  )
+                  break
+                }
+                case 'move':
+                case 'moveMany': {
+                  const nodes = (
+                    change.kind === 'move' ? [change.node] : change.nodes
+                  ).map(get)
+                  const after = change.after ? get(change.after) : null
+                  for (const node of nodes) removeLL(state, node)
+                  let anchor = after
+                  for (const node of nodes) {
+                    addLL(state, node, anchor)
+                    anchor = node
+                    hooks.onMove?.(node)
+                  }
+                  state.changes.push(
+                    change.kind === 'move'
+                      ? { kind: 'move', node: nodes[0]!, after }
+                      : { kind: 'moveMany', nodes, after },
+                  )
+                  break
+                }
+                case 'swap': {
+                  const a = get(change.a),
+                    b = get(change.b)
+                  swapLL(state, a, b)
+                  state.changes.push({ kind: 'swap', a, b })
+                  hooks.onSwap?.({ a, b })
+                  break
+                }
+                case 'clear':
+                  hooks.onClear?.({ ...state })
+                  clearLL(state)
+                  state.map = new WeakMap()
+                  state.origins = new WeakMap()
+                  state.changes.push({ kind: 'clear' })
+                  break
+              }
+            }
+          state.version =
+            (previous?.version ?? 0) +
+            (state.changes.length || !previous ? 1 : 0)
+          return state
+        })
+      }, mapName)
+      return attachList(target, symbols, source) as LinkedListDerivedAtom<
+        Node,
+        LLNode<T>
+      >
+    },
+    reatomFilter: (
+      predicate: ((node: Node) => boolean) | Computed<(node: Node) => boolean>,
+      filterName: string = named(`${name}.reatomFilter`),
+    ): LinkedListSource<Node> => {
+      const symbols = {
+        LL_PREV: Symbol('filter prev') as LL_PREV,
+        LL_NEXT: Symbol('filter next') as LL_NEXT,
+      }
+      // Replay against our own prior input order. The upstream links already
+      // describe the final commit and cannot locate an old or removed anchor.
+      const inputSymbols = {
+        LL_PREV: Symbol('filter input prev') as LL_PREV,
+        LL_NEXT: Symbol('filter input next') as LL_NEXT,
+      }
+      type Value = LinkedList<Node> & {
+        sourceVersion: number
+        sourceEpoch: object
+        input: LinkedList<Node>
+        predicate: (node: Node) => boolean
+      }
+      const target = computed((previous?: Value): Value => {
+        guardList(source)
+        const input = source(),
+          test = isAtom(predicate) ? predicate() : predicate
+        const sourceEpoch = epochOf(input)
+        if (
+          previous?.sourceVersion === input.version &&
+          previous.sourceEpoch === sourceEpoch &&
+          previous.predicate === test
+        )
+          return previous
+        return journalLinks([symbols, inputSymbols], () => {
+          const state: Value = previous
+            ? {
+                ...previous,
+                changes: [],
+                sourceVersion: input.version,
+                sourceEpoch,
+                input: { ...previous.input },
+                predicate: test,
+              }
+            : {
+                ...emptyList<Node>(symbols),
+                sourceVersion: input.version,
+                sourceEpoch,
+                input: emptyList<Node>(inputSymbols),
+                predicate: test,
+              }
+          const reset = !!previous && previous.sourceEpoch !== sourceEpoch
+          listEpochs.set(state, reset || !previous ? {} : epochOf(previous))
+          if (reset) {
+            clearLL(state)
+            state.changes.push({ kind: 'clear' })
+          }
+          const incremental =
+            previous &&
+            !reset &&
+            previous.predicate === test &&
+            input.version === previous.sourceVersion + 1
+          const predecessor = (anchor: Node | null): Node | null => {
+            while (anchor && !containsLL(state, anchor))
+              anchor = anchor[inputSymbols.LL_PREV] as Node | null
+            return anchor
+          }
+          const insert = (
+            nodes: readonly Node[],
+            after: Node | null,
+            shadow: boolean,
+          ) => {
+            let anchor = after
+            for (const node of nodes) {
+              addLL(shadow ? state.input : state, node, anchor)
+              anchor = node
+            }
+          }
+          if (incremental)
+            for (const change of input.changes) {
+              if (
+                change.kind === 'create' ||
+                change.kind === 'createMany' ||
+                change.kind === 'insert'
+              ) {
+                const origins =
+                  change.kind === 'create' ? [change.node] : change.nodes
+                const after =
+                  change.kind === 'insert' ? change.after : state.input.tail
+                const visibleAfter = predecessor(after)
+                insert(origins, after, true)
+                const nodes = origins.filter((node) => peek(test, node))
+                insert(nodes, visibleAfter, false)
+                if (nodes.length)
+                  state.changes.push(
+                    change.kind === 'insert'
+                      ? { kind: 'insert', nodes, after: visibleAfter }
+                      : { kind: 'createMany', nodes },
+                  )
+              } else if (
+                change.kind === 'remove' ||
+                change.kind === 'removeMany'
+              ) {
+                const nodes = (
+                  change.kind === 'remove' ? [change.node] : change.nodes
+                ).filter((node) => containsLL(state, node))
+                for (const node of nodes) removeLL(state, node)
+                for (const node of change.kind === 'remove'
+                  ? [change.node]
+                  : change.nodes)
+                  removeLL(state.input, node)
+                if (nodes.length)
+                  state.changes.push({ kind: 'removeMany', nodes })
+              } else if (change.kind === 'move' || change.kind === 'moveMany') {
+                const origins =
+                  change.kind === 'move' ? [change.node] : change.nodes
+                const nodes = origins.filter((node) => containsLL(state, node))
+                for (const node of origins) removeLL(state.input, node)
+                const after = predecessor(change.after)
+                insert(origins, change.after, true)
+                if (nodes.length && nodes[0]![symbols.LL_PREV] !== after) {
+                  for (const node of nodes) removeLL(state, node)
+                  insert(nodes, after, false)
+                  state.changes.push({ kind: 'moveMany', nodes, after })
+                }
+              } else if (change.kind === 'swap') {
+                const { a, b } = change
+                swapLL(state.input, a, b)
+                if (containsLL(state, a) && containsLL(state, b)) {
+                  swapLL(state, a, b)
+                  state.changes.push({ kind: 'swap', a, b })
+                } else {
+                  const node = containsLL(state, a)
+                    ? a
+                    : containsLL(state, b)
+                      ? b
+                      : null
+                  if (node) {
+                    const after = predecessor(
+                      node[inputSymbols.LL_PREV] as Node | null,
+                    )
+                    if (node[symbols.LL_PREV] !== after) {
+                      moveLL(state, node, after)
+                      state.changes.push({ kind: 'move', node, after })
+                    }
+                  }
+                }
+              } else if (change.kind === 'clear') {
+                clearLL(state)
+                clearLL(state.input)
+                state.changes.push({ kind: 'clear' })
+              }
+            }
+          else {
+            const desired: Node[] = []
+            clearLL(state.input)
+            for (
+              let node = input.head;
+              node;
+              node = node[input.LL_NEXT] as Node | null
+            ) {
+              addLL(state.input, node, state.input.tail)
+              if (peek(test, node)) desired.push(node)
+            }
+            reconcileLL(state, desired)
+          }
+          state.version =
+            (previous?.version ?? 0) +
+            (state.changes.length || !previous ? 1 : 0)
+          return state
+        })
+      }, filterName)
+      return attachList(target, symbols, source)
+    },
+    reatomReduce: <T>(
+      options: LinkedListReduceOptions<Node, T>,
+      reduceName: string = named(`${name}.reatomReduce`),
+    ) => {
+      type Value = {
+        state: T
+        version: number
+        sourceVersion: number
+        sourceEpoch: object
+      }
+      return computed((previous?: Value): Value => {
+        guardList(source)
+        const input = source()
+        const sourceEpoch = epochOf(input)
+        if (
+          previous?.sourceVersion === input.version &&
+          previous.sourceEpoch === sourceEpoch
+        )
+          return previous
+        let state: T
+        if (
+          !previous ||
+          previous.sourceEpoch !== sourceEpoch ||
+          input.version !== previous.sourceVersion + 1
+        )
+          state = peek(
+            options.rebuild,
+            previous ? previous.state : peek(options.init),
+            input,
+          )
+        else {
+          state = previous.state
+          for (const change of input.changes)
+            state = peek(options.apply, state, change, input)
+        }
+        return {
+          state,
+          version: (previous?.version ?? 0) + 1,
+          sourceVersion: input.version,
+          sourceEpoch,
+        }
+      }, reduceName)
+    },
+  }
+}

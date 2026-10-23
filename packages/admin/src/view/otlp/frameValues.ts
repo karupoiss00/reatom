@@ -2,6 +2,7 @@ import type { AdminRecord } from '../../otlp'
 import {
   errorFromExceptionLog,
   isStateWrite,
+  localValuesOf,
   recordHasError,
   recordValuePreview,
   recordValues,
@@ -40,22 +41,81 @@ export function overviewDataTitle(record: AdminRecord): OverviewDataTitle {
   return isStateWrite(record) ? 'State' : 'Payload'
 }
 
-/**
- * Value shown first on Overview. State writes use the live state or the
- * recorded body. Other records use the live payload or `reatom.payload`. Params
- * render underneath.
- */
-export function overviewDataValue(record: AdminRecord): unknown {
-  if (isStateWrite(record)) return stateValue(record)
-  return recordValues(record).payload
+export interface OverviewValues {
+  data: unknown
+  /** A captured `undefined` is a value; an uncaptured field is absent. */
+  hasData: boolean
+  params: unknown
 }
 
 /**
- * Live call arguments, else `reatom.params`. `undefined` when the record has
- * none.
+ * Computed/atom middleware receives internal state inputs, not action
+ * arguments. Keep those in JSON rather than presenting them as Params.
  */
+function isActionRecord(record: AdminRecord): boolean {
+  return (
+    record.reatomKind === 'action' ||
+    (record.kind === 'span' && record.reatomKind === undefined)
+  )
+}
+
+/**
+ * Overview presents the current state or action result, followed by actual
+ * action arguments. A successful identity action needs only its Param tree.
+ * History and JSON retain the original fields.
+ */
+export function overviewValues(record: AdminRecord): OverviewValues {
+  const values = recordValues(record)
+  const live = localValuesOf(record)
+  const action = isActionRecord(record)
+  const params = action ? values.params : undefined
+  let data: unknown
+  let hasData = false
+  if (isStateWrite(record)) {
+    if (live && Object.hasOwn(live, 'state')) {
+      data = values.state
+      hasData = true
+    } else if (Object.hasOwn(record, 'body')) {
+      data = record.body
+      hasData = true
+    } else if (!live && Object.hasOwn(record.attributes, 'reatom.payload')) {
+      data = values.payload
+      hasData = true
+    }
+  } else if (
+    live
+      ? Object.hasOwn(live, 'payload')
+      : Object.hasOwn(record.attributes, 'reatom.payload')
+  ) {
+    data = values.payload
+    hasData = true
+  }
+
+  if (
+    action &&
+    hasData &&
+    data !== undefined &&
+    !recordHasError(record) &&
+    (record.outcome === undefined || record.outcome === 'ok') &&
+    Array.isArray(params) &&
+    params.length === 1 &&
+    Object.is(data, params[0]) &&
+    // Replay cannot prove equality: serialization/redaction may have replaced
+    // two different originals with the same captured value.
+    live !== undefined
+  ) {
+    return { data: undefined, hasData: false, params }
+  }
+  return { data, hasData, params }
+}
+
+export function overviewDataValue(record: AdminRecord): unknown {
+  return overviewValues(record).data
+}
+
+/** Live action arguments, else decoded `reatom.params`; absent for state. */
 export function overviewParamsValue(record: AdminRecord): unknown {
-  return recordValues(record).params
+  return overviewValues(record).params
 }
 
 export type EventOverviewEntry = {
@@ -166,10 +226,7 @@ export function eventOverviewError(record: AdminRecord): string | undefined {
 
 function eventOverviewEntry(key: string, value: unknown): EventOverviewEntry {
   const display = formatEventAttribute(key, value)
-  if (
-    isEngagementMsKey(key) &&
-    durationMsFromValue(value) !== undefined
-  ) {
+  if (isEngagementMsKey(key) && durationMsFromValue(value) !== undefined) {
     return { key, value, display, title: String(value) }
   }
   return { key, value, display }

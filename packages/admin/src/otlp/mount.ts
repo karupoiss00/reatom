@@ -31,20 +31,29 @@ export function mountLogIds(records: readonly AdminRecord[]): Set<string> {
   }
 
   const ids = new Set<string>()
-  for (const record of records) {
-    if (record.kind !== 'log') continue
-    const name = record.atomName ?? record.name
-    if (name.endsWith(ACTION_SET_SUFFIX)) continue
-    const isFirstComputation =
-      record.eventName === 'reatom.computed.update' &&
-      record.causeIds.length === 0
-    const isConnectHookWrite =
-      record.eventName === 'reatom.atom.update' &&
-      record.causeIds.length > 0 &&
-      record.causeIds.every((causeId) =>
-        connectHookFrames.has(frameKey(record.sourceId, causeId)),
-      )
-    if (isFirstComputation || isConnectHookWrite) ids.add(record.id)
-  }
+  for (const record of records)
+    if (isMountLog(record, connectHookFrames)) ids.add(record.id)
+
   return ids
+}
+
+/** Classify one immutable record against the captured connect-hook frame index. */
+export function isMountLog(
+  record: AdminRecord,
+  connectHookFrames: ReadonlySet<string>,
+): boolean {
+  if (
+    record.kind !== 'log' ||
+    (record.atomName ?? record.name).endsWith(ACTION_SET_SUFFIX)
+  )
+    return false
+  return (
+    (record.eventName === 'reatom.computed.update' &&
+      record.causeIds.length === 0) ||
+    (record.eventName === 'reatom.atom.update' &&
+      record.causeIds.length > 0 &&
+      record.causeIds.every((id) =>
+        connectHookFrames.has(frameKey(record.sourceId, id)),
+      ))
+  )
 }

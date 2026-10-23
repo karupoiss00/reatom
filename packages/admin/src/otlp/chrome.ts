@@ -33,19 +33,26 @@ import {
   type OtlpStateNode,
 } from './bind.ts'
 import { fetchClickHouseExport } from './clickhouse.ts'
-import { parseCalculator } from './calculator.ts'
+import {
+  parseCalculator,
+  parseFilterCalculator,
+  buildCalculatorIndex,
+} from './calculator.ts'
 import {
   applyFilterMode,
   candidateRecords,
   filteredRecords,
   highlightedRecordIds,
+  recordMatches,
+  hasActiveFilter,
 } from './filter.ts'
 import {
   isAbortOrSuspense,
   isInProgressRecord,
   syncInProgressRecords,
 } from './inProgress.ts'
-import { mountLogIds } from './mount.ts'
+import { mountLogIds, isMountLog } from './mount.ts'
+import { reatomCausalTimeline } from '../causal/model'
 import {
   reatomOtlpStore,
   type AdminRecord,
@@ -91,6 +98,7 @@ function reatomOtlpAdminModel(options: OtlpAdminOptions) {
     `${PREFIX}.graphDirection`,
   )
   const followLive = reatomBoolean(true, `${PREFIX}.followLive`)
+  const causalEnabled = reatomBoolean(true, `${PREFIX}.causalEnabled`)
   const source = atom<OtlpAdminSource>(
     options.source ?? 'live',
     `${PREFIX}.source`,
@@ -296,11 +304,13 @@ function reatomOtlpAdminModel(options: OtlpAdminOptions) {
 
   const inProgress = atom<AdminRecord[]>([], `${PREFIX}.inProgress`)
   const ganttNow = atom(Date.now(), `${PREFIX}.ganttNow`)
+  let causalRecord = (_id: string): AdminRecord | null => null
   const selectedRecord = computed((): AdminRecord | null => {
     const id = selectedRecordId()
     if (id === null) return null
     return (
-      store.records().find((record) => record.id === id) ??
+      store.byId(id) ??
+      causalRecord(id) ??
       inProgress().find((record) => record.id === id) ??
       null
     )
@@ -462,6 +472,8 @@ function reatomOtlpAdminModel(options: OtlpAdminOptions) {
     `${PREFIX}.showAbortAndSuspense`,
   )
   const abortSuspenseCount = computed(() => {
+    if (!hasActiveFilter(filter()) && !analytics.recordInScope())
+      return recordCounts().abort
     let count = 0
     for (const record of visibleRecords()) {
       if (isAbortOrSuspense(record)) count += 1
@@ -477,6 +489,8 @@ function reatomOtlpAdminModel(options: OtlpAdminOptions) {
     return mountLogIds(store.records())
   }, `${PREFIX}.mountLogIds`)
   const mountLogCount = computed(() => {
+    if (!hasActiveFilter(filter()) && !analytics.recordInScope())
+      return recordCounts().mount
     const ids = mountLogIdSet()
     let count = 0
     for (const record of visibleRecords()) {
@@ -504,12 +518,13 @@ function reatomOtlpAdminModel(options: OtlpAdminOptions) {
     for (const record of store.records()) {
       if (record.kind === 'span') landed.add(adminRecordSpanKey(record))
     }
+    const visibleSpans = new Set(
+      visible.filter((record) => record.kind === 'log').map(adminRecordSpanKey),
+    )
     const extras = inProgress().filter((record) => {
       const key = adminRecordSpanKey(record)
       if (landed.has(key)) return false
-      return visible.some(
-        (item) => item.kind === 'log' && adminRecordSpanKey(item) === key,
-      )
+      return visibleSpans.has(key)
     })
     return extras.length === 0 ? visible : [...visible, ...extras]
   }, `${PREFIX}.ganttRecords`)
@@ -526,6 +541,182 @@ function reatomOtlpAdminModel(options: OtlpAdminOptions) {
     },
     `${PREFIX}.gantt`,
   )
+  const hookFrames = store.recordList.reatomReduce<ReadonlySet<string>>(
+    {
+      init: () => new Set(),
+      apply: (previous, change, state) => {
+        if (
+          change.kind === 'create' ||
+          change.kind === 'createMany' ||
+          change.kind === 'insert'
+        ) {
+          const nodes = change.kind === 'create' ? [change.node] : change.nodes
+          const hooks = nodes.filter(
+            (record) =>
+              record.kind === 'span' &&
+              record.frameId !== undefined &&
+              record.name.endsWith('.withConnectHook'),
+          )
+          if (!hooks.length) return previous
+          return new Set([
+            ...previous,
+            ...hooks.map((record) => `${record.sourceId}:${record.frameId}`),
+          ])
+        }
+        if (
+          change.kind === 'move' ||
+          change.kind === 'moveMany' ||
+          change.kind === 'swap'
+        )
+          return previous
+        const result = new Set<string>()
+        for (let record = state.head; record; record = record[state.LL_NEXT])
+          if (
+            record.kind === 'span' &&
+            record.frameId !== undefined &&
+            record.name.endsWith('.withConnectHook')
+          )
+            result.add(`${record.sourceId}:${record.frameId}`)
+        return result
+      },
+      rebuild: (_previous, state) => {
+        const result = new Set<string>()
+        for (let record = state.head; record; record = record[state.LL_NEXT])
+          if (
+            record.kind === 'span' &&
+            record.frameId !== undefined &&
+            record.name.endsWith('.withConnectHook')
+          )
+            result.add(`${record.sourceId}:${record.frameId}`)
+        return result
+      },
+    },
+    `${PREFIX}.hookFrames`,
+  )
+  const hookFrameSet = computed(
+    () => hookFrames().state,
+    `${PREFIX}.hookFrameSet`,
+  )
+  type RecordCounts = {
+    errors: number
+    logs: number
+    abort: number
+    mount: number
+    kinds: Partial<Record<NonNullable<AdminRecord['reatomKind']>, number>>
+  }
+  const countCache = atom(
+    () => ({
+      version: -1,
+      content: -1,
+      hooks: null as ReadonlySet<string> | null,
+      value: null as RecordCounts | null,
+    }),
+    `${PREFIX}._countCache`,
+  )
+  const recordCounts = computed(() => {
+    const source = store.recordList(),
+      content = store.contentChanges(),
+      hooks = hookFrameSet(),
+      cache = countCache()
+    if (
+      cache.version === source.version &&
+      cache.content === content.revision &&
+      cache.hooks === hooks
+    )
+      return cache.value!
+    const tail =
+      cache.value &&
+      cache.version + 1 === source.version &&
+      cache.content === content.revision &&
+      cache.hooks === hooks &&
+      source.changes.every(
+        (change) => change.kind === 'create' || change.kind === 'createMany',
+      )
+    const value: RecordCounts = tail
+      ? { ...cache.value!, kinds: { ...cache.value!.kinds } }
+      : { errors: 0, logs: 0, abort: 0, mount: 0, kinds: {} }
+    const take = (record: AdminRecord) => {
+      if (record.error != null || record.outcome === 'error') value.errors++
+      if (record.kind === 'log') value.logs++
+      if (isAbortOrSuspense(record)) value.abort++
+      if (isMountLog(record, hooks)) value.mount++
+      if (record.reatomKind)
+        value.kinds[record.reatomKind] =
+          (value.kinds[record.reatomKind] ?? 0) + 1
+    }
+    if (tail)
+      for (const change of source.changes) {
+        if (change.kind === 'create') take(change.node)
+        else if (change.kind === 'createMany')
+          for (const record of change.nodes) take(record)
+      }
+    else
+      for (let record = source.head; record; record = record[source.LL_NEXT])
+        take(record)
+    Object.assign(cache, {
+      version: source.version,
+      content: content.revision,
+      hooks,
+      value,
+    })
+    return value
+  }, `${PREFIX}.recordCounts`)
+  const causalPredicate = computed(() => {
+    const current = filter(),
+      hideAbort = !showAbortAndSuspense(),
+      hideMount = !showMountLogs(),
+      hooks = hookFrameSet()
+    const parsed = parseFilterCalculator(current)
+    const index = current.calculator
+      ? buildCalculatorIndex(store.records())
+      : undefined
+    const active = hasActiveFilter(current)
+    return (record: AdminRecord) => {
+      if (hideAbort && isAbortOrSuspense(record)) return false
+      if (hideMount && isMountLog(record, hooks)) return false
+      if (!active || current.mode === 'highlight') return true
+      const match = recordMatches(
+        record,
+        { ...current, traceId: undefined },
+        parsed,
+        index,
+      )
+      return current.mode === 'hide' || current.mode === 'exclude'
+        ? !match
+        : match
+    }
+  }, `${PREFIX}.causalPredicate`)
+  const causalScope = computed(() => {
+    const trace = filter().traceId,
+      inScope = analytics.recordInScope()
+    return trace || inScope
+      ? (record: AdminRecord) =>
+          (!trace || record.traceId === trace) && (!inScope || inScope(record))
+      : null
+  }, `${PREFIX}.causalScope`)
+  const causal = reatomCausalTimeline({
+    store,
+    predicate: causalPredicate,
+    scope: causalScope,
+    follow: followLive,
+    now: ganttNow,
+    live: computed(() => source() !== 'replay', `${PREFIX}.causalLive`),
+    selected: selectedRecord,
+    select: selectRecord,
+    replaceSelection: (previous, next) => {
+      if (selectedRecordId() === previous.id) {
+        selectedRecordId.set(next.id)
+        selectedRootFrameId.set(next.frameId ?? null)
+        selectedTraceId.set(next.traceId)
+      }
+      if (selectionHistory().includes(previous.id))
+        selectionHistory.set((ids) =>
+          ids.map((id) => (id === previous.id ? next.id : id)),
+        )
+    },
+  })
+  causalRecord = causal.findRecord
+  const stopCausal = causal.start()
   const highlightedLogIds = computed(() => {
     const ids = new Set<string>()
     for (const record of store.records()) {
@@ -655,6 +846,10 @@ function reatomOtlpAdminModel(options: OtlpAdminOptions) {
     gantt.select(span)
   }
   const ingest = action((incoming: readonly unknown[]) => {
+    if (causalEnabled()) {
+      store.ingest(incoming)
+      return
+    }
     const selected = selectedRecord()
     const expandedInProgress = inProgress().filter((record) =>
       gantt.isExpanded(record),
@@ -664,6 +859,7 @@ function reatomOtlpAdminModel(options: OtlpAdminOptions) {
     adoptArrivedSpans(selected, expandedInProgress)
   }, `${PREFIX}.ingestBatch`)
   const stopInProgress = effect(() => {
+    if (causalEnabled()) return
     quickFiltered()
     peek(syncInProgress)
   }, `${PREFIX}.syncInProgress`)
@@ -672,7 +868,8 @@ function reatomOtlpAdminModel(options: OtlpAdminOptions) {
     const id = selectionHistory()[index]
     if (id === undefined) return
     const record =
-      store.records().find((item) => item.id === id) ??
+      store.byId(id) ??
+      causalRecord(id) ??
       inProgress().find((item) => item.id === id) ??
       null
     selectedRecordId.set(record?.id ?? null)
@@ -704,10 +901,15 @@ function reatomOtlpAdminModel(options: OtlpAdminOptions) {
     selectRecord,
     visibleRecords: ganttRecords,
   })
-  const stopGanttSelection = ganttSelection.connect()
+  const legacySelection = effect(() => {
+    if (causalEnabled()) return
+    const stop = ganttSelection.connect()
+    return stop
+  }, `${PREFIX}.legacySelection`)
   const disposeModel = () => {
+    stopCausal()
     stopInProgress.unsubscribe()
-    stopGanttSelection()
+    legacySelection.unsubscribe()
   }
 
   return {
@@ -743,7 +945,10 @@ function reatomOtlpAdminModel(options: OtlpAdminOptions) {
     hiddenMountLogCount,
     highlightedLogIds,
     spanCountByTrace,
+    recordCounts,
     gantt,
+    causal,
+    causalEnabled,
     ganttRecords,
     ganttNow,
     ganttSelection,

@@ -1053,6 +1053,16 @@ export const OtlpGanttChart = <Node, Key = Node>({
             <ToolbarGroup>
               <Button
                 variant="ghost"
+                label="Causal"
+                onClick={() => {
+                  admin.timelineUnit.set('records')
+                  admin.causalEnabled.setTrue()
+                }}
+              >
+                Causal
+              </Button>
+              <Button
+                variant="ghost"
                 label="Waterfall"
                 testId="gantt-mode-waterfall"
                 pressed={() =>
@@ -1061,6 +1071,7 @@ export const OtlpGanttChart = <Node, Key = Node>({
                 }
                 onClick={() => {
                   admin.timelineUnit.set('records')
+                  admin.causalEnabled.setFalse()
                   admin.gantt.mode.set('waterfall')
                 }}
               >
@@ -1076,6 +1087,7 @@ export const OtlpGanttChart = <Node, Key = Node>({
                 }
                 onClick={() => {
                   admin.timelineUnit.set('records')
+                  admin.causalEnabled.setFalse()
                   admin.gantt.mode.set('log')
                 }}
               >

@@ -441,95 +441,129 @@ let walkLinkedList = (
   list: LinkedListJSXAtom,
 ) => {
   let lastVersion = -1
-
-  let cb = (state: LinkedList<LLNode<JSX.Element>>) => {
-    if (state.version - 1 > lastVersion) {
-      element.innerHTML = ''
-      let rebuildBatch = dom.document.createDocumentFragment()
-      for (let head = state.head; head; head = head[state.LL_NEXT] ?? null) {
-        throwNativeFragment(head)
-        rebuildBatch.append(head)
+  let mounted = new Set<JSX.Element>()
+  const first = (node: JSX.Element): Node =>
+    isLiveFragment(node) ? node.__reatomFragment.start : node
+  const last = (node: JSX.Element): Node =>
+    isLiveFragment(node) ? node.__reatomFragment.end : node
+  const remove = (node: JSX.Element) => {
+    if (isLiveFragment(node)) {
+      const range = node.__reatomFragment
+      range.update()
+      range.start.remove()
+      range.end.remove()
+    } else if (node.parentNode === element) element.removeChild(node)
+    mounted.delete(node)
+  }
+  const place = (nodes: readonly JSX.Element[], anchor: Node | null) => {
+    const fragment = dom.document.createDocumentFragment()
+    for (const node of nodes) {
+      throwNativeFragment(node)
+      let current: Node | null = first(node)
+      const end = last(node)
+      while (current) {
+        const next: Node | null = current.nextSibling
+        fragment.appendChild(current)
+        if (current === end) break
+        current = next
       }
-      element.append(rebuildBatch)
-    } else {
-      let appendBatch: undefined | DocumentFragment
-      for (let change of state.changes) {
-        if (change.kind === 'create') {
-          throwNativeFragment(change.node)
-
-          appendBatch ??= dom.document.createDocumentFragment()
-
-          appendBatch.append(change.node)
-        } else if (change.kind === 'createMany') {
-          appendBatch ??= dom.document.createDocumentFragment()
-
-          for (let node of change.nodes) {
-            throwNativeFragment(node)
-            appendBatch.append(node)
-          }
-        } else if (appendBatch) {
-          element.append(appendBatch)
-          appendBatch = undefined
-        }
-
-        if (change.kind === 'remove') {
-          if (isLiveFragment(change.node)) {
-            let fragment = change.node.__reatomFragment
-            fragment.update()
-            fragment.start.remove()
-            fragment.end.remove()
-          } else {
-            element.removeChild(change.node)
-          }
-        } else if (change.kind === 'removeMany') {
-          for (let node of change.nodes) {
-            if (isLiveFragment(node)) {
-              let fragment = node.__reatomFragment
-              fragment.update()
-              fragment.start.remove()
-              fragment.end.remove()
-            } else {
-              element.removeChild(node)
+      mounted.add(node)
+    }
+    element.insertBefore(fragment, anchor)
+  }
+  const cb = (state: LinkedList<LLNode<JSX.Element>>) => {
+    if (lastVersion === state.version) return
+    const focused = dom.document.activeElement as HTMLInputElement | null
+    const selection =
+      focused && 'selectionStart' in focused
+        ? ([
+            focused.selectionStart,
+            focused.selectionEnd,
+            focused.selectionDirection,
+          ] as const)
+        : null
+    if (state.version !== lastVersion + 1) {
+      const desired: JSX.Element[] = []
+      for (let node = state.head; node; node = node[state.LL_NEXT] ?? null)
+        desired.push(node)
+      const wanted = new Set(desired)
+      for (const node of mounted) if (!wanted.has(node)) remove(node)
+      let anchor = element.firstChild
+      for (const node of desired) {
+        if (first(node) !== anchor) place([node], anchor)
+        anchor = last(node).nextSibling
+      }
+    } else
+      for (const change of state.changes) {
+        switch (change.kind) {
+          case 'create':
+            place([change.node], null)
+            break
+          case 'createMany':
+            place(change.nodes, null)
+            break
+          case 'insert':
+            place(
+              change.nodes,
+              change.after
+                ? last(change.after).nextSibling
+                : element.firstChild,
+            )
+            break
+          case 'move':
+            place(
+              [change.node],
+              change.after
+                ? last(change.after).nextSibling
+                : element.firstChild,
+            )
+            break
+          case 'moveMany':
+            place(
+              change.nodes,
+              change.after
+                ? last(change.after).nextSibling
+                : element.firstChild,
+            )
+            break
+          case 'remove':
+            remove(change.node)
+            break
+          case 'removeMany':
+            for (const node of change.nodes) remove(node)
+            break
+          case 'clear':
+            for (const node of mounted) remove(node)
+            break
+          case 'swap': {
+            const a = change.a,
+              b = change.b
+            const aNext = last(a).nextSibling,
+              bNext = last(b).nextSibling
+            if (aNext === first(b)) place([b], first(a))
+            else if (bNext === first(a)) place([a], first(b))
+            else {
+              place([a], bNext)
+              place([b], aNext)
             }
+            break
           }
-        }
-        // TODO support fragments
-        else if (change.kind === 'swap') {
-          let [aNext, bNext] = [change.a.nextSibling, change.b.nextSibling]
-          if (bNext) {
-            element.insertBefore(change.a, bNext)
-          } else {
-            element.append(change.a)
-          }
-
-          if (aNext) {
-            element.insertBefore(change.b, aNext)
-          } else {
-            element.append(change.b)
-          }
-        }
-        // TODO support fragments
-        else if (change.kind === 'move') {
-          if (change.after) {
-            change.after.insertAdjacentElement('afterend', change.node)
-          } else {
-            element.prepend(change.node)
-          }
-        } else if (change.kind === 'clear') {
-          element.innerHTML = ''
         }
       }
-
-      if (appendBatch) element.append(appendBatch)
+    if (focused?.isConnected && dom.document.activeElement !== focused) {
+      focused.focus({ preventScroll: true })
+      if (selection && selection[0] !== null)
+        focused.setSelectionRange(
+          selection[0],
+          selection[1],
+          selection[2] ?? undefined,
+        )
     }
     lastVersion = state.version
   }
-
   unlink(element, () =>
     list.subscribe((state) => cb(state as LinkedList<LLNode<JSX.Element>>)),
   )
-
-  // check if change hook wasn't called by initialization
   if (lastVersion === -1) cb(peek(list) as LinkedList<LLNode<JSX.Element>>)
 }
 

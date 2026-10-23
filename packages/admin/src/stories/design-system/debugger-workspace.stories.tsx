@@ -27,9 +27,13 @@ let workspaceStoryId = 0
 function renderWorkspace(width: number) {
   const storyId = ++workspaceStoryId
   const query = atom('', `_Admin.stories.ds.workspaceQuery.${storyId}`)
-  const inspectorOpen = atom(true, `_Admin.stories.ds.workspaceOpen.${storyId}`)
-  return ADMIN_FRAME.run(() =>
-    renderDesignCanvas(
+  const inspectorOpen = atom(
+    false,
+    `_Admin.stories.ds.workspaceOpen.${storyId}`,
+  )
+  return ADMIN_FRAME.run(() => {
+    inspectorOpen.set(true)
+    return renderDesignCanvas(
       <DebuggerWorkspace
         header={
           <h1
@@ -60,8 +64,8 @@ function renderWorkspace(width: number) {
         }
       />,
       { width, height: 640 },
-    ),
-  )
+    )
+  })
 }
 
 export const WideFrame: Story = {
@@ -81,6 +85,12 @@ export const WideFrame: Story = {
     const before = separator.getAttribute('aria-valuenow')
     await userEvent.keyboard('{ArrowLeft}')
     expect(separator.getAttribute('aria-valuenow')).not.toBe(before)
+
+    await userEvent.keyboard('{Escape}')
+    await waitFor(() => {
+      expect(canvasElement.textContent).not.toContain('Selected move')
+      expect(canvasElement.textContent).toContain('Timeline')
+    })
   },
 }
 

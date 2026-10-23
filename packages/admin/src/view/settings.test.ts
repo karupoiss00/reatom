@@ -11,6 +11,7 @@ import {
 
 const ICONS_KEY = '_Admin.settings.icons.v1'
 const COLORS_KEY = '_Admin.settings.colors.v1'
+const GRAPH_CONTINUATIONS_KEY = '_Admin.settings.graphContinuations.v1'
 const SCHEME_KEY = '_Admin.settings.scheme.v1'
 const ACCENT_KEY = '_Admin.settings.accent.v1'
 const CORNER_KEY = '_Admin.settings.corner.v1'
@@ -20,6 +21,7 @@ afterEach(() => {
   if (!canPersistToLocalStorage()) return
   localStorage.removeItem(ICONS_KEY)
   localStorage.removeItem(COLORS_KEY)
+  localStorage.removeItem(GRAPH_CONTINUATIONS_KEY)
   localStorage.removeItem(SCHEME_KEY)
   localStorage.removeItem(ACCENT_KEY)
   localStorage.removeItem(CORNER_KEY)
@@ -30,10 +32,13 @@ test('display settings default to on and toggle', () => {
   ADMIN_FRAME.run(() => {
     expect(settings.icons()).toBe(true)
     expect(settings.colors()).toBe(true)
+    expect(settings.graphContinuations()).toBe(true)
     settings.icons.toggle()
     settings.colors.setFalse()
+    settings.graphContinuations.toggle()
     expect(settings.icons()).toBe(false)
     expect(settings.colors()).toBe(false)
+    expect(settings.graphContinuations()).toBe(false)
   })
 })
 
@@ -43,14 +48,34 @@ test('display settings survive an admin frame reset', () => {
   ADMIN_FRAME.run(() => {
     settings.icons.setFalse()
     settings.colors.setFalse()
+    settings.graphContinuations.setFalse()
   })
   expect(localStorage.getItem(ICONS_KEY)).toContain('false')
   expect(localStorage.getItem(COLORS_KEY)).toContain('false')
+  expect(localStorage.getItem(GRAPH_CONTINUATIONS_KEY)).toContain('false')
 
   resetAdminFrame()
 
   expect(ADMIN_FRAME.run(() => adminSettings().icons())).toBe(false)
   expect(ADMIN_FRAME.run(() => adminSettings().colors())).toBe(false)
+  expect(ADMIN_FRAME.run(() => adminSettings().graphContinuations())).toBe(
+    false,
+  )
+})
+
+test('graph continuation preference is shared by shells and resets to visible', () => {
+  const firstShell = adminSettings(),
+    secondShell = adminSettings()
+  expect(firstShell.graphContinuations).toBe(secondShell.graphContinuations)
+  ADMIN_FRAME.run(() => {
+    firstShell.graphContinuations.setFalse()
+    expect(secondShell.graphContinuations()).toBe(false)
+  })
+  resetAdminSettings()
+  ADMIN_FRAME.run(() => {
+    expect(firstShell.graphContinuations()).toBe(true)
+    expect(secondShell.graphContinuations()).toBe(true)
+  })
 })
 
 test('accent color builds a light or dark palette', () => {

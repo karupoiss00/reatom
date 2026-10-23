@@ -2,7 +2,7 @@ import type { ActionState, AtomLike } from '../core'
 import { isAction, isAtom } from '../core'
 import type {
   LinkedList,
-  LinkedListLikeAtom,
+  LinkedListSource,
   LLNode,
 } from '../primitives/reatomLinkedList'
 import { isLinkedListAtom } from '../primitives/reatomLinkedList'
@@ -25,7 +25,7 @@ type Builtin = Date | RegExp | Function
  *   types
  */
 export type Deatomize<T> =
-  T extends LinkedListLikeAtom<infer T>
+  T extends LinkedListSource<any, infer T>
     ? T extends LinkedList<LLNode<infer T>>
       ? Array<Deatomize<T>>
       : never

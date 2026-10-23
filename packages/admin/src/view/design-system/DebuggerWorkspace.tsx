@@ -19,9 +19,9 @@ export interface DebuggerWorkspaceProps {
   header: Element
   filter: Element
   /**
-   * The main view element. It stays in one parent so scroll position
-   * survives the frame card opening, closing, or the shell crossing 680px.
-   * Keep view state in atoms.
+   * The main view element. It stays in one parent so scroll position survives
+   * the frame card opening, closing, or the shell crossing 680px. Keep view
+   * state in atoms.
    */
   main: Element
   /**
@@ -95,7 +95,7 @@ export const DebuggerWorkspace = ({
         syncWidth()
         const observer = new ResizeObserver(syncWidth)
         observer.observe(shell)
-        const onKeyDown = (event: Event) => {
+        const onKeyDown = bind((event: Event) => {
           if (!(event instanceof KeyboardEvent)) return
           if (event.key !== 'Escape') return
           if (inspector === null || !peek(inspectorOpen) || peek(narrow)) return
@@ -103,7 +103,7 @@ export const DebuggerWorkspace = ({
           event.preventDefault()
           event.stopPropagation()
           closeInspector()
-        }
+        })
         shell.addEventListener('keydown', onKeyDown)
         return () => {
           observer.disconnect()
@@ -257,9 +257,7 @@ export const DebuggerWorkspace = ({
               }
             `}
           >
-            {() =>
-              placement() === 'side' && inspector ? inspector() : null
-            }
+            {() => (placement() === 'side' && inspector ? inspector() : null)}
           </aside>
         </div>
         {() => {

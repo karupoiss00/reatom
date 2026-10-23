@@ -31,6 +31,8 @@ const config: StorybookConfig = {
     '../src/stories/otlp/analytics.stories.ts',
     '../src/stories/otlp/clickhouse-gantt.stories.ts',
     '../src/stories/otlp/mount-logs.stories.ts',
+    '../src/stories/otlp/causal.stories.ts',
+    '../src/stories/otlp/frame-ux.stories.ts',
   ],
   staticDirs: ['../public'],
   addons: ['@storybook/addon-vitest', '@storybook/addon-a11y'],

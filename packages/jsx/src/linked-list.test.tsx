@@ -264,3 +264,102 @@ test('linked list createMany and removeMany with reatomMap', () =>
     expect(parent().innerText).toBe('2')
     expect(list.array()).toEqual([nodes[1]])
   }))
+
+test('positional fragment runs keep live bindings and retained input focus', () =>
+  context.start(async () => {
+    const value = atom('live', 'run.value')
+    const rows = reatomLinkedList((id: number) => ({ id }), 'run.rows')
+    const views = rows.reatomMap(
+      (row) => (
+        <>
+          <label>{row.id}</label>
+          <input value={String(row.id)} />
+          {value}
+        </>
+      ),
+      'run.views',
+    )
+    const [a, b, c] = rows.createMany([[1], [2], [3]])
+    const container = <div>{views}</div>
+    const { unmount } = mount(parent(), container)
+    await wrap(sleep())
+    const inputs = container.querySelectorAll('input')
+    inputs[1]!.focus()
+    inputs[1]!.setSelectionRange(0, 1)
+    rows.moveMany([b!, c!], null)
+    await wrap(sleep())
+    expect(
+      [...container.querySelectorAll('label')].map((node) => node.textContent),
+    ).toEqual(['2', '3', '1'])
+    expect(document.activeElement).toBe(inputs[1])
+    expect(inputs[1]!.selectionStart).toBe(0)
+    rows.swap(a!, b!)
+    rows.insertMany([{ id: 4 }, { id: 5 }], c!)
+    await wrap(sleep())
+    value.set('updated')
+    await wrap(sleep())
+    expect(
+      [...container.querySelectorAll('label')].map((node) => node.textContent),
+    ).toEqual(['1', '3', '4', '5', '2'])
+    expect(container.textContent?.match(/updated/g)).toHaveLength(5)
+    expect([...container.querySelectorAll('input')]).toContain(inputs[0])
+    unmount()
+  }))
+
+test('missed versions reconcile live ranges and dispose only removed rows', () =>
+  context.start(async () => {
+    const value = atom('before', 'reconcile.value')
+    const edits = atom(0, 'reconcile.edits')
+    const mounted: string[] = [],
+      removed: string[] = []
+    const list = reatomLinkedList(
+      (id: string) => (
+        <>
+          <label
+            ref={() => {
+              mounted.push(id)
+              return () => {
+                removed.push(id)
+              }
+            }}
+          >
+            {id}
+          </label>
+          <input value={id} on:input={() => edits.set((value) => value + 1)} />
+          {value}
+        </>
+      ),
+      'reconcile.rows',
+    )
+    const [a, b, c] = list.createMany([['a'], ['b'], ['c']])
+    const container = <div>{list}</div>
+    const { unmount } = mount(parent(), container)
+    await wrap(sleep())
+    const aInput = container.querySelector('input')!
+    aInput.focus()
+    aInput.setSelectionRange(0, 1)
+    list.move(c!, null)
+    list.remove(b!)
+    list.create('d')
+    await wrap(sleep())
+    expect(
+      [...container.querySelectorAll('label')].map((node) => node.textContent),
+    ).toEqual(['c', 'a', 'd'])
+    expect(mounted).toEqual(['a', 'b', 'c', 'd'])
+    expect(removed).toEqual(['b'])
+    expect(document.activeElement).toBe(aInput)
+    expect(aInput.selectionEnd).toBe(1)
+    aInput.dispatchEvent(new Event('input', { bubbles: true }))
+    expect(edits()).toBe(1)
+    value.set('after')
+    await wrap(sleep())
+    expect(container.textContent?.match(/after/g)).toHaveLength(3)
+    list.remove(a!)
+    await wrap(sleep())
+    expect(removed).toEqual(['b', 'a'])
+    list.clear()
+    await wrap(sleep())
+    expect(removed).toEqual(['b', 'a', 'c', 'd'])
+    expect(isConnected(value)).toBe(false)
+    unmount()
+  }))

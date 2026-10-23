@@ -306,7 +306,72 @@ pnpm --filter @reatom/admin storybook
 
 `test:stories` excludes `@live`. `test:stories:live` sets `STORYBOOK_INCLUDE_TAGS=@live` and reads `OPENROUTER_API_KEY` from the repo-root `.env` or the process environment through a Vitest browser command. It does not put the key in a `VITE_` variable.
 
-The Storybook project currently collects the design-system stories, `src/stories/reatom-jsx-xo/gantt.stories.ts`, `src/stories/chat/**/*.stories.ts`, and `src/stories/otlp/clickhouse-gantt.stories.ts`. Legacy admin-shell, gallery, and fixture chrome stories stay on disk for a later deletion and are not collected.
+The Storybook project currently collects the design-system stories, `src/stories/reatom-jsx-xo/gantt.stories.ts`, `src/stories/chat/**/*.stories.ts`, and `src/stories/otlp/clickhouse-gantt.stories.ts`, and the registered OTLP analytics,
+mount-log, causal-timeline and frame-inspector journeys. The causal timeline is the default
+product mode; fixtures that specifically exercise the old waterfall explicitly
+select that mode. Legacy admin-shell, gallery, and fixture chrome stories stay on disk for a later deletion and are not collected.
 
 Use Vitest's `-t` option for a local test-name filter. `--grep` is not supported
 by the current Vitest CLI.
+
+The Causal timeline journeys are in `src/stories/otlp/causal.stories.ts`.
+Admin shadow-root geometry and fixture ingestion are the only low-level parts;
+control and row interactions use the actor through a `role('main').within(root)`
+locator. Actor `within` takes a locator; use a locator's `.within(element)` to
+cross the captured Admin shadow-root boundary. Factories return an `onReady`
+handle in the story boot options for deterministic late-arrival fixtures. Keep
+legacy waterfall journeys explicit about their mode now that Causal is default.
+
+Shared-bus causal journeys include thousand-effect searchable relationships,
+thousand-cause convergence to an offscreen computed, and interleaved independent
+hubs. Assert exact record/relationship counts and unchanged row identities;
+count bounded trunks/branches rather than requiring one SVG path per raw edge.
+Use explicit continuation controls to test navigation. The continuation strip
+keeps a fixed height so appearing/disappearing anchors do not resize the scroll
+viewport. The streaming-chat journey remains an integration acceptance check;
+virtualizer browser tests cover delayed native scroll acknowledgments during
+append separately. Never accept generated failure screenshots as baselines.
+
+Section-control journeys check all seven nonempty combinations against actual
+header/cell geometry, including full-width trailing sections, centered resize
+handles, displayed-width dragging, double-click/Home fitting and centered graph
+endpoints. Time-off Records rows are 36px; other combinations are 26px. The
+narrow scrolling journey verifies paused anchoring and pinned Follow through
+both density changes. Incoming/outgoing buses have a dedicated shared-endpoint
+fixture that checks separate tracks, center-clipped emphasis, branch paint
+order and explicit-trace crossover halos.
+`ResizeFillMinimum` also covers an ultrawide viewport, truthful splitter bounds,
+browser-owned modified Home chords, and unchanged saved widths after a blocked
+leftward resize at the fill minimum.
+
+The full-chain fixture checks transitive ancestors/descendants and neutral
+sibling, co-cause and bypass branches. Passing-rail checks retain continuation
+control identity, keyboard focus and horizontal strip scrolling across pixel
+and row-boundary scrolling. Counter-growth journeys ingest real records from
+zero through four-digit counts and compact five-digit totals, comparing every
+filter control and timeline boundary on wide and wrapped narrow layouts.
+
+Fast-native-scroll coverage checks mounted row bounds synchronously immediately
+after moving `scrollTop`, before the browser's scroll event/next animation frame.
+Only then wait for the destination rows. Settled assertions alone miss blank
+frames caused by a missing sticky row block. The product journey covers both
+directions at 26px and 36px; core browser cases also cover head/tail jumps and
+partial-row offsets while asserting bounded DOM.
+
+`FollowReturnsAtBottom` uses native scroll positions in both densities to check
+that leaving the bottom pauses Follow and returning to it resumes. Settings
+journeys switch Graph continuations off while keeping Graph/selection intact,
+verify the recovered 36px, and remount through persisted display preferences.
+The Import journey checks button styling and mouse/Enter/Space picker activation
+without opening an OS file dialog.
+
+`src/stories/otlp/frame-ux.stories.ts` ingests real local and replay value fixtures
+to distinguish computed internal inputs from action arguments, shared-reference
+identity results from distinct equal-shaped objects, and captured undefined
+from missing/failed results. Close journeys exercise the same header button in
+the wide pane and narrow drawer, preserving selection and restoring row focus.
+Use the exported local-value lookup for live fixtures; do not mutate selected
+record state to manufacture inspector behavior.
+The live-copy journey selects actual JSON text, ingests unrelated live telemetry,
+and verifies unchanged Inspector/text-node identity before native Meta and copy.
+It requires a trusted, non-prevented copy event and keeps the selection intact.

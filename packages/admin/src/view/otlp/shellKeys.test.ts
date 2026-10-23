@@ -43,17 +43,19 @@ function key(
 }
 
 function shellWithSelection(text: string): HTMLElement {
-  const anchor = new DomElement()
+  const anchor = new DomElement() as unknown as Node
+  const selection = {
+    isCollapsed: false,
+    anchorNode: anchor,
+    focusNode: anchor,
+    toString: () => text,
+  }
   return {
     querySelector: () => null,
     contains: (node: Node) => node === anchor,
     ownerDocument: {
       defaultView: {
-        getSelection: () => ({
-          isCollapsed: false,
-          anchorNode: anchor,
-          toString: () => text,
-        }),
+        getSelection: () => selection,
       },
     },
   } as unknown as HTMLElement
@@ -270,4 +272,154 @@ test('a text selection keeps character keys', () => {
     settings.icons.setTrue()
     settings.colors.setTrue()
   })
+})
+
+test('a selection ending inside the shell keeps character keys and binds the window selection method', () => {
+  vi.stubGlobal('Element', DomElement)
+  const admin = reatomOtlpAdmin({
+    sourceId: 'keys-selection-focus',
+    resource: {},
+  })
+  const helpOpen = ADMIN_FRAME.run(() =>
+    atom(false, '_test.shell.help.selectionFocus'),
+  )
+  const selected = shellWithSelection('trace id'),
+    view = selected.ownerDocument.defaultView!,
+    selection = view.getSelection()!
+  Object.assign(selection, {
+    focusNode: selection.anchorNode,
+    anchorNode: new DomElement(),
+  })
+  view.getSelection = function () {
+    expect(this).toBe(view)
+    return selection
+  }
+  const preventDefault = vi.fn()
+  ADMIN_FRAME.run(() => {
+    handleAdminShellKey(
+      selected,
+      key('?', null, false, false, { preventDefault }),
+      admin,
+      helpOpen,
+    )
+    expect(helpOpen()).toBe(false)
+  })
+  expect(preventDefault).toHaveBeenCalledTimes(0)
+})
+
+test('a shadow-root selection takes precedence over a collapsed document selection', () => {
+  vi.stubGlobal('Element', DomElement)
+  const admin = reatomOtlpAdmin({
+    sourceId: 'keys-selection-shadow',
+    resource: {},
+  })
+  const helpOpen = ADMIN_FRAME.run(() =>
+    atom(false, '_test.shell.help.selectionShadow'),
+  )
+  const selected = shellWithSelection('trace id'),
+    selection = selected.ownerDocument.defaultView!.getSelection()!
+  const tree = {
+    host: new DomElement(),
+    getSelection() {
+      expect(this).toBe(tree)
+      return selection
+    },
+  }
+  selected.getRootNode = () => tree as unknown as ShadowRoot
+  selected.ownerDocument.defaultView!.getSelection = () => null
+  const preventDefault = vi.fn()
+  ADMIN_FRAME.run(() => {
+    handleAdminShellKey(
+      selected,
+      key('?', null, false, false, { preventDefault }),
+      admin,
+      helpOpen,
+    )
+    expect(helpOpen()).toBe(false)
+  })
+  expect(preventDefault).toHaveBeenCalledTimes(0)
+})
+
+test('composed selection endpoints inside the shadow tree keep native character behavior', () => {
+  vi.stubGlobal('Element', DomElement)
+  const admin = reatomOtlpAdmin({
+    sourceId: 'keys-selection-composed',
+    resource: {},
+  })
+  const helpOpen = ADMIN_FRAME.run(() =>
+    atom(false, '_test.shell.help.selectionComposed'),
+  )
+  const selected = shellWithSelection('trace id'),
+    selection = selected.ownerDocument.defaultView!.getSelection()!,
+    inside = selection.anchorNode,
+    host = new DomElement(),
+    tree = { host }
+  const getComposedRanges = vi.fn(() => [
+    { startContainer: inside, endContainer: inside },
+  ])
+  Object.assign(selection, {
+    anchorNode: host,
+    focusNode: host,
+    getComposedRanges,
+  })
+  selected.getRootNode = () => tree as unknown as ShadowRoot
+  const preventDefault = vi.fn()
+  ADMIN_FRAME.run(() => {
+    handleAdminShellKey(
+      selected,
+      key('?', null, false, false, { preventDefault }),
+      admin,
+      helpOpen,
+    )
+    expect(helpOpen()).toBe(false)
+  })
+  expect(getComposedRanges).toHaveBeenCalledWith({ shadowRoots: [tree] })
+  expect(preventDefault).toHaveBeenCalledTimes(0)
+
+  // Text selected elsewhere in the same shadow root still allows this shell's
+  // commands; only endpoints inside the actual shell protect its character keys.
+  getComposedRanges.mockReturnValue([
+    {
+      startContainer: host as unknown as Node,
+      endContainer: host as unknown as Node,
+    },
+  ])
+  ADMIN_FRAME.run(() => {
+    handleAdminShellKey(
+      selected,
+      key('?', null, false, false, { preventDefault }),
+      admin,
+      helpOpen,
+    )
+    expect(helpOpen()).toBe(true)
+  })
+  expect(preventDefault).toHaveBeenCalledTimes(1)
+})
+
+test('bare modifier keys leave selection untouched even without modifier flags', () => {
+  const admin = reatomOtlpAdmin({
+    sourceId: 'keys-selection-modifier',
+    resource: {},
+  })
+  const helpOpen = ADMIN_FRAME.run(() =>
+    atom(false, '_test.shell.help.selectionModifier'),
+  )
+  const getSelection = vi.fn(),
+    preventDefault = vi.fn()
+  const selected = {
+    ...shell,
+    ownerDocument: { defaultView: { getSelection } },
+  } as unknown as HTMLElement
+  ADMIN_FRAME.run(() => {
+    for (const modifier of ['Meta', 'Control'])
+      handleAdminShellKey(
+        selected,
+        key(modifier, null, false, false, { preventDefault }),
+        admin,
+        helpOpen,
+      )
+    expect(helpOpen()).toBe(false)
+  })
+  expect(getSelection).toHaveBeenCalledTimes(0)
+  expect(preventDefault).toHaveBeenCalledTimes(0)
 })

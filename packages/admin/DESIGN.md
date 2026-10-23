@@ -1,6 +1,6 @@
 # Admin design
 
-The admin is a Gantt-first debugger for one OTLP record stream. A person capturing or replaying that stream should see system status in words, filter the rows they care about, inspect one record without losing their place, and undo a destructive clear.
+The admin is a causal timeline debugger for one OTLP record stream. A person capturing or replaying that stream should see system status in words, filter the rows they care about, inspect one record without losing their place, and undo a destructive clear.
 
 ```mermaid
 flowchart TB
@@ -87,12 +87,177 @@ Open gaps: [journal](design-system/gaps.md). Closed entries move in full to `des
 
 The Gantt UI composes this kit and keeps its own record, time-axis, and selection behavior.
 
-- View switches for Timeline, State, Graph, and Analytics use Tabs. Timeline unit buttons are Waterfall, Log, and Paths. InspectorTabs is only the four sections of one record: Overview, Cause Chain, History, and JSON.
-- Overview for a model record shows the error if there is one, then state or payload, then params, in one column and without headings. The value trees start expanded, including nested collections. Attributes, causes, effects, and resource are not on that view. Event logs (`connectWebAnalytics` and manual `otel.log`: a log without a `reatom.*` event name, `reatom.kind` / `reatom.name` / `reatom.frame.id`, or `reatom.cause.ids`) show the error if there is one, then grouped attributes under headings (Exception, Page, Metrics, Attribution, Identity, Other). Cause Chain keeps the cause graph and Open in Graph.
-- The wide frame card uses the debugger-workspace side pane, which is a SplitPane. Below 680px of shell width the same card is a Drawer. Do not use a viewport media query for that switch.
+- View switches for Timeline, State, Graph, and Analytics use Tabs. Timeline unit buttons are Causal, Waterfall, Log, and Paths. Causal is the default; Waterfall and Log retain their existing tree and flat-record behavior, and Paths retains its Analytics tree. InspectorTabs is only the four sections of one record: Overview, Cause Chain, History, and JSON.
+- Overview shows errors first, then current state for atoms/computeds, or payload and actual arguments for actions, in one column without headings. Computed middleware's previous-state input is internal and does not appear as Param. A successful local action returning its single argument shows that value once; only exact identity/value equality proves duplication, and replay keeps both captured fields. Missing fields mount no tree; captured undefined, errors and unfinished results stay distinct. Trees start expanded, including nested collections. Attributes, causes, effects, and resource are not on that view. Event logs (`connectWebAnalytics` and manual `otel.log`: a log without a `reatom.*` event name, `reatom.kind` / `reatom.name` / `reatom.frame.id`, or `reatom.cause.ids`) show the error if there is one, then grouped attributes under headings (Exception, Page, Metrics, Attribution, Identity, Other). Cause Chain keeps the cause graph and Open in Graph.
+- The wide frame card uses the debugger-workspace side pane, which is a SplitPane. Below 680px of shell width the same card is a Drawer. Its header has a Close record details button that preserves selection and returns focus to the selected row. Do not use a viewport media query for that switch.
+- Live mount classification updates only the kind decoration; unrelated captured records preserve the selected Inspector and browser text selection. Shell shortcuts respect Ctrl/Cmd chords, bare modifier keys and selections inside the Admin shadow tree.
 - Name search and value search use SearchField. On/off filters use Button `variant="ghost"` with `pressed`. Advanced filter options open a Drawer, closed by default, with persistent Apply and Reset controls. Reset uses Button without `pressed`.
+- Filter counters always reserve a 5ch tabular slot, including zero, so capture growth cannot resize chips or rewrap the toolbar. Counts through 9,999 display exactly; larger counts use compact notation, with the exact value in the Button's native title and accessible description.
 - A destructive clear uses Button `variant="danger"`, then Toast with an undo action. The toast does not restore records itself.
 - Structured hints, including drop reasons, use Popover. A single short phrase may use Button `title`. Shortcut chords outside SearchField use Kbd.
 - Inspector shows one value as an expandable tree. The cause chain uses RailGraph. A uniform row table uses DataGrid. The waterfall stays in the product Gantt.
 - `main` passed to DebuggerWorkspace stays in one parent so scroll position survives the card opening or the shell crossing 680px. `inspector` is called again when the card is shown and when the shell crosses 680px. Keep both states in atoms.
 - Escape inside a Drawer or Popover closes that layer. Escape in the wide shell closes the frame card unless focus is in a text field. The product returns focus to the selected row from `onInspectorClose` when the drawer did not already restore it.
+
+## Causal timeline
+
+The Causal timeline owns a sequence of stable event handles separate from raw
+capture order. Capture, export, MCP and Analytics still consume the original
+record stream. Ordinary logs, unframed records and unrelated events remain rows;
+there is no synthetic graph root. A pending span is an explicit placeholder and
+its completed span keeps the same handle, selection and history. A matching
+span/log frame is an alias only when source, trace, frame, Reatom kind and model
+name agree; separate log occurrences remain separate. A late canonical span
+absorbs its proven log alias into the pending span handle.
+
+The three sections are Graph, Logs and Time. All start visible. Each virtual row
+is one CSS grid row across all three sections. One body scroller and one
+virtualizer own the vertical window. The rendered row block uses `position:
+sticky`, with both `top` and `bottom` bound to `virtual.stickyInset()`, between
+the before/after spacers. This keeps the mounted block covering the viewport
+during native scroll movement before the next virtual window renders; increasing
+overscan is not a substitute. The header sits outside vertical flow and
+tracks the body's horizontal position. Opening the inspector or crossing the
+680px workspace breakpoint preserves that scroller. Column visibility and width
+change its tracks, not its row handles. Widths are remembered for this model
+instance only: Graph is 60–2000px and Logs/Time are 160–2000px. Named separators
+support pointer capture and Left/Right in 16px steps. At least one section remains
+visible; the last active toggle explains why it is disabled. Narrow shells use
+horizontal overflow and the section toggles.
+
+Rails are product-local SVG geometry in
+`src/view/otlp/CausalTimeline.tsx`. This is a bounded product fallback: the kit
+RailGraph presents a small selected cause chain and caps lanes by hiding nodes;
+the timeline preserves every event row and summarizes dense relationships instead.
+The graph groups exact relationships with a common source or target into shared
+buses before allocating tracks. Each projected relationship belongs to exactly
+one group. Source pairs, direct/hidden provenance and cycles remain separate.
+Up to four fixed-spaced tracks are drawn, with fewer at narrow width thresholds;
+no geometric scaling makes lines or endpoints smaller. Whole groups that do not
+fit remain available through endpoint counts and a visible summary. Both-end-
+offscreen groups participate in those summaries. Widths within one threshold
+reuse the same bus snapshot; selection never changes group membership or tracks.
+Routes meeting on the same event row use separate tracks; only disjoint row
+intervals reuse a track, so incoming and outgoing buses do not merge at a tap.
+
+Every event has one round mark 12px from the right of Graph, beside its kind icon
+and name. Branches extend left to their actual bus, with a tap at that trunk and
+cutouts where they pass unrelated trunks. Passing buses reach row boundaries.
+Accent trunks stop at the centers of the selected relationship's endpoints.
+Accent branches paint after neutral branches, and an explicit trace uses its
+own crossover halo, keeping unrelated intersections visually separate.
+Named continuation controls navigate to offscreen anchors above or below the
+viewport. The continuation strip keeps a fixed 36px height while Graph is shown
+and the persisted Display setting Graph continuations is enabled (the default),
+so a navigation action does not change the viewport height when its anchor appears.
+`CausalContinuations.tsx` reconciles stable linked-list controls at integer row
+boundaries instead of recreating the strip on every scroll offset. Surviving
+controls retain focus and horizontal scroll position. New destinations fade in
+using the overlay motion token; reduced motion skips the animation. Navigation
+resolves the current anchor and rank at click time.
+Hiding continuations removes the strip's height and releases its viewport/bus
+subscriptions; Graph itself stays available.
+Long model names truncate at the start, retaining their meaningful suffix, with
+the full name in the accessible row label and native title. KindMark respects the
+existing icon/color preferences.
+
+The last visible section fills spare horizontal space; remembered section widths
+remain minimums. Graph, Records and Time keep explicit grid-column positions
+through all seven nonempty combinations. With Records visible and Time hidden,
+rows expand from 26px to 36px; Graph-only and views with Time retain compact rows.
+The same reactive uniform height drives virtualization, rails and scroll-anchor
+math. Toggling density preserves the first visible event and within-row offset
+(clamped when shrinking), while Follow stays pinned to the end.
+Column handles are centered on their actual boundaries and start a drag from
+the displayed width. Double-click or Home restores four-track Graph width,
+fits filtered record names within available space (up to 800px, retaining at
+least 160px for Time), or fits Time into the remaining viewport. Fitting scans
+names only on that explicit request, never during scrolling or capture updates.
+The trailing section's minimum reflects its fill requirement. A resize blocked
+at that minimum does not alter its saved width. Splitter bounds remain valid on
+ultrawide screens, and modified Home/arrow chords stay with the browser.
+
+Selecting a record highlights its full directed ancestor and descendant chains.
+Separate cycle-safe upstream/downstream walks keep siblings, co-causes and
+ancestor-to-descendant bypasses neutral. Exact participating edges determine
+highlighted bus intervals and member branches; a related anchor alone does not
+highlight its whole bus. Hidden bridges retain canonical path provenance and
+scope boundaries. Row highlighting also works with Graph hidden. Every other
+row and relationship summary stays in place. Compact
+cause/effect count ports open the existing frame card's Cause Chain section.
+These ports are product-local diagram controls: the shared Button is 28px high,
+while this product's compact rows are 26px; no shared Button size or contract is
+overridden. Other actions and search compose Button, Tabs and SearchField. The
+SVG is decorative; accessible descriptions disclose causes, summarized crossings,
+hidden steps, unresolved relationships, cycles and timestamp discrepancies.
+
+Cause Chain includes exact scoped recorded cause/effect counts and a searchable
+virtualized relationship list, independent of track admission. Ordinary filters
+can hide a neighbor from the timeline without erasing it from these recorded
+counts; the list says when an endpoint is hidden. Source/scope exclusions and
+unresolved references stay separate. Small neighborhoods also use RailGraph when
+actual frame IDs are numeric and unique; never invent displayed frame IDs to fit
+that component. Trace emphasizes one projected relationship without changing the
+selected record; Go to event explicitly selects and reveals an already-visible
+endpoint by scrolling, without resetting filters. Hiding Graph disables Trace
+and releases bus routing subscriptions while this list remains usable. Pub/sub
+registration totals are not inferred from recorded update events. Operation focus
+and event-row folding remain separate follow-up designs.
+
+Acyclic rows place causes before effects. Measured times break ready-node ties,
+then arrival ordinal and stable identity. Cyclic components remain inspectable
+in deterministic diagnostic order. A dependency link resolves its explicit
+trace/span/frame namespace only when unambiguous; missing, ambiguous and
+self-referential relationships show boundary details. Filtering projects nearest
+visible predecessors through ordinary hidden steps as dashed rails with an exact
+unique hidden-event count. A direct relationship takes precedence over a hidden
+alternate path. Projection stops at excluded scope or source boundaries.
+Highlight mode preserves membership and topology. Hidden selection remains in
+the inspector; Reveal is an explicit filter reset. Arrow navigation from a
+hidden selection starts at the first visible row when moving forward and the
+last when moving backward.
+
+Time bars retain real start/end timestamps, including zero-duration markers and
+clipping. Causes-before-effects row order does not change the x position of a
+clock-skewed event; its row description explains that discrepancy. Fit, zoom and
+pan operate on the measured axis. Open visible spans use the live clock; replay
+keeps its captured time range and starts no live clock task. A mixed causal-step
+axis is a separate future design, not part of this timeline.
+
+Follow-off tail arrivals preserve the viewport anchor including its overscan.
+The new count tracks new actual timeline events, excluding placeholder
+completion. Following again moves to the current end. A native downward scroll
+returning within 1px of the bottom also resumes Follow. Model navigation,
+horizontal scrolls, delayed acknowledgements and upward shrink clamping do not
+resume it. Clear resets graph/session
+indexes. Undo restores its owned snapshot before newer arrivals, deduplicating
+identical raw objects; generated live IDs remain unique across clear/undo.
+Replacement/replay starts a new capture epoch. Version gaps reconcile from the
+authoritative list while retaining handles for unchanged raw records within an
+epoch. Factory-owned model effects are disposed with the app; a connection keeps
+its existing disposal ownership.
+
+Certified monotone, unambiguous DAG tails bypass full SCC/order rebuilding and
+`ordered.array()`. Raw ordering, counts and time bounds retain their incremental
+capture paths. Shared-bus presentation currently rebuilds its projected grouping
+in O(E log E), including on a certified capture append; it does not first allocate
+per-edge lanes. Its fixed-budget layout/index construction is O(R × budget + E).
+Prior lane-layout APIs remain lazy compatibility/benchmark consumers. Snapshot
+publication still copies O(V+E) Maps/arrays. Filter edits, late endpoints,
+ambiguity, cycles and skew can require full graph traversal and ordering.
+Hidden-path projection can itself produce dense output; bundling does not remove
+that known cost. Per-row bus queries use an interval index and return at most the
+admitted tracks; branches are indexed by event. Overflow queries use prefix
+counts without materializing all omitted passing routes. Only virtual windows
+mount timeline and relationship DOM. Calculator filters, scoped legacy counts and
+other compatibility queries retain their existing full-index costs. Measured
+rebuild limits are recorded in `logs/shared-buses-implementation.md`; no constant-
+time append or frame-rate guarantee is claimed.
+
+Product journeys in `src/stories/otlp/causal.stories.ts` exercise multi-cause
+ordering with measured skew, all nonempty section combinations, retained row and
+scroller identity, keyboard sizing, hidden bridges and selection, pending
+promotion, and narrow-shell final-row scrolling. Pure graph/model tests cover
+scope/ambiguity/cycles, large hidden gaps, offscreen interval queries, immutable
+lane snapshots, append certification, paused anchors, alias identity and
+clear/undo. Shared kit contracts remain unchanged.

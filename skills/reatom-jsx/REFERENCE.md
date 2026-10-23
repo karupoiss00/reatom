@@ -740,7 +740,7 @@ Examples: [drag-and-drop](https://github.com/reatom/reatom/tree/v1001/examples/r
 
 #### API and when to use
 
-Every structural method records a change: `create`, `createMany`, `remove`, `removeMany`, `move(node, after)` (pass `after === null` to insert at the head), `swap`, `clear`, and `batch` for folding many edits into a single DOM pass. You can also walk the list by hand through `list.LL_PREV` / `list.LL_NEXT`. When you just need a plain snapshot, reach for `list.array()` or `deatomize(list.array)` — great for reading, but not for mounting large dynamic lists. And when lookup by id matters, `reatomLinkedList({ create, key: 'id' })` together with `list.map()` is comfortable for hundreds of items, though you'll want another approach once you reach the thousands.
+Every structural method records a change: `create`, `createMany`, `insertMany(nodes, after)`, `remove`, `removeMany`, `move(node, after)`, `moveMany(nodes, after)`, `swap`, `clear`, and `batch` for folding many edits into a single DOM pass. Pass `after === null` for the head. `insertMany` accepts absent node objects; `createMany` accepts factory argument tuples. `moveMany` requires one contiguous run in source order. You can also walk the list by hand through `list.LL_PREV` / `list.LL_NEXT`. When you just need a plain snapshot, reach for `list.array()` or `deatomize(list.array)` — great for reading, but not for mounting large dynamic lists. And when lookup by id matters, `reatomLinkedList({ create, key: 'id' })` together with `list.map()` is comfortable for hundreds of items, though you'll want another approach once you reach the thousands.
 
 | Scenario                                   | Use                                                      |
 | ------------------------------------------ | -------------------------------------------------------- |
@@ -748,12 +748,24 @@ Every structural method records a change: `create`, `createMany`, `remove`, `rem
 | Feeds, drag-and-drop, tables, field arrays | `reatomLinkedList` + optional `.reatomMap()`             |
 | Lookup by id                               | `reatomLinkedList({ create, key: 'id' })` + `list.map()` |
 
+Root, mapped, and filtered lists share readonly chaining methods. Keep persistent
+row state in `source.reatomFilter(predicate).reatomMap(createModel)` and allocate
+elements in `reatomVirtual(models, options).reatomMap(render)`. The model mapping
+reuses allocations after hide/show; the virtual window allocates fresh DOM for
+rows that return after full removal.
+
+Moves, run moves, swaps, and missed-version reconciliation move complete live
+`<>...</>` ranges, retaining their reactive children, event handlers, focused
+inputs, and input selection. Only absent rows are removed during reconciliation.
+Synchronous DOM moves keep subscriptions connected. A real removal runs cleanup;
+reappending a previously disposed element or fragment does not revive its bindings.
+
 #### Caveats
 
 - List nodes have to be objects or functions, so wrap primitives in objects, atoms, or DOM elements first.
 - The same node cannot appear twice in one list.
 - Native `DocumentFragment` rows are not supported.
-- `move` and `swap` are still rough on fragment rows, so prefer a single root element per row — or render element rows through `.reatomMap()` and reorder the source nodes instead.
+- Model identity and mounted DOM lifetime are separate. Cache row state, and let the virtual window create DOM again after full removal.
 
 [`reatomLinkedList` core docs](https://v1001.reatom.dev/reference/primitives/#reatomlinkedlist)
 

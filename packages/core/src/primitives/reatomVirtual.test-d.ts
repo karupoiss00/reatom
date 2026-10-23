@@ -14,6 +14,11 @@ test('infers items from the source and is a view', () => {
 
   const rows = computed(() => [{ id: 'a', height: 20 }])
   reatomVirtual(rows, { itemSize: (row) => row.height })
+  const rowHeight = atom(26)
+  expectTypeOf(reatomVirtual(list, { itemSize: rowHeight })).toEqualTypeOf<
+    VirtualAtom<LLNode<{ n: number }>>
+  >()
+  reatomVirtual(rows, { itemSize: computed(() => rowHeight() + 10) })
 })
 
 test('rejects wrong options', () => {
@@ -24,6 +29,8 @@ test('rejects wrong options', () => {
   reatomVirtual(rows, { itemSize: (row) => row.height })
   // @ts-expect-error stickToEnd is an atom, a boolean read once never updates
   reatomVirtual(rows, { itemSize: 10, stickToEnd: true })
+  // @ts-expect-error A reactive uniform size must contain a number.
+  reatomVirtual(rows, { itemSize: atom('26') })
 })
 
 test('reatomMap renders window items', () => {

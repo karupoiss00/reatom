@@ -400,6 +400,13 @@ function settingsSections(settings: AdminSettings): Array<SettingsSection> {
           description: 'Color records by kind: bars, row bands, chips',
           checked: settings.colors,
         },
+        {
+          id: 'graph-continuations',
+          label: 'Graph continuations',
+          description:
+            'Show navigation to graph connections above or below the viewport',
+          checked: settings.graphContinuations,
+        },
       ],
     },
     {

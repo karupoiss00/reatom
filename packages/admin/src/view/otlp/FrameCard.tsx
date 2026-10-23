@@ -11,6 +11,7 @@ import {
 import type { AdminRecord } from '../../otlp'
 import {
   Button,
+  Icon,
   InspectorTabs,
   RailGraph,
   scrollable,
@@ -19,14 +20,14 @@ import {
 } from '../design-system'
 import { Inspector, ParamList } from '../inspector'
 import { EventOverview } from './EventOverview'
+import { CausalRelationships } from './CausalRelationships'
 import { SnapshotInspector } from './SnapshotInspector'
 import { KindMark } from './KindMark'
 import { kindColorVar, recordKindIcon } from './recordKind'
 import {
   frameValueView,
   formatEventDurationMs,
-  overviewDataValue,
-  overviewParamsValue,
+  overviewValues,
   recordFieldValue,
   type FrameValueTitle,
 } from './frameValues'
@@ -78,17 +79,21 @@ let frameSerial = 0
 function frameSources(admin: OtlpAdmin) {
   frameSerial += 1
   const name = `_Admin.frameCard.${frameSerial}`
-  const data = computed(() => {
+  const values = computed(() => {
     const record = admin.selectedRecord()
     if (!record) return undefined
-    return overviewDataValue(record)
-  }, `${name}.data`)
-  const params = computed(() => {
+    return overviewValues(record)
+  }, `${name}.values`)
+  const data = computed(() => values()?.data, `${name}.data`)
+  const hasData = computed(() => values()?.hasData === true, `${name}.hasData`)
+  const params = computed(() => values()?.params, `${name}.params`)
+  // Capture can change this index without changing the selected record.
+  // Only decoration subscribes, preserving the value tree and selected text.
+  const kind = computed(() => {
     const record = admin.selectedRecord()
-    if (!record) return undefined
-    return overviewParamsValue(record)
-  }, `${name}.params`)
-  return { data, params }
+    return record ? recordKindIcon(record, admin.mountLogIds()) : 'log'
+  }, `${name}.kind`)
+  return { data, hasData, params, kind }
 }
 
 export const OtlpFrameCard = ({ admin }: { admin: OtlpAdmin }) => {
@@ -113,7 +118,6 @@ export const OtlpFrameCard = ({ admin }: { admin: OtlpAdmin }) => {
       {() => {
         const record = admin.selectedRecord()
         if (!record) return null
-        const kind = recordKindIcon(record, admin.mountLogIds())
         return (
           <div
             css={`
@@ -126,7 +130,10 @@ export const OtlpFrameCard = ({ admin }: { admin: OtlpAdmin }) => {
             <header
               css={`
                 display: grid;
-                gap: var(--admin-space-4);
+                grid-template-columns: minmax(0, 1fr) auto;
+                align-items: start;
+                column-gap: var(--admin-space-12);
+                row-gap: var(--admin-space-4);
                 min-width: 0;
               `}
             >
@@ -136,11 +143,12 @@ export const OtlpFrameCard = ({ admin }: { admin: OtlpAdmin }) => {
                   display: flex;
                   align-items: center;
                   gap: var(--admin-space-6);
+                  grid-column: 1;
                   margin: 0;
                   min-width: 0;
                 `}
               >
-                <KindMark kind={kind} />
+                {() => <KindMark kind={sources.kind()} />}
                 <span
                   css={`
                     min-width: 0;
@@ -153,22 +161,39 @@ export const OtlpFrameCard = ({ admin }: { admin: OtlpAdmin }) => {
               <p
                 css={`
                   ${type.meta}
+                  grid-column: 1;
                   margin: 0;
                   color: ${tokens.text2};
                 `}
               >
-                <span
-                  css={`
-                    color: ${kindColorVar(kind)};
-                    [data-admin-colors='false'] & {
-                      color: inherit;
-                    }
-                  `}
-                >
-                  {kindLabel(record)}
-                </span>
+                {() => (
+                  <span
+                    css={`
+                      color: ${kindColorVar(sources.kind())};
+                      [data-admin-colors='false'] & {
+                        color: inherit;
+                      }
+                    `}
+                  >
+                    {kindLabel(record)}
+                  </span>
+                )}
                 {` · ${record.outcome ?? 'ok'} · ${durationLabel(record)}`}
               </p>
+              <div
+                css={`
+                  grid-column: 2;
+                  grid-row: 1 / span 2;
+                `}
+              >
+                <Button
+                  variant="icon"
+                  label="Close record details"
+                  onClick={() => closeFrameCard(admin)}
+                >
+                  <Icon name="close" />
+                </Button>
+              </div>
             </header>
             <InspectorTabs value={admin.inspectorTab} />
             {() => {
@@ -203,20 +228,17 @@ const expandedValueHooks = {
 
 const FrameField = ({
   value,
-  emptyLabel,
+  present,
 }: {
   value: AtomLike<unknown>
-  emptyLabel: string
+  present: AtomLike<boolean>
 }) => (
   <>
-    {emptyLabel ? (
-      <p css={quiet} prop:hidden={() => frameValueView(value()) !== 'empty'}>
-        {emptyLabel}
-      </p>
-    ) : null}
-    <div prop:hidden={() => frameValueView(value()) === 'empty'}>
-      <Inspector value={value} defaultExpanded hooks={expandedValueHooks} />
-    </div>
+    {() =>
+      present() ? (
+        <Inspector value={value} defaultExpanded hooks={expandedValueHooks} />
+      ) : null
+    }
   </>
 )
 
@@ -260,7 +282,7 @@ const Overview = ({
           {record.error?.message ?? record.outcome ?? 'error'}
         </p>
       ) : null}
-      <FrameField value={sources.data} emptyLabel="" />
+      <FrameField value={sources.data} present={sources.hasData} />
       <ParamList value={sources.params} />
     </div>
   )
@@ -273,7 +295,7 @@ const Causes = ({
   admin: OtlpAdmin
   record: AdminRecord
 }) => {
-  const nodes = causeNodes(admin, record)
+  const nodes = admin.causalEnabled() ? [] : causeNodes(admin, record)
   return (
     <div
       css={`
@@ -282,7 +304,9 @@ const Causes = ({
         min-width: 0;
       `}
     >
-      {nodes.length === 0 ? (
+      {admin.causalEnabled() ? (
+        <CausalRelationships admin={admin} />
+      ) : nodes.length === 0 ? (
         <p css={quiet}>No causes</p>
       ) : (
         <RailGraph

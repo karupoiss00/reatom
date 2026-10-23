@@ -1,5 +1,6 @@
 import { mount } from '@reatom/jsx'
 
+import { ADMIN_FRAME } from '../../root'
 import { registerStoryCleanup } from '../../testing/storybook-runtime'
 import { connectLiveAdmin } from '../harness/live'
 
@@ -37,7 +38,9 @@ export function renderXoGantt(layout: XoLayout = 'wide'): HTMLDivElement {
 
   const ready = (async () => {
     const restoreEnvironment = installEnvironmentMocks()
-    const { host, appRoot } = connectLiveAdmin()
+    const { host, appRoot, connection } = connectLiveAdmin()
+    // These journeys exercise the legacy tree's expansion and row geometry.
+    ADMIN_FRAME.run(() => connection.admin.causalEnabled.setFalse())
     if (layout === 'empty') storyRoot.append(host)
     else storyRoot.append(appRoot, host)
     registerStoryCleanup(() => {
