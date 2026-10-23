@@ -49,9 +49,9 @@ const MAX_UNINSTRUMENTED_CAUSE_FRAMES = 16
 
 /**
  * `pubs[0]` is the caller. Walk through uninstrumented wrappers
- * (`abortVar.spawn`, `bind`) and take the first frame that has a frame id,
- * even after the batch `changed` set was reset. Uninstrumented reactive
- * callers (effect/computed, no frame id) use `walkUninstrumented` instead.
+ * (`abortVar.spawn`, `bind`) and take the first frame that has a frame id, even
+ * after the batch `changed` set was reset. Uninstrumented reactive callers
+ * (effect/computed, no frame id) use `walkUninstrumented` instead.
  */
 const walkCallerCause = (
   start: Frame,
@@ -119,8 +119,8 @@ const walkUninstrumented = (
  * Cause frame ids for `reatom.cause.ids`. The caller (`pubs[0]`) is always a
  * cause once an instrumented ancestor is found. An uninstrumented reactive
  * caller (effect/computed with no frame id) walks its changed dependencies
- * instead. Later-index pubs are dependencies: only a `changed` write counts,
- * so a stale read does not.
+ * instead. Later-index pubs are dependencies: only a `changed` write counts, so
+ * a stale read does not.
  */
 export const collectCauseIds = (
   frame: Frame,

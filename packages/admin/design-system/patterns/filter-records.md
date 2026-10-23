@@ -52,7 +52,9 @@ Regions, in the filter bar, in order:
     onClick={toggleErrors}
   />
   <Button label="Advanced filters" onClick={() => open.set(true)} />
-  <Drawer open={open} label="Advanced filters" onClose={() => open.set(false)}>{calculator}</Drawer>
+  <Drawer open={open} label="Advanced filters" onClose={() => open.set(false)}>
+    {calculator}
+  </Drawer>
   <Button label="Reset filters" onClick={reset} />
 </>
 ```

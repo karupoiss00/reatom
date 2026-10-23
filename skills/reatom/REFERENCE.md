@@ -277,7 +277,10 @@ const predicate = computed(() => {
 }, 'records.predicate')
 const visible = records.reatomFilter(predicate, 'records.visible')
 const rows = visible.reatomMap(
-  (record) => ({ record, expanded: atom(false, `record#${record.id}.expanded`) }),
+  (record) => ({
+    record,
+    expanded: atom(false, `record#${record.id}.expanded`),
+  }),
   'records.rows',
 )
 const oddRows = rows.reatomFilter((row) => row.record.id % 2 === 1)
