@@ -1,14 +1,14 @@
 import { action } from '@reatom/core'
 import { reatomOpentelemetry } from '@reatom/opentelemetry'
-import { connectWebAnalytics } from '@reatom/opentelemetry/web-analytics'
+import { withWebAnalytics } from '@reatom/opentelemetry/web-analytics'
 
 export const otel = reatomOpentelemetry({
   name: 'shop',
   endpoint: 'https://shop.example/otel',
   serviceName: 'shop-web',
-})
+}).extend(withWebAnalytics({ consent: true }))
 
-export const analytics = connectWebAnalytics(otel, { consent: true })
+export const analytics = otel.analytics
 
 export const applyCoupon = action((code: string) => {
   if (!/^[A-Z0-9]{6}$/.test(code)) throw new TypeError(`Bad coupon ${code}`)

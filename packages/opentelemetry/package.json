@@ -45,6 +45,11 @@
       "types": "./dist/browser-performance/index.d.ts",
       "require": "./dist/browser-performance/index.cjs",
       "default": "./dist/browser-performance/index.js"
+    },
+    "./attributes": {
+      "types": "./dist/attributes/index.d.ts",
+      "require": "./dist/attributes/index.cjs",
+      "default": "./dist/attributes/index.js"
     }
   },
   "main": "dist/index.cjs",
@@ -76,7 +81,8 @@
       "src/browser-network/index.ts",
       "src/browser-console/index.ts",
       "src/web-vitals/index.ts",
-      "src/browser-performance/index.ts"
+      "src/browser-performance/index.ts",
+      "src/attributes/index.ts"
     ],
     "format": [
       "esm",

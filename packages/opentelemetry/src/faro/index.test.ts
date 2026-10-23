@@ -4,6 +4,8 @@ import { expect, test, vi } from 'vitest'
 import { reatomOpentelemetry } from '../reatomOpentelemetry.ts'
 import { installDomStubs, withWarnSpy } from '../test-helpers.ts'
 import { faroTransport, logMeasurement } from './index.ts'
+import { toOtlpAttributes } from '../toOtlpValue.ts'
+import type { OtlpAttrValue } from '../toOtlpValue.ts'
 
 const setup = (
   extra: Partial<Parameters<typeof reatomOpentelemetry>[0]> = {},
@@ -110,7 +112,7 @@ test('capture policy is applied before conversion; disabled logs cannot leak mea
 
   try {
     context.start(() => {
-      otel.options.set({ ...otel.options(), signals: { logs: false } })
+      otel.set({ ...otel(), signals: { logs: false } })
       logMeasurement(otel, { type: 'secret', values: { balance: 10 } })
     })
     await otel.flush()
@@ -506,6 +508,236 @@ test('web-vitals measurements retain lowercase values and native Faro context al
       'app.extra': 'retained',
     })
     expect(measurement.context.navigation_entry_id).toBeUndefined()
+  } finally {
+    otel.dispose()
+  }
+})
+
+test('captured record users split every Faro signal even with identical app, session and page', async () => {
+  const envelopes: any[] = []
+  const transport = faroTransport({
+    endpoint: 'https://faro.test/collect',
+    fetch: async (_url, init) => {
+      envelopes.push(JSON.parse(String(init?.body)))
+      return new Response('ok', { status: 202 })
+    },
+  })
+  const resource = {
+    attributes: toOtlpAttributes({
+      'service.name': 'shop',
+      'session.id': 'shared-session',
+      'page.url': 'https://shop.test/same',
+    }),
+  }
+  const users = [
+    {
+      'user.id': 'A',
+      'user.name': 'alice',
+      'user.email': 'alice@example.test',
+      'user.full_name': 'Alice Example',
+      'user.hash': 'hash-A',
+      'user.roles': ['admin', 'operator'],
+    },
+    { 'user.id': 'B' },
+  ] satisfies Array<Record<string, OtlpAttrValue>>
+  const logRecords = users.flatMap((user) =>
+    [
+      { eventName: 'reatom.log', attributes: toOtlpAttributes(user) },
+      { eventName: 'business.event', attributes: toOtlpAttributes(user) },
+      {
+        eventName: 'measurement',
+        attributes: toOtlpAttributes({
+          ...user,
+          'measurement.type': 'custom',
+          'measurement.values': { duration: 10 },
+        }),
+      },
+      {
+        eventName: 'exception',
+        attributes: toOtlpAttributes({
+          ...user,
+          'exception.type': 'Error',
+          'exception.message': 'example',
+        }),
+      },
+    ].map((record) => ({
+      ...record,
+      timeUnixNano: '1000000',
+      traceId: 'trace',
+      spanId: 'span',
+      severityNumber: 9,
+    })),
+  )
+  const logsPayload = {
+    resourceLogs: [
+      { resource, scopeLogs: [{ scope: { version: 'test' }, logRecords }] },
+    ],
+  }
+  expect(
+    await transport({
+      signal: 'logs',
+      payload: logsPayload,
+      keepalive: false,
+      abort: new AbortController().signal,
+      itemCount: 8,
+    }),
+  ).toEqual({ accepted: 8, rejected: 0 })
+  expect(envelopes).toHaveLength(2)
+  for (const body of envelopes) {
+    expect(body.meta.app).toEqual({ name: 'shop' })
+    expect(body.meta.session).toEqual({ id: 'shared-session' })
+    expect(body.meta.page).toEqual({ url: 'https://shop.test/same' })
+    for (const kind of ['logs', 'events', 'measurements', 'exceptions'])
+      expect(body[kind]).toHaveLength(1)
+  }
+  expect(envelopes[0].meta.user).toEqual({
+    id: 'A',
+    username: 'alice',
+    email: 'alice@example.test',
+    fullName: 'Alice Example',
+    hash: 'hash-A',
+    roles: 'admin,operator',
+  })
+  expect(envelopes[1].meta.user).toEqual({ id: 'B' })
+  expect(envelopes[0].logs[0].context['user.roles']).toBe(
+    '["admin","operator"]',
+  )
+  expect(envelopes[1].events[0].attributes['user.id']).toBe('B')
+  envelopes.length = 0
+  const spans = users.map((user) => ({
+    name: 'operation',
+    traceId: 'trace',
+    spanId: 'span',
+    startTimeUnixNano: '1000000',
+    endTimeUnixNano: '2000000',
+    attributes: toOtlpAttributes(user),
+  }))
+  const tracesPayload = {
+    resourceSpans: [
+      { resource, scopeSpans: [{ scope: { version: 'test' }, spans }] },
+    ],
+  }
+  const before = JSON.stringify(tracesPayload)
+  expect(
+    await transport({
+      signal: 'traces',
+      payload: tracesPayload,
+      keepalive: false,
+      abort: new AbortController().signal,
+      itemCount: 2,
+    }),
+  ).toEqual({ accepted: 2, rejected: 0 })
+  expect(envelopes).toHaveLength(2)
+  expect(envelopes[0].meta.user.id).toBe('A')
+  expect(envelopes[1].meta.user).toEqual({ id: 'B' })
+  for (const body of envelopes)
+    expect(body.traces.resourceSpans[0].scopeSpans[0].spans).toHaveLength(1)
+  expect(
+    envelopes[0].traces.resourceSpans[0].scopeSpans[0].spans[0].attributes.find(
+      (attr: any) => attr.key === 'user.roles',
+    ).value,
+  ).toEqual({
+    arrayValue: {
+      values: [{ stringValue: 'admin' }, { stringValue: 'operator' }],
+    },
+  })
+  expect(JSON.stringify(tracesPayload)).toBe(before)
+})
+
+test('user projection ignores resource identity, preserves explicit record bundles and omits invalid roles', async () => {
+  const bodies: any[] = []
+  const transport = faroTransport({
+    endpoint: 'https://faro.test/collect',
+    fetch: async (_url, init) => {
+      bodies.push(JSON.parse(String(init?.body)))
+      return new Response('ok', { status: 202 })
+    },
+  })
+  const records: Array<Record<string, OtlpAttrValue>> = [
+    { 'user.id': 'B' },
+    { 'user.email': 'only@example.test' },
+    {
+      'app.visitor.id': 'anonymous-visitor',
+      'session.id': 'anonymous-session',
+    },
+    { 'user.roles': ['admin,operator'] },
+    { 'user.roles': [1, 'operator'] },
+    { 'user.roles': [] },
+    { 'user.roles': [''] },
+    { 'user.roles': 'admin,operator' },
+    { 'user.id': 123, 'user.name': false },
+  ]
+  for (const fields of records) {
+    bodies.length = 0
+    const payload = {
+      resourceLogs: [
+        {
+          resource: {
+            attributes: toOtlpAttributes({
+              'user.id': 'resource-A',
+              'user.name': 'resource-name',
+              'user.email': 'resource@example.test',
+            }),
+          },
+          scopeLogs: [
+            {
+              scope: { version: 'test' },
+              logRecords: [
+                {
+                  eventName: 'business',
+                  timeUnixNano: '1000000',
+                  traceId: 'trace',
+                  spanId: 'span',
+                  severityNumber: 9,
+                  attributes: toOtlpAttributes(fields),
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    }
+    const before = JSON.stringify(payload)
+    await transport({
+      signal: 'logs',
+      payload,
+      keepalive: false,
+      abort: new AbortController().signal,
+      itemCount: 1,
+    })
+    expect(bodies).toHaveLength(1)
+    if (fields['user.id'] === 'B')
+      expect(bodies[0].meta.user).toEqual({ id: 'B' })
+    else if (fields['user.email'] === 'only@example.test')
+      expect(bodies[0].meta.user).toEqual({ email: 'only@example.test' })
+    else expect(bodies[0].meta.user).toBeUndefined()
+    expect(JSON.stringify(payload)).toBe(before)
+  }
+})
+
+test('manual captured user.id reaches Faro metadata and event attributes without analytics identity', async () => {
+  const { otel, requests } = setup()
+  try {
+    expect(otel().endpoint).toBeNull()
+    otel.set((current) => ({
+      ...current,
+      headers: { 'x-test': 'native-config' },
+    }))
+    expect(otel().headers?.['x-test']).toBe('native-config')
+    context.start(() =>
+      otel.log('manual.identity', { 'user.id': 'manual-user' }),
+    )
+    await otel.flush()
+    const envelope = requests.find((request) =>
+      request.body.events?.some(
+        (event: any) => event.name === 'manual.identity',
+      ),
+    )!.body
+    expect(envelope.meta.user).toEqual({ id: 'manual-user' })
+    expect(envelope.events[0].attributes['user.id']).toBe('manual-user')
+    expect(envelope.meta.session).toBeUndefined()
+    expect(envelope.meta.page).toBeUndefined()
+    expect(JSON.stringify(envelope)).not.toContain('app.visitor.id')
   } finally {
     otel.dispose()
   }

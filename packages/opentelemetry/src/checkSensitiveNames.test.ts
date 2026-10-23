@@ -85,7 +85,7 @@ test('custom serialize on options silences the helper', async () => {
   const otel = start()
   await withWarnSpy((warn) => {
     context.start(() => {
-      otel.options.set((current) => {
+      otel.set((current) => {
         const next = {
           ...current,
           serialize: (value: unknown) => value,

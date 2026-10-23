@@ -1,14 +1,27 @@
+import { readAttributeSource, snapshotAttributes } from './attributeContext.ts'
 import {
   browserMetadataOf,
+  effectiveConsentOf,
+  hasBoundConsent,
   installBrowserCapture,
   isTelemetryUrl,
   type BrowserCapture,
 } from './browserCapture.ts'
 import { createChildContext } from './traceContext.ts'
-import type { Action, Atom, AtomLike, Ext, Variable } from '@reatom/core'
+import type {
+  Action,
+  Atom,
+  AtomLike,
+  Computed,
+  Ext,
+  Variable,
+} from '@reatom/core'
 import {
   action,
   atom,
+  computed,
+  bind,
+  withMiddleware,
   EXTENSIONS,
   isAbort,
   isAction,
@@ -101,11 +114,6 @@ const REATOM_NAME_DUP_MAX_UTF8 = Math.floor(
   UNLOAD_BUDGET_BYTES / UNLOAD_NEWEST_KEEP / 4,
 )
 
-const inIsolatedContextRoot = (): boolean => {
-  if (STACK.length === 0) return false
-  return top().root !== STACK[0]!.root
-}
-
 const resourceSnapshot = (
   capture: ReturnType<typeof createValueCapture>,
   value: Record<string, OtlpAttrValue>,
@@ -154,7 +162,7 @@ export interface CreateTraceOptions {
   attributes?: Record<string, OtlpAttrValue>
 }
 
-export interface OtelOptions {
+interface RuntimeOptions {
   endpoint: string | null
   transports?: ReadonlyArray<Transport>
   headers?: Record<string, string>
@@ -241,6 +249,23 @@ const browserResourceAttributes = (): Record<string, OtlpAttrValue> => {
   }
   return attributes
 }
+
+export type OtelOptions = Omit<
+  RuntimeOptions,
+  | 'serviceName'
+  | 'serviceVersion'
+  | 'environment'
+  | 'resource'
+  | 'skipGlobalExtension'
+  | 'extend'
+  | 'batchInterval'
+  | 'maxBatchSize'
+  | 'maxQueueSize'
+  | 'exportTimeoutMs'
+  | 'useBeacon'
+  | 'retry'
+  | 'version'
+>
 
 export interface ReatomOpentelemetryInput {
   name: string
@@ -363,10 +388,12 @@ export interface ReatomOpentelemetryInput {
   maxTraceMs?: number
 }
 
-export interface ReatomOpentelemetry {
+export interface ReatomOpentelemetry extends Atom<OtelOptions> {
   /** Construction-time instance name. Default `storageKey` for web analytics. */
-  readonly name: string
-  options: Atom<OtelOptions>
+  readonly instanceName: string
+  readonly resource: Readonly<Record<string, OtlpAttrValue>>
+  readonly recordLimit: number
+  disposed: Computed<boolean>
   withOTel: ReturnType<typeof createWithOTel>['withOTel']
   traceVar: Variable<TraceContext, [TraceContext]>
   attributesVar: Variable<Record<string, OtlpAttrValue>>
@@ -377,7 +404,7 @@ export interface ReatomOpentelemetry {
   ) => TraceContext | undefined
   /** Route page pair after a route root, or undefined when none is open. */
   pageTrace: () => TraceContext | undefined
-  records: Atom<readonly unknown[]>
+  records: Computed<readonly unknown[]>
   /**
    * Live JavaScript values for a locally kept record. Plain references, never
    * copied, masked, or included in the exported payload. `undefined` for
@@ -385,15 +412,18 @@ export interface ReatomOpentelemetry {
    */
   localValuesOf(record: unknown): LocalValues | undefined
   clearRecords: Action<[], void>
-  log: (eventName: string, attributes?: Record<string, OtlpAttrValue>) => void
+  log: Action<
+    [eventName: string, attributes?: Record<string, OtlpAttrValue>],
+    void
+  >
   /** One batch delivery; extend or pass `transports` to fan out. */
   transport: Action<[TransportBatch], Promise<TransportResult>>
   /** Wait for finished records present at invocation, up to exportTimeoutMs. */
-  flush: () => Promise<void>
+  flush: Action<[], Promise<void>>
   /** Immutable snapshot of capacity, delivery and losses. */
-  stats: () => TelemetryStats
+  stats: Computed<TelemetryStats>
   /** Stop new observation and batching; request abort of in-flight export. */
-  dispose: () => void
+  dispose: Action<[], void>
 }
 
 type Tracing = ReturnType<typeof createWithOTel>
@@ -401,6 +431,7 @@ type Tracing = ReturnType<typeof createWithOTel>
 type InstanceInternals = {
   recordedExceptions: WeakSet<object>
   rateLimitDrops: { count: number }
+  invalidateStats(): void
   currentTrace: Tracing['currentTrace']
   runInTrace: Tracing['runInTrace']
 }
@@ -429,12 +460,14 @@ export const countRateLimitDrop = (instance: ReatomOpentelemetry) => {
   const internals = internalsByInstance.get(instance)
   if (!internals) return
   internals.rateLimitDrops.count++
+  internals.invalidateStats()
 }
 
 export const resetRateLimitDrops = (instance: ReatomOpentelemetry) => {
   const internals = internalsByInstance.get(instance)
   if (!internals) return
   internals.rateLimitDrops.count = 0
+  internals.invalidateStats()
 }
 
 const assertEndpoint = (endpoint: string | null, instanceName: string) => {
@@ -485,36 +518,74 @@ export const reatomOpentelemetry = (
   const queueOptions = resolveQueueOptions(input)
   const pageDocument = typeof document === 'undefined' ? undefined : document
   const instanceId = randomInstanceId()
+  let instance: ReatomOpentelemetry
+  let captureStarted = false
   const recordsSink: unknown[] = []
+  let invalidateStats = () => {}
+  type ObservableWriters = { records(): void; stats(): void; disposed(): void }
+  const observableRoots = new WeakMap<object, ObservableWriters>()
+  const observableCells = new Set<WeakRef<ObservableWriters>>()
+  function* observableWriters() {
+    for (const reference of observableCells) {
+      const writer = reference.deref()
+      if (writer) yield writer
+      else observableCells.delete(reference)
+    }
+  }
+  const isolatedRoot = () => STACK.length > 0 && top().root !== STACK[0]!.root
+  const watchRoot = () => {
+    const isolated = isolatedRoot()
+    const root = top().root
+    if (!observableRoots.has(root)) {
+      const cell = {
+        records: isolated
+          ? () => {}
+          : bind(() => records.set(recordsSink.slice()), root.frame),
+        stats: bind(() => statsRevision.set((value) => value + 1), root.frame),
+        disposed: bind(() => {
+          disposedState.set(disposed)
+          if (disposed) records.set([])
+        }, root.frame),
+      }
+      observableRoots.set(root, cell)
+      observableCells.add(new WeakRef(cell))
+    }
+  }
+  const notifyRecords = () => {
+    for (const writer of observableWriters()) observe(writer.records)
+  }
+
   let applySignalTransition: (
     previous: OtelOptions,
     next: OtelOptions,
     root: object,
   ) => void = () => {}
+  const fixedOptions = {
+    serviceName: input.serviceName,
+    serviceVersion: input.serviceVersion,
+    environment: input.environment,
+    resource: input.resourceAttributes,
+    skipGlobalExtension: input.skipGlobalExtension === true,
+    extend: input.extend,
+    batchInterval: input.batchInterval,
+    maxBatchSize: input.maxBatchSize,
+    maxQueueSize: input.maxQueueSize,
+    exportTimeoutMs: input.exportTimeoutMs,
+    useBeacon: input.useBeacon,
+    retry: input.retry,
+    version: input.version,
+  }
   const { options, records, clearRecords, traceVar, attributesVar } =
     suppressTracing(() => {
       const options = atom<OtelOptions>(
         {
           endpoint: input.endpoint,
           headers: input.headers,
-          serviceName: input.serviceName,
-          serviceVersion: input.serviceVersion,
-          environment: input.environment,
-          resource: input.resourceAttributes,
-          skipGlobalExtension: input.skipGlobalExtension === true,
           filter: input.filter,
-          extend: input.extend,
           captureValues: input.captureValues,
           keepRecords: input.keepRecords,
           localValues: input.localValues ?? false,
           transports: input.transports,
-          batchInterval: input.batchInterval,
-          maxBatchSize: input.maxBatchSize,
-          maxQueueSize: input.maxQueueSize,
-          exportTimeoutMs: input.exportTimeoutMs,
-          useBeacon: input.useBeacon,
-          retry: input.retry,
-          version: input.version,
           sampling: resolveSampling(input.sampling),
           roots: input.roots,
           route: input.route,
@@ -522,24 +593,27 @@ export const reatomOpentelemetry = (
           maxSpansPerTrace: input.maxSpansPerTrace ?? 1000,
           maxTraceMs: input.maxTraceMs ?? 60_000,
         } satisfies OtelOptions,
-        `otel.${name}.options`,
+        `otel.${name}`,
       )
-      const writeOptions = options.set.bind(options)
-      options.set = ((
-        update: OtelOptions | ((current: OtelOptions) => OtelOptions),
-      ) => {
-        const current = options()
-        const proposed = typeof update === 'function' ? update(current) : update
-        const next = preserveTracerConsent(current, proposed)
-        assertEndpoint(next.endpoint, name)
-        const written = writeOptions(next)
-        applySignalTransition(current, next, top().root)
-        return written
-      }) as typeof options.set
+      options.extend(
+        withMiddleware(() => (next, ...params) => {
+          if (!params.length) return next()
+          const current = top().state as OtelOptions
+          const update = params[0]
+          const proposed =
+            typeof update === 'function' ? update(current) : update
+          const merged = preserveTracerConsent(current, proposed)
+          assertEndpoint(merged.endpoint, name)
+          const written = next(merged)
+          applySignalTransition(current, merged, top().root)
+          return written
+        }),
+      )
       const records = atom<readonly unknown[]>([], `otel.${name}.records`)
       const clearRecords = action(() => {
         recordsSink.length = 0
         records.set([])
+        notifyRecords()
       }, `otel.${name}.clearRecords`)
       const traceVar = variable<TraceContext>(`otel.${name}.trace`)
       const attributesVar = variable<Record<string, OtlpAttrValue>>(
@@ -548,6 +622,11 @@ export const reatomOpentelemetry = (
       return { options, records, clearRecords, traceVar, attributesVar }
     })
   // OTel mandate: a tracer must never escalate. Log once, move on.
+  const runtimeOptions = (): RuntimeOptions => ({
+    ...options(),
+    ...fixedOptions,
+    ...(instance ? { consent: effectiveConsentOf(instance) } : {}),
+  })
   // Aborts after dispose() are expected — gate at the single sink so
   // every call site (queue.onError, keepalive .catch) inherits it.
   // `dropped` lets ops correlate failure pressure with traffic — a 1-span
@@ -596,7 +675,7 @@ export const reatomOpentelemetry = (
   }
   const resourceAttributes = observe(() => {
     const capture = createValueCapture()
-    const current = options()
+    const current = runtimeOptions()
     const serviceName = capture.capture('service.name', current.serviceName)
     const defaults: Record<string, OtlpAttrValue> = {
       'telemetry.sdk.name': TELEMETRY_SDK_NAME,
@@ -669,12 +748,12 @@ export const reatomOpentelemetry = (
       encode: (item) => JSON.stringify(payload([item]).resourceSpans[0]),
     })
   const hasExportDestination = () => {
-    const current = options()
+    const current = runtimeOptions()
     return current.endpoint !== null || (current.transports?.length ?? 0) > 0
   }
   const transport = action(
     async (batch: TransportBatch): Promise<TransportResult> => {
-      const current = options()
+      const current = runtimeOptions()
       const extras = current.transports ?? []
       const destinations: Transport[] = []
       if (current.endpoint !== null) {
@@ -762,7 +841,7 @@ export const reatomOpentelemetry = (
   }
   const detachedRoot = {}
   const openByRoot = new WeakMap<object, OpenFlags>()
-  const flagsFor = (root: object): OpenFlags => {
+  const baseFlagsFor = (root: object): OpenFlags => {
     let flags = openByRoot.get(root)
     if (!flags) {
       flags = { traces: true, logs: true, publicLogs: true }
@@ -770,8 +849,18 @@ export const reatomOpentelemetry = (
     }
     return flags
   }
+  const flagsFor = (root: object): OpenFlags => {
+    const flags = baseFlagsFor(root)
+    if (!instance || !hasBoundConsent(instance)) return flags
+    const consent = effectiveConsentOf(instance)
+    return {
+      ...flags,
+      traces: flags.traces && tracerSignalEnabled({ consent }, 'traces'),
+      logs: flags.logs && tracerSignalEnabled({ consent }, 'logs'),
+    }
+  }
   const syncFlags = (root: object, current: OtelOptions): OpenFlags => {
-    const flags = flagsFor(root)
+    const flags = baseFlagsFor(root)
     flags.traces = tracerSignalEnabled(current, 'traces')
     flags.logs = tracerSignalEnabled(current, 'logs')
     flags.publicLogs = current.signals?.logs !== false
@@ -786,7 +875,7 @@ export const reatomOpentelemetry = (
   }
   const liveFlags = (): OpenFlags => {
     try {
-      return syncFlags(top().root, options())
+      return syncFlags(top().root, runtimeOptions())
     } catch {
       return flagsFor(detachedRoot)
     }
@@ -804,11 +893,12 @@ export const reatomOpentelemetry = (
     exportTimeoutMs: queueOptions.exportTimeoutMs,
     onError: logExportError,
     onQuarantine: (count) =>
-      observe(() =>
-        warnDev(
+      observe(() => {
+        invalidateStats()
+        return warnDev(
           `[@reatom/opentelemetry] transport did not settle after abort; holding ${count} records`,
-        ),
-      ),
+        )
+      }),
     send: async (items, { signal, deadline, keepalive, excludeOversized }) => {
       const allowed = items.filter((item) => flagsFor(item.root).traces)
       const blocked = items.length - allowed.length
@@ -874,6 +964,7 @@ export const reatomOpentelemetry = (
 
   const queue = createBatchQueue<QueueItem>({
     ...queueOptions,
+    onChange: () => invalidateStats(),
     pauseWhile: isOffline,
     send: (lease) => {
       // A full batch can be committed before the observed execution settles.
@@ -940,11 +1031,12 @@ export const reatomOpentelemetry = (
     exportTimeoutMs: queueOptions.exportTimeoutMs,
     onError: logExportError,
     onQuarantine: (count) =>
-      observe(() =>
-        warnDev(
+      observe(() => {
+        invalidateStats()
+        return warnDev(
           `[@reatom/opentelemetry] transport did not settle after abort; holding ${count} records`,
-        ),
-      ),
+        )
+      }),
     send: async (items, { signal, deadline, keepalive, excludeOversized }) => {
       const allowed = items.filter((item) => {
         const flags = flagsFor(item.root)
@@ -1015,6 +1107,7 @@ export const reatomOpentelemetry = (
   })
   const logsQueue = createBatchQueue<LogQueueItem>({
     ...queueOptions,
+    onChange: () => invalidateStats(),
     maxQueueSize: Math.max(queueOptions.maxQueueSize, 1000),
     pauseWhile: isOffline,
     send: (lease) => {
@@ -1030,7 +1123,11 @@ export const reatomOpentelemetry = (
         ),
       ),
   })
-  let instance: ReatomOpentelemetry
+  const disposedState = atom(false, `otel.${name}.disposed.state`)
+  const statsRevision = atom(0, `otel.${name}.stats.revision`)
+  invalidateStats = () => {
+    for (const writer of observableWriters()) observe(writer.stats)
+  }
   let disposed = false
   const resumeExport = () => {
     if (disposed || isOffline()) return
@@ -1079,7 +1176,7 @@ export const reatomOpentelemetry = (
     },
   }
   const sampler = new TraceSampler(
-    () => resolveSampling(options().sampling),
+    () => resolveSampling(runtimeOptions().sampling),
     () => sessionContext.traceId,
   )
   const errorRing = new ErrorRing<QueueItem>()
@@ -1175,22 +1272,23 @@ export const reatomOpentelemetry = (
     }
   }
   const readInstanceAttributes = (): Record<string, OtlpAttrValue> => {
-    if (!STACK.length) return {}
     try {
-      const value = attributesVar.get()
-      if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
-      return value
+      const explicit = STACK.length ? attributesVar.get() : undefined
+      return explicit === undefined
+        ? readAttributeSource(instance)
+        : snapshotAttributes(explicit)
     } catch {
-      return {}
+      return { 'reatom.attributes_error': 'TypeError' }
     }
   }
+
   const keepLocalRecords = () => {
-    const current = options()
+    const current = runtimeOptions()
     return current.endpoint === null || current.keepRecords === true
   }
   const localValuesByRecord = new WeakMap<object, LocalValues>()
   const localValuesActive = () => {
-    const mode = options().localValues
+    const mode = runtimeOptions().localValues
     if (mode === false || mode === undefined) return false
     return keepLocalRecords()
   }
@@ -1204,7 +1302,7 @@ export const reatomOpentelemetry = (
     ) {
       localValuesByRecord.set(record, local)
     }
-    const limit = options().maxQueueSize ?? queueOptions.maxQueueSize
+    const limit = queueOptions.maxQueueSize
     recordsSink.push(record)
     if (recordsSink.length > limit) {
       recordsSink.splice(0, recordsSink.length - limit)
@@ -1213,14 +1311,20 @@ export const reatomOpentelemetry = (
       const next = [...stored, record]
       return next.length > limit ? next.slice(next.length - limit) : next
     })
+    notifyRecords()
   }
   const reserveSpan = (
     metadataOverride?: Record<string, OtlpAttrValue>,
+    commonOverride?: Record<string, OtlpAttrValue>,
   ): (Reservation<SpanCommit> & { accepted: boolean }) | undefined => {
     if (disposed) return
+    captureStarted = true
     let reservation: ReturnType<typeof queue.reserve>
     try {
       const captureMetadata = metadataOverride ?? browserMetadataOf(instance)
+      const commonAttributes =
+        commonOverride ??
+        (metadataOverride === undefined ? readInstanceAttributes() : {})
       reservation = queue.reserve()
       const localOnly = !reservation && localValuesActive()
       if (!reservation && !localOnly) return
@@ -1231,7 +1335,7 @@ export const reatomOpentelemetry = (
       }
       const root = rootNow()
       try {
-        syncFlags(top().root, options())
+        syncFlags(top().root, runtimeOptions())
       } catch {
         // Admission outside a frame keeps the detached root's flags.
       }
@@ -1297,7 +1401,7 @@ export const reatomOpentelemetry = (
                 'reatom.kind': 'action',
                 ...allowedMetadata(captureMetadata),
                 'reatom.outcome': reatomOutcome,
-                ...readInstanceAttributes(),
+                ...commonAttributes,
                 ...linked.attributes,
               },
             })
@@ -1364,7 +1468,7 @@ export const reatomOpentelemetry = (
 
   const serialize = input.serialize
   const liveCapture = () => {
-    const current = options()
+    const current = runtimeOptions()
     if (current.captureValues === false) return false as const
     return {
       redact: serialize
@@ -1423,7 +1527,7 @@ export const reatomOpentelemetry = (
   }
   let routeMachine: ReturnType<typeof createRouteRootMachine> | undefined
   const hasRoot = (kind: RootKind) =>
-    (options().roots ?? DEFAULT_ROOTS).includes(kind)
+    (runtimeOptions().roots ?? DEFAULT_ROOTS).includes(kind)
   const fallbackTrace = (): TraceContext => {
     const found = currentTrace()
     if (found) return found
@@ -1436,7 +1540,7 @@ export const reatomOpentelemetry = (
   const rootsAdapter: RouteRootsAdapter = {
     pageTrace: () => routeMachine?.pageTrace(),
     explicitTrace: readExplicitTrace,
-    routeMode: () => (options().route === 'link' ? 'link' : 'child'),
+    routeMode: () => (runtimeOptions().route === 'link' ? 'link' : 'child'),
     allowActionRoot: () => hasRoot('action'),
     closePendingRouteSpan: () => {
       routeMachine?.closePendingIfReady()
@@ -1455,7 +1559,7 @@ export const reatomOpentelemetry = (
   ) => {
     const resources = snapshotResources()
     if (!resources) return
-    const instanceAttributes = readInstanceAttributes()
+    const instanceAttributes: Record<string, OtlpAttrValue> = {}
     const stamped =
       Object.keys(instanceAttributes).length === 0
         ? record
@@ -1483,7 +1587,7 @@ export const reatomOpentelemetry = (
     const root = rootNow()
     let open = flagsFor(root)
     try {
-      open = syncFlags(top().root, options())
+      open = syncFlags(top().root, runtimeOptions())
     } catch {
       open = flagsFor(root)
     }
@@ -1510,16 +1614,23 @@ export const reatomOpentelemetry = (
     if (!reservation) return
     reservation.commit({ log: stamped, resourceAttributes: resources, root })
   }
-  const reserveLog = (): Reservation<LogRecordInput> | undefined => {
+  const reserveLog = (
+    commonOverride?: Record<string, OtlpAttrValue>,
+    metadataOverride?: Record<string, OtlpAttrValue>,
+  ): Reservation<LogRecordInput> | undefined => {
     if (disposed) return
-    const metadata = browserMetadataOf(instance)
+    captureStarted = true
+    const metadata = {
+      ...(metadataOverride ?? browserMetadataOf(instance)),
+      ...(commonOverride ?? readInstanceAttributes()),
+    }
     return {
       commit: (input) => {
         if (disposed) return
         commitLogRecord(
           buildLogRecord({
             ...input,
-            attributes: { ...input.attributes, ...allowedMetadata(metadata) },
+            attributes: { ...allowedMetadata(metadata), ...input.attributes },
           }),
           'tracer',
           input.local,
@@ -1530,21 +1641,21 @@ export const reatomOpentelemetry = (
     }
   }
   const tracing = createWithOTel({
-    reserveSpan,
+    reserveSpan: (common, metadata) => reserveSpan(metadata, common),
     reserveLog,
     fallbackTrace,
     isActive: () => !disposed,
     traceVar,
     roots: rootsAdapter,
     admit: (target) => {
-      const current = options()
+      const current = runtimeOptions()
       if (!current.filter) return true
       return !!current.filter(target)
     },
     warnContextLoss: () =>
-      observe(() => options().warnContextLoss === true) === true,
+      observe(() => runtimeOptions().warnContextLoss === true) === true,
     spanBudget: () => {
-      const current = options()
+      const current = runtimeOptions()
       return {
         maxSpansPerTrace: current.maxSpansPerTrace,
         maxTraceMs: current.maxTraceMs,
@@ -1555,8 +1666,12 @@ export const reatomOpentelemetry = (
     logRevision: () => logsEpoch,
     captureValues: liveCapture,
     instanceAttributes: readInstanceAttributes,
+    instanceMetadata: () => ({ ...browserMetadataOf(instance) }),
+    pinInstanceAttributes: (attributes) => {
+      if (STACK.length) attributesVar.set(attributes)
+    },
     localValues: () => {
-      const mode = options().localValues ?? false
+      const mode = runtimeOptions().localValues ?? false
       if (mode === false || !keepLocalRecords()) return false
       return mode
     },
@@ -1599,6 +1714,7 @@ export const reatomOpentelemetry = (
     local?: LocalValues,
   ) => {
     if (disposed || isUntracedRoot()) return
+    captureStarted = true
     if (!currentTrace() && !routeMachine?.pageTrace() && !readExplicitTrace()) {
       ensureSessionSpan()
     }
@@ -1610,22 +1726,26 @@ export const reatomOpentelemetry = (
         spanId: spanContext.spanId as OtlpLogRecord['spanId'],
         timeMs: Date.now(),
         body,
-        attributes: { ...browserMetadataOf(instance), ...attributes },
+        attributes: {
+          ...browserMetadataOf(instance),
+          ...readInstanceAttributes(),
+          ...attributes,
+        },
       }),
       source,
       local,
     )
   }
-  const log = (
-    eventName: string,
-    attributes?: Record<string, OtlpAttrValue>,
-  ) => {
-    observe(() => commitNamedLog(eventName, attributes))
-  }
+  const log = action(
+    (eventName: string, attributes?: Record<string, OtlpAttrValue>) => {
+      observe(() => commitNamedLog(eventName, attributes))
+    },
+    `otel.${name}.log`,
+  )
   const emitLog = (emission: LogEmission) => {
     if (disposed || isUntracedRoot()) return
     observe(() => {
-      const current = options()
+      const current = runtimeOptions()
       const captureOff = !liveFlags().logs || current.captureValues === false
       const attributes: Record<string, OtlpAttrValue> = {}
       const label =
@@ -1674,7 +1794,7 @@ export const reatomOpentelemetry = (
     ) {
       return target
     }
-    const current = options()
+    const current = runtimeOptions()
     let next = isAction(target) ? tracing.auto(target, true) : target
     if (current.extend) {
       const extended = observe(() => current.extend!(next, tracing.withOTel))
@@ -1695,8 +1815,8 @@ export const reatomOpentelemetry = (
     if (!tracesLease && !logsLease) return
     if (
       input.useBeacon !== true ||
-      options().endpoint === null ||
-      (options().transports?.length ?? 0) > 0
+      runtimeOptions().endpoint === null ||
+      (runtimeOptions().transports?.length ?? 0) > 0
     ) {
       if (tracesLease) worker.send(tracesLease, true)
       if (logsLease) logsWorker.send(logsLease, true)
@@ -1735,7 +1855,7 @@ export const reatomOpentelemetry = (
         pageDocument,
         encoder.encode(selected.body).length,
       )
-      const endpoint = options().endpoint
+      const endpoint = runtimeOptions().endpoint
       if (endpoint === null) {
         lease.release({
           exported: allowed.length,
@@ -1831,6 +1951,7 @@ export const reatomOpentelemetry = (
     }
     if (typeof header === 'string') {
       invalidParent++
+      invalidateStats()
       if (!warnedInvalidParent && isDevelopment()) {
         warnedInvalidParent = true
         console.warn(`[@reatom/opentelemetry] invalid traceparent: ${header}`)
@@ -1886,9 +2007,11 @@ export const reatomOpentelemetry = (
   }
   const connectorCleanups = new Set<() => void>()
   const connectorKeys = new Map<string, () => void>()
-  const dispose = () => {
+  const dispose = action(() => {
     if (disposed) return
     disposed = true
+    disposedState.set(true)
+    for (const writer of observableWriters()) observe(writer.disposed)
     for (const cleanup of connectorCleanups) {
       try {
         cleanup()
@@ -1905,6 +2028,7 @@ export const reatomOpentelemetry = (
     logsWorker.dispose()
     recordsSink.length = 0
     observe(() => records.set([]))
+    notifyRecords()
     if (!skipGlobalExtension) removeItem(EXTENSIONS, globalExt)
     if (typeof document !== 'undefined') {
       document.removeEventListener('visibilitychange', onVisibilityChange)
@@ -1912,13 +2036,19 @@ export const reatomOpentelemetry = (
     if (typeof window !== 'undefined') {
       window.removeEventListener('pagehide', onPageHide)
     }
-  }
+  }, `otel.${name}.dispose`)
   entry.dispose = dispose
   registerInstance(entry)
 
-  instance = {
-    name,
-    options,
+  instance = Object.assign(options, {
+    instanceName: name,
+    resource: Object.freeze({ ...resourceAttributes }),
+    recordLimit: queueOptions.maxQueueSize,
+    disposed: computed(() => {
+      watchRoot()
+      disposedState()
+      return disposed
+    }, `otel.${name}.disposed`),
     withOTel: tracing.withOTel,
     traceVar,
     attributesVar,
@@ -1926,30 +2056,51 @@ export const reatomOpentelemetry = (
     traceparent,
     parseTraceparent,
     pageTrace: () => routeMachine?.pageTrace(),
-    records: Object.assign(() => {
-      if (!inIsolatedContextRoot()) return recordsSink.slice()
-      return records()
-    }, records),
-    localValuesOf: (record) => {
+    records: computed(() => {
+      watchRoot()
+      const local = records()
+      return disposed ? [] : isolatedRoot() ? local : recordsSink.slice()
+    }, `otel.${name}.records.readonly`),
+    localValuesOf: (record: unknown) => {
       if (typeof record !== 'object' || record === null) return
       return localValuesByRecord.get(record)
     },
     clearRecords,
     log,
     transport,
-    stats: mergeStats,
-    flush: async () => {
+    stats: computed(() => {
+      watchRoot()
+      statsRevision()
+      return mergeStats()
+    }, `otel.${name}.stats`),
+    flush: action(async () => {
       await Promise.resolve()
       await Promise.all([queue.flush(), logsQueue.flush()])
-    },
+    }, `otel.${name}.flush`),
     dispose,
-  }
+  }) as ReatomOpentelemetry
   function allowedMetadata(attributes: Record<string, OtlpAttrValue>) {
     const next = { ...attributes }
     if (!browserMetadataOf(instance)['session.id']) delete next['session.id']
     return next
   }
   installBrowserCapture(instance, {
+    preflightConsent() {
+      if (
+        disposed ||
+        captureStarted ||
+        [
+          'analytics',
+          'browserConsole',
+          'browserNetwork',
+          'webVitals',
+          'browserPerformance',
+        ].some((key) => key in instance)
+      )
+        throw new Error(
+          '[@reatom/opentelemetry] install withGDPR before collectors and first capture',
+        )
+    },
     capture: (key, value) =>
       observe(() => {
         const config = liveCapture()
@@ -1980,18 +2131,24 @@ export const reatomOpentelemetry = (
     },
     enabled: (signal) =>
       !disposed &&
-      observe(() => tracerSignalEnabled(options(), signal)) === true,
+      observe(() => tracerSignalEnabled(runtimeOptions(), signal)) === true,
     snapshot: () =>
       observe(() => ({
         context: (currentTrace() ?? fallbackTrace()) as SpanContext,
-        attributes: { ...browserMetadataOf(instance) },
+        attributes: {
+          ...browserMetadataOf(instance),
+          ...readInstanceAttributes(),
+        },
       })) ?? { context: createChildContext(), attributes: {} },
     log: (input) =>
       observe(() => {
-        if (disposed || !tracerSignalEnabled(options(), 'logs')) return
+        if (disposed || !tracerSignalEnabled(runtimeOptions(), 'logs')) return
         const snapshot = input.snapshot ?? {
           context: (currentTrace() ?? fallbackTrace()) as SpanContext,
-          attributes: browserMetadataOf(instance),
+          attributes: {
+            ...browserMetadataOf(instance),
+            ...readInstanceAttributes(),
+          },
         }
         commitLogRecord(
           buildLogRecord({
@@ -2007,10 +2164,13 @@ export const reatomOpentelemetry = (
       }),
     span: (input) =>
       observe<ReturnType<BrowserCapture['span']>>(() => {
-        if (disposed || !tracerSignalEnabled(options(), 'traces')) return
+        if (disposed || !tracerSignalEnabled(runtimeOptions(), 'traces')) return
         const snapshot = input.snapshot ?? {
           context: (currentTrace() ?? fallbackTrace()) as SpanContext,
-          attributes: browserMetadataOf(instance),
+          attributes: {
+            ...browserMetadataOf(instance),
+            ...readInstanceAttributes(),
+          },
         }
         const context = createChildContext(snapshot.context)
         const reservation = reserveSpan({})
@@ -2033,7 +2193,10 @@ export const reatomOpentelemetry = (
                 if (finished) return
                 finished = true
                 try {
-                  if (disposed || !tracerSignalEnabled(options(), 'traces')) {
+                  if (
+                    disposed ||
+                    !tracerSignalEnabled(runtimeOptions(), 'traces')
+                  ) {
                     reservation.cancel('observation')
                     return
                   }
@@ -2067,6 +2230,7 @@ export const reatomOpentelemetry = (
   internalsByInstance.set(instance, {
     recordedExceptions: tracing.recordedExceptions,
     rateLimitDrops,
+    invalidateStats,
     currentTrace: tracing.currentTrace,
     runInTrace: tracing.runInTrace,
   })

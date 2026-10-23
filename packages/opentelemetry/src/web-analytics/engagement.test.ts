@@ -1,3 +1,5 @@
+import type { AnalyticsFixtureOptions as WebAnalyticsCreateOptions } from './test-helpers.ts'
+import { createAnalytics, readAnalyticsRecords } from './test-helpers.ts'
 import {
   context,
   notify,
@@ -10,11 +12,7 @@ import { afterEach, expect, test, vi } from 'vitest'
 
 import { reatomOpentelemetry } from '../reatomOpentelemetry.ts'
 import { parseLogRecords } from '../test-helpers.ts'
-import {
-  connectWebAnalytics,
-  type NavigationSource,
-  type WebAnalyticsCreateOptions,
-} from './connectWebAnalytics.ts'
+import { type NavigationSource } from './connectWebAnalytics.ts'
 
 const ENGAGEMENT_EVENT = 'app.page.engagement'
 const PAGE_VIEW_EVENT = 'app.page_view'
@@ -242,8 +240,8 @@ const collectPageViews = (records: readonly unknown[]): object[] =>
   collectNamed(records, PAGE_VIEW_EVENT)
 
 const snapshotRecords = (
-  analytics: ReturnType<typeof connectWebAnalytics>,
-): unknown[] => [...analytics.otel.records()]
+  analytics: ReturnType<typeof createAnalytics>,
+): unknown[] => [...readAnalyticsRecords(analytics.otel)]
 
 const hideAndSettle = async (hide: () => void) => {
   hide()
@@ -254,7 +252,7 @@ const hideAndSettle = async (hide: () => void) => {
 const connectShop = (overrides: Partial<WebAnalyticsCreateOptions> = {}) =>
   context.start(() => {
     const connected = remember(
-      connectWebAnalytics({
+      createAnalytics({
         ...OPTIONS,
         consent: true,
         endpoint: null,
@@ -266,10 +264,10 @@ const connectShop = (overrides: Partial<WebAnalyticsCreateOptions> = {}) =>
     return connected
   })
 
-const engagementOf = (analytics: ReturnType<typeof connectWebAnalytics>) =>
+const engagementOf = (analytics: ReturnType<typeof createAnalytics>) =>
   collectEngagement(snapshotRecords(analytics))
 
-const pageViewsOf = (analytics: ReturnType<typeof connectWebAnalytics>) =>
+const pageViewsOf = (analytics: ReturnType<typeof createAnalytics>) =>
   collectPageViews(snapshotRecords(analytics))
 
 const expectEngagementMs = (
@@ -362,7 +360,7 @@ test('WA-6 / F-08: dispose then reconnect flushes engagement per page instead of
   const connect = () =>
     context.start(() => {
       const connected = remember(
-        connectWebAnalytics(otel, {
+        createAnalytics(otel, {
           consent: true,
           navigation: 'popstate',
         }),
@@ -377,7 +375,8 @@ test('WA-6 / F-08: dispose then reconnect flushes engagement per page instead of
 
   context.start(() => first.dispose())
 
-  const second = connect()
+  first.enable()
+  const second = first
   expect(pageViewsOf(second)).toHaveLength(1)
 
   clock.advance(400)
@@ -514,7 +513,7 @@ test('WA-6 / R11: consent false emits no engagement OTLP or records', async () =
 
   const analytics = context.start(() => {
     const connected = remember(
-      connectWebAnalytics({
+      createAnalytics({
         ...OPTIONS,
         consent: false,
         endpoint: 'https://collector.test',
@@ -560,7 +559,7 @@ test('WA-6 / F-09: engagement hide does not hijack urlAtom.catchLinks', async ()
   await context.start(async () => {
     const catchLinksBefore = urlAtom.catchLinks()
     const connected = remember(
-      connectWebAnalytics({
+      createAnalytics({
         ...OPTIONS,
         consent: true,
         endpoint: null,

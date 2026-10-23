@@ -10,7 +10,7 @@ import {
 import { afterEach, expect, test, vi } from 'vitest'
 
 import { createValueCapture } from './captureValues.ts'
-import { reatomGDPR } from './gdpr/reatomGDPR.ts'
+import { withGDPR, type ReatomGDPR } from './gdpr/reatomGDPR.ts'
 import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
 import { installDomStubs, parseLogRecords, parseSpans } from './test-helpers.ts'
 
@@ -206,31 +206,35 @@ test('captureValues false omits primitive update bodies and LOG payloads', async
   }
 })
 
-test('reatomGDPR leaves the tracer exporting until submit sets diagnostics', async () => {
+test('withGDPR denies diagnostics before submit while explicit public facts stay independent', async () => {
   const attached = start()
   const open = start()
   try {
     await context.start(async () => {
-      const consent = reatomGDPR({
-        name: attached.name,
-        persist: false,
-        otel: attached.otel,
+      const consent = attached.otel.extend(
+        withGDPR({
+          name: attached.name,
+          persist: false,
+        }),
+      ).gdpr
+      expect(attached.otel().consent).toMatchObject({
+        diagnostics: false,
+        analytics: false,
       })
-      expect(attached.otel.options().consent).toBeUndefined()
-      expect(attached.otel.options().signals).toBeUndefined()
+      expect(attached.otel().signals).toBeUndefined()
 
       const query = atom('', 'privacy.query')
       const search = action((text: string) => text, 'privacy.search')
       query.set('secret-query')
       search('before-submit')
       attached.otel.log('app.page_view', { 'url.path': '/search' })
-      await attached.otel.flush()
+      await wrap(attached.otel.flush())
 
-      expect(attached.wire()).toContain('before-submit')
-      expect(attached.wire()).toContain('secret-query')
+      expect(attached.wire()).not.toContain('before-submit')
+      expect(attached.wire()).not.toContain('secret-query')
       expect(
         attached.calls.some((call) => call.url.includes('/v1/traces')),
-      ).toBe(true)
+      ).toBe(false)
       expect(
         attached.calls.some(
           (call) =>
@@ -240,15 +244,18 @@ test('reatomGDPR leaves the tracer exporting until submit sets diagnostics', asy
       ).toBe(true)
 
       consent.fields.diagnostics.change(true)
-      expect(attached.otel.options().consent).toBeUndefined()
-      expect(attached.otel.options().signals).toBeUndefined()
+      expect(attached.otel().consent).toMatchObject({
+        diagnostics: false,
+        analytics: false,
+      })
+      expect(attached.otel().signals).toBeUndefined()
       await wrap(consent.submit())
-      expect(attached.otel.options().consent).toMatchObject({
+      expect(attached.otel().consent).toMatchObject({
         diagnostics: true,
       })
-      expect(attached.otel.options().signals).toBeUndefined()
+      expect(attached.otel().signals).toBeUndefined()
       search('after-grant')
-      await attached.otel.flush()
+      await wrap(attached.otel.flush())
       expect(attached.wire()).toContain('after-grant')
     })
 
@@ -263,13 +270,20 @@ test('reatomGDPR leaves the tracer exporting until submit sets diagnostics', asy
   }
 })
 
-test('options.set rejects a relative endpoint the same way construction does', () => {
-  const { otel } = start()
+test('native settings validation errors recover on a valid write and keep the exporter usable', async () => {
+  const { otel, wire } = start()
   try {
+    const saved = otel()
     expect(() =>
-      otel.options.set((current) => ({ ...current, endpoint: '/otel' })),
+      otel.set((current) => ({ ...current, endpoint: '/otel' })),
     ).toThrow(/absolute http\(s\) URL/)
-    expect(otel.options().endpoint).toBe('https://collector.invalid')
+    // Native atoms retain their error until another successful write.
+    expect(() => otel()).toThrow(/absolute http\(s\) URL/)
+    otel.set(saved)
+    expect(otel().endpoint).toBe('https://collector.invalid')
+    otel.log('exporter.after-valid-recovery')
+    await otel.flush()
+    expect(wire()).toContain('exporter.after-valid-recovery')
     expect(() =>
       reatomOpentelemetry({
         name: `privacy-bad-${Math.random().toString(16).slice(2)}`,
@@ -308,20 +322,21 @@ test('submitted diagnostics false keeps tracer export off without rewriting sign
   const { otel, calls, wire } = start()
   try {
     await context.start(async () => {
-      const consent = reatomGDPR({
-        name: `privacy-diag-off-${Math.random().toString(16).slice(2)}`,
-        persist: false,
-        otel,
-      })
-      otel.options.set((current) => ({
+      const consent = otel.extend(
+        withGDPR({
+          name: `privacy-diag-off-${Math.random().toString(16).slice(2)}`,
+          persist: false,
+        }),
+      ).gdpr
+      otel.set((current) => ({
         ...current,
         signals: { logs: false },
       }))
       consent.fields.analytics.change(true)
       consent.fields.diagnostics.change(false)
       await wrap(consent.submit())
-      expect(otel.options().signals).toEqual({ logs: false })
-      expect(otel.options().consent).toMatchObject({
+      expect(otel().signals).toEqual({ logs: false })
+      expect(otel().consent).toMatchObject({
         diagnostics: false,
         analytics: true,
       })
@@ -342,14 +357,15 @@ test('withdrawing diagnostics drops queued tracer records and does not export th
   const { otel, wire } = start()
   const consentName = `privacy-withdraw-${Math.random().toString(16).slice(2)}`
   try {
-    let consent: ReturnType<typeof reatomGDPR> | undefined
+    let consent: ReatomGDPR | undefined
     const root = context.start()
     await root.run(async () => {
-      consent = reatomGDPR({
-        name: consentName,
-        persist: false,
-        otel,
-      })
+      consent = otel.extend(
+        withGDPR({
+          name: consentName,
+          persist: false,
+        }),
+      ).gdpr
       consent.fields.diagnostics.change(true)
       consent.fields.analytics.change(true)
       await wrap(consent.submit())
@@ -366,7 +382,7 @@ test('withdrawing diagnostics drops queued tracer records and does not export th
     expect(wire()).not.toContain('granted-secret')
     expect(wire()).toContain('/keep-analytics')
 
-    await context.start(async () => {
+    await root.run(async () => {
       consent!.fields.diagnostics.change(true)
       await wrap(consent!.submit())
       action(() => 'after-restore', 'privacy.restored')()
@@ -387,7 +403,7 @@ test('a leased trace batch is dropped at send when signals turn off', async () =
         name: 'privacy.lease',
         attributes: { 'privacy.token': 'lease-sentinel' },
       })
-      otel.options.set((current) => ({
+      otel.set((current) => ({
         ...current,
         signals: { traces: false, logs: false },
       }))
@@ -410,7 +426,7 @@ test('pagehide drops queued spans after traces are held', async () => {
         name: 'privacy.hide',
         attributes: { 'privacy.token': 'hide-sentinel' },
       })
-      otel.options.set((current) => ({
+      otel.set((current) => ({
         ...current,
         signals: { traces: false, logs: false },
       }))
@@ -429,23 +445,21 @@ test('options.set keeps consent and signals when the replacement omits them', as
   const { otel, wire } = start()
   try {
     await context.start(async () => {
-      const consent = reatomGDPR({
-        name: `privacy-preserve-${Math.random().toString(16).slice(2)}`,
-        persist: false,
-        otel,
-      })
-      otel.options.set((current) => ({
+      const consent = otel.extend(
+        withGDPR({
+          name: `privacy-preserve-${Math.random().toString(16).slice(2)}`,
+          persist: false,
+        }),
+      ).gdpr
+      otel.set((current) => ({
         ...current,
         signals: { logs: false },
       }))
       consent.fields.diagnostics.change(false)
       await wrap(consent.submit())
-      otel.options.set({
-        endpoint: 'https://collector.invalid',
-        serviceName: 'privacy',
-      })
-      expect(otel.options().consent).toMatchObject({ diagnostics: false })
-      expect(otel.options().signals).toEqual({ logs: false })
+      otel.set({ endpoint: 'https://collector.invalid' })
+      expect(otel().consent).toMatchObject({ diagnostics: false })
+      expect(otel().signals).toEqual({ logs: false })
       action(() => 'wiped-secret', 'privacy.wiped')()
     })
     await otel.flush()
@@ -459,18 +473,19 @@ test('signals false is a kill switch after a diagnostics grant', async () => {
   const { otel, wire } = start()
   try {
     await context.start(async () => {
-      const consent = reatomGDPR({
-        name: `privacy-kill-${Math.random().toString(16).slice(2)}`,
-        persist: false,
-        otel,
-      })
+      const consent = otel.extend(
+        withGDPR({
+          name: `privacy-kill-${Math.random().toString(16).slice(2)}`,
+          persist: false,
+        }),
+      ).gdpr
       consent.fields.diagnostics.change(true)
       await wrap(consent.submit())
-      otel.options.set((current) => ({
+      otel.set((current) => ({
         ...current,
         signals: { traces: false, logs: false },
       }))
-      expect(otel.options().consent).toMatchObject({ diagnostics: true })
+      expect(otel().consent).toMatchObject({ diagnostics: true })
       action(() => 'kill-secret', 'privacy.kill')()
     })
     await otel.flush()
@@ -484,7 +499,7 @@ test('logs false leaves trace export on', async () => {
   const { otel, wire, spans, logs } = start()
   try {
     context.start(() => {
-      otel.options.set((current) => ({
+      otel.set((current) => ({
         ...current,
         signals: { logs: false },
       }))
@@ -508,14 +523,15 @@ test('logs false after a diagnostics grant still exports traces', async () => {
   const { otel, wire } = start()
   try {
     await context.start(async () => {
-      const consent = reatomGDPR({
-        name: `privacy-logs-only-${Math.random().toString(16).slice(2)}`,
-        persist: false,
-        otel,
-      })
+      const consent = otel.extend(
+        withGDPR({
+          name: `privacy-logs-only-${Math.random().toString(16).slice(2)}`,
+          persist: false,
+        }),
+      ).gdpr
       consent.fields.diagnostics.change(true)
       await wrap(consent.submit())
-      otel.options.set((current) => ({
+      otel.set((current) => ({
         ...current,
         signals: { ...current.signals, logs: false },
       }))
@@ -548,11 +564,11 @@ test('holding the tracer clears the error ring and held logs', async () => {
         if (remote) otel.traceVar.set(remote)
         return child()
       }, 'privacy.holder')()
-      otel.options.set((current) => ({
+      otel.set((current) => ({
         ...current,
         signals: { traces: false, logs: false },
       }))
-      otel.options.set((current) => ({
+      otel.set((current) => ({
         ...current,
         signals: { traces: true, logs: true },
       }))
@@ -636,17 +652,18 @@ test('analytics-only submit keeps tracer export', async () => {
   const { otel, wire } = start()
   try {
     await context.start(async () => {
-      const consent = reatomGDPR({
-        name: `privacy-analytics-only-${Math.random().toString(16).slice(2)}`,
-        persist: false,
-        otel,
-        categories: { analytics: false },
-      })
+      const consent = otel.extend(
+        withGDPR({
+          name: `privacy-analytics-only-${Math.random().toString(16).slice(2)}`,
+          persist: false,
+          categories: { analytics: false },
+        }),
+      ).gdpr
       consent.fields.analytics.change(true)
       await wrap(consent.submit())
-      expect(otel.options().consent).toMatchObject({ analytics: true })
-      expect(otel.options().consent).not.toHaveProperty('diagnostics')
-      expect(otel.options().signals?.traces).not.toBe(false)
+      expect(otel().consent).toMatchObject({ analytics: true })
+      expect(otel().consent).not.toHaveProperty('diagnostics')
+      expect(otel().signals?.traces).not.toBe(false)
       action(() => 'analytics-only-secret', 'privacy.analyticsOnly')()
       await otel.flush()
       expect(wire()).toContain('analytics-only-secret')
@@ -658,35 +675,39 @@ test('analytics-only submit keeps tracer export', async () => {
 
 test('diagnostics offered and left false holds export; diagnostics true exports', async () => {
   const held = start()
-  const granted = start()
+  let granted: ReturnType<typeof start> | undefined
   try {
     await context.start(async () => {
-      const consent = reatomGDPR({
-        name: `privacy-offered-off-${Math.random().toString(16).slice(2)}`,
-        persist: false,
-        otel: held.otel,
-        categories: { diagnostics: false, analytics: true, marketing: false },
-      })
+      const consent = held.otel.extend(
+        withGDPR({
+          name: `privacy-offered-off-${Math.random().toString(16).slice(2)}`,
+          persist: false,
+          categories: { diagnostics: false, analytics: true, marketing: false },
+        }),
+      ).gdpr
       await wrap(consent.submit())
       action(() => 'offered-secret', 'privacy.offered')()
       await held.otel.flush()
       expect(held.wire()).not.toContain('offered-secret')
     })
+    granted = start()
+    const grantedCase = granted
     await context.start(async () => {
-      const consent = reatomGDPR({
-        name: `privacy-offered-on-${Math.random().toString(16).slice(2)}`,
-        persist: false,
-        otel: granted.otel,
-        categories: { diagnostics: true, analytics: false, marketing: false },
-      })
+      const consent = grantedCase.otel.extend(
+        withGDPR({
+          name: `privacy-offered-on-${Math.random().toString(16).slice(2)}`,
+          persist: false,
+          categories: { diagnostics: true, analytics: false, marketing: false },
+        }),
+      ).gdpr
       await wrap(consent.submit())
       action(() => 'granted-export', 'privacy.grantedExport')()
-      await granted.otel.flush()
-      expect(granted.wire()).toContain('granted-export')
+      await grantedCase.otel.flush()
+      expect(grantedCase.wire()).toContain('granted-export')
     })
   } finally {
     held.otel.dispose()
-    granted.otel.dispose()
+    granted?.otel.dispose()
   }
 })
 
@@ -713,11 +734,12 @@ test('a dropped session span can export after a later diagnostics grant', async 
   const { otel, wire, spans } = start()
   try {
     await context.start(async () => {
-      const consent = reatomGDPR({
-        name: `privacy-session-${Math.random().toString(16).slice(2)}`,
-        persist: false,
-        otel,
-      })
+      const consent = otel.extend(
+        withGDPR({
+          name: `privacy-session-${Math.random().toString(16).slice(2)}`,
+          persist: false,
+        }),
+      ).gdpr
       consent.fields.diagnostics.change(false)
       await wrap(consent.submit())
       LOG('hidden-before')
@@ -741,17 +763,18 @@ test('options.set in another root does not reopen a denied tracer', async () => 
   const rootB = context.start()
   try {
     await rootA.run(async () => {
-      const consent = reatomGDPR({
-        name: `privacy-root-a-${Math.random().toString(16).slice(2)}`,
-        persist: false,
-        otel,
-      })
+      const consent = otel.extend(
+        withGDPR({
+          name: `privacy-root-a-${Math.random().toString(16).slice(2)}`,
+          persist: false,
+        }),
+      ).gdpr
       consent.fields.diagnostics.change(false)
       await wrap(consent.submit())
       action(() => 'root-a-secret', 'privacy.rootA')()
     })
     rootB.run(() => {
-      otel.options.set((current) => ({
+      otel.set((current) => ({
         ...current,
         headers: { Authorization: 'Bearer refreshed' },
       }))
@@ -763,7 +786,7 @@ test('options.set in another root does not reopen a denied tracer', async () => 
     await otel.flush()
     expect(wire()).not.toContain('root-a-secret')
     expect(wire()).not.toContain('root-a-still')
-    expect(wire()).toContain('root-b-open')
+    expect(wire()).not.toContain('root-b-open')
   } finally {
     otel.dispose()
   }
@@ -773,13 +796,6 @@ test('stored diagnostics false holds the tracer in a later root', async () => {
   const { otel, wire } = start()
   const persistKey = `reatom.gdpr.later-${Math.random().toString(16).slice(2)}`
   try {
-    context.start(() => {
-      reatomGDPR({
-        name: persistKey,
-        persist: persistKey,
-        otel,
-      })
-    })
     const app = context.start()
     app.run(() => {
       withLocalStorage.storageAtom().set(
@@ -799,6 +815,13 @@ test('stored diagnostics false holds the tracer in a later root', async () => {
           to: Number.MAX_SAFE_INTEGER,
         },
       )
+      const { gdpr } = otel.extend(
+        withGDPR({ name: persistKey, persist: persistKey }),
+      )
+      expect(gdpr.snapshot()?.categories).toMatchObject({
+        diagnostics: false,
+        analytics: true,
+      })
       action(() => 'import-secret', 'privacy.importRoot')()
     })
     await otel.flush()
@@ -814,29 +837,31 @@ test('another form follows a storage snapshot update', async () => {
   const persistKey = `reatom.gdpr.tabs-${Math.random().toString(16).slice(2)}`
   try {
     await context.start(async () => {
-      const consentA = reatomGDPR({
-        name: persistKey,
-        persist: persistKey,
-        otel: first.otel,
-      })
-      const consentB = reatomGDPR({
-        name: persistKey,
-        persist: persistKey,
-        otel: second.otel,
-      })
+      const consentA = first.otel.extend(
+        withGDPR({
+          name: persistKey,
+          persist: persistKey,
+        }),
+      ).gdpr
+      const consentB = second.otel.extend(
+        withGDPR({
+          name: persistKey,
+          persist: persistKey,
+        }),
+      ).gdpr
       notify()
       consentA.fields.diagnostics.change(true)
       consentA.fields.analytics.change(true)
       await wrap(consentA.submit())
       notify()
       expect(consentB.snapshot()?.categories.diagnostics).toBe(true)
-      expect(second.otel.options().consent).toMatchObject({ diagnostics: true })
+      expect(second.otel().consent).toMatchObject({ diagnostics: true })
 
       consentA.fields.diagnostics.change(false)
       await wrap(consentA.submit())
       notify()
       expect(consentB.snapshot()?.categories.diagnostics).toBe(false)
-      expect(second.otel.options().consent).toMatchObject({
+      expect(second.otel().consent).toMatchObject({
         diagnostics: false,
       })
       action(() => 'tab-b-secret', 'privacy.tabB')()

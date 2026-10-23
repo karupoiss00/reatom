@@ -1,6 +1,6 @@
 import { reatomOpentelemetry } from '@reatom/opentelemetry'
-import { reatomGDPR } from '@reatom/opentelemetry/gdpr'
-import { connectWebAnalytics } from '@reatom/opentelemetry/web-analytics'
+import { withGDPR } from '@reatom/opentelemetry/gdpr'
+import { withWebAnalytics } from '@reatom/opentelemetry/web-analytics'
 
 const collectorEndpoint = import.meta.env.VITE_OTEL_ENDPOINT || null
 
@@ -24,17 +24,13 @@ export const otel = reatomOpentelemetry({
   skipGlobalExtension: false,
   filter: isTracedAppTarget,
   keepRecords: import.meta.env.DEV,
-})
+}).extend(
+  withGDPR({ name: 'consent', categories: { analytics: false } }),
+  withWebAnalytics(),
+)
 
-export const consent = reatomGDPR({
-  name: 'consent',
-  otel,
-  categories: { analytics: false },
-})
-
-export const analytics = connectWebAnalytics(otel, {
-  consent,
-})
+export const consent = otel.gdpr
+export const analytics = otel.analytics
 
 if (import.meta.env.DEV) {
   Object.assign(globalThis, { otel })
@@ -44,6 +40,5 @@ if (import.meta.env.DEV) {
 }
 
 import.meta.hot?.dispose(() => {
-  analytics.dispose()
   otel.dispose()
 })

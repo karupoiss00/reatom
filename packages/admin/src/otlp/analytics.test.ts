@@ -1,5 +1,6 @@
 import { atom, notify, sleep, wrap } from '@reatom/core'
-import { connectWebAnalytics } from '@reatom/opentelemetry/web-analytics'
+import { reatomOpentelemetry } from '@reatom/opentelemetry'
+import { withWebAnalytics } from '@reatom/opentelemetry/web-analytics'
 import { describe, expect, test, vi } from 'test'
 
 import { reatomGantt } from '../gantt/reatomGantt.ts'
@@ -227,7 +228,7 @@ describe('sessions', () => {
     ])
   })
 
-  test('the connectWebAnalytics stream becomes one session through admin ingest', async () => {
+  test('the withWebAnalytics stream becomes one session through admin ingest', async () => {
     let href = 'https://shop.test/?utm_source=newsletter'
     const location = {
       get href() {
@@ -271,14 +272,13 @@ describe('sessions', () => {
     let nowMs = T0
     const clock = vi.spyOn(Date, 'now').mockImplementation(() => nowMs)
 
-    const analytics = connectWebAnalytics({
+    const otel = reatomOpentelemetry({
       name: 'admin-analytics-round-trip',
       endpoint: null,
       serviceName: 'shop-web',
       skipGlobalExtension: true,
-      consent: true,
-      navigation: 'popstate',
-    })
+    }).extend(withWebAnalytics({ consent: true, navigation: 'popstate' }))
+    const analytics = otel.analytics
     try {
       nowMs += 4 * SECOND
       history.pushState({}, '', '/goods/42')
@@ -290,9 +290,9 @@ describe('sessions', () => {
       page.dispatchEvent(new Event('visibilitychange'))
       notify()
       await wrap(sleep())
-      await wrap(analytics.otel.flush())
+      await wrap(otel.flush())
 
-      const exported = [...analytics.otel.records()]
+      const exported = [...otel.records()]
       const store = ADMIN_FRAME.run(() =>
         reatomOtlpStore({ sourceId: 'local', resource: {} }),
       )
@@ -335,7 +335,7 @@ describe('sessions', () => {
         },
       ])
     } finally {
-      analytics.dispose()
+      otel.dispose()
       clock.mockRestore()
       vi.unstubAllGlobals()
       Reflect.deleteProperty(
@@ -677,12 +677,7 @@ describe('event logs', () => {
   test('infers analytics and manual logs from the wire', () => {
     expect(
       isEventLog(
-        analyticsLog(
-          'app.page_view',
-          T0,
-          { 'url.path': '/' },
-          'page',
-        ),
+        analyticsLog('app.page_view', T0, { 'url.path': '/' }, 'page'),
       ),
     ).toBe(true)
     expect(

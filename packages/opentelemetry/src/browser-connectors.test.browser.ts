@@ -1,13 +1,23 @@
+import type { ReatomOpentelemetry } from './reatomOpentelemetry.ts'
 import { expect, test, inject } from 'vitest'
 import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
-import { connectBrowserNetwork } from './browser-network/index.ts'
-import { connectBrowserConsole } from './browser-console/index.ts'
+import { withBrowserNetworkMonkeypatch } from './browser-network/index.ts'
+import { withBrowserConsoleMonkeypatch } from './browser-console/index.ts'
 import { attrsOf } from './test-helpers.ts'
+
+const applyNetwork = (
+  otel: ReatomOpentelemetry,
+  options?: Parameters<typeof withBrowserNetworkMonkeypatch>[0],
+) => otel.extend(withBrowserNetworkMonkeypatch(options)).browserNetwork
+const applyConsole = (
+  otel: ReatomOpentelemetry,
+  options?: Parameters<typeof withBrowserConsoleMonkeypatch>[0],
+) => otel.extend(withBrowserConsoleMonkeypatch(options)).browserConsole
 
 test('real fetch and XHR preserve responses and record sanitized CLIENT spans', async () => {
   const otel = reatomOpentelemetry({ name: 'native-network', endpoint: null })
   const native = fetch
-  const connection = connectBrowserNetwork(otel)
+  const connection = applyNetwork(otel)
   const response = await fetch(
     inject('otelCollectorUrl') + '/control/state?token=private',
   )
@@ -33,16 +43,19 @@ test('real fetch and XHR preserve responses and record sanitized CLIENT spans', 
     .filter((record: any) => record.kind === 3) as any[]
   expect(spans.length).toBe(2)
   expect(attrsOf(spans[0]!)['url.full']).not.toContain('token')
-  connection.dispose()
+  connection.setFalse()
   expect(fetch).toBe(native)
   otel.dispose()
 })
 
-test('console duplicate connection delivers once, scrubs payload, and restores originals', () => {
+test('console duplicate extension preflight delivers once, toggles, scrubs payload, and restores originals', () => {
   const native = console.warn
   const otel = reatomOpentelemetry({ name: 'native-console', endpoint: null })
-  connectBrowserConsole(otel)
-  connectBrowserConsole(otel)
+  const control = applyConsole(otel)
+  expect(() => applyConsole(otel)).toThrow()
+  control.setFalse()
+  expect(() => applyConsole(otel)).toThrow()
+  control.setTrue()
   console.warn({ password: 'secret', message: 'person@example.com' })
   const logs = otel
     .records()
@@ -58,7 +71,7 @@ test('console duplicate connection delivers once, scrubs payload, and restores o
 test('fetch Request/init precedence, propagation, body and rejection remain native', async () => {
   const otel = reatomOpentelemetry({ name: 'network-headers', endpoint: null })
   const url = inject('otelCollectorUrl') + '/control/echo'
-  const connector = connectBrowserNetwork(otel, {
+  const connector = applyNetwork(otel, {
     propagateTraceparent: [new URL(url).origin],
   })
   const request = new Request(url, {
@@ -86,7 +99,7 @@ test('fetch Request/init precedence, propagation, body and rejection remain nati
   await expect(fetch(url, { signal: controller.signal })).rejects.toMatchObject(
     { name: 'AbortError' },
   )
-  connector.dispose()
+  connector.setFalse()
   otel.dispose()
 })
 
@@ -98,8 +111,8 @@ test('multi-instance ownership, signal changes, late wrappers and suppression', 
     endpoint: null,
     captureValues: false,
   })
-  const first = connectBrowserConsole(one)
-  connectBrowserConsole(two)
+  const first = applyConsole(one)
+  applyConsole(two)
   console.warn('first')
   expect(
     one.records().filter((r: any) => r.eventName === 'reatom.console').length,
@@ -108,12 +121,12 @@ test('multi-instance ownership, signal changes, late wrappers and suppression', 
     .records()
     .find((r: any) => r.eventName === 'reatom.console') as any
   expect(secondLog.body).toBeUndefined()
-  one.options.set((current) => ({ ...current, signals: { logs: false } }))
+  one.set((current) => ({ ...current, signals: { logs: false } }))
   console.warn('second')
   expect(
     one.records().filter((r: any) => r.eventName === 'reatom.console').length,
   ).toBe(1)
-  first.dispose()
+  first.setFalse()
   const previous = console.warn
   const thirdParty = (...args: unknown[]) =>
     Reflect.apply(previous, console, args)
@@ -131,7 +144,7 @@ test('unsampled propagation, HTTP errors and XHR abort preserve native results',
     endpoint: null,
     sampling: { ratio: 0 },
   })
-  connectBrowserNetwork(otel, { propagateTraceparent: [new URL(url).origin] })
+  applyNetwork(otel, { propagateTraceparent: [new URL(url).origin] })
   const echoed = await (await fetch(url)).json()
   expect(echoed.traceparent.endsWith('-00')).toBe(true)
   const missing = await fetch(inject('otelCollectorUrl') + '/control/missing')
@@ -161,23 +174,24 @@ test('exporter network is suppressed and connector disposal drops in-flight comp
       release = resolve
     })) as typeof fetch
   const otel = reatomOpentelemetry({ name: 'network-inflight', endpoint: null })
-  const connector = connectBrowserNetwork(otel)
+  const connector = applyNetwork(otel)
   const activeBefore = otel.stats().active
   const pending = fetch('https://request.test/path')
   expect(otel.stats().active).toBe(activeBefore + 1)
-  connector.dispose()
+  connector.setFalse()
   expect(otel.stats().active).toBe(activeBefore)
   release(new Response('{}'))
   await pending
   expect(otel.records().filter((r: any) => r.kind === 3)).toEqual([])
-  const reconnected = connectBrowserNetwork(otel)
+  connector.setTrue()
+  const reconnected = connector
   const recovered = fetch('https://request.test/recovered')
   expect(otel.stats().active).toBe(activeBefore + 1)
   release(new Response('{}'))
   await recovered
   expect(otel.stats().active).toBe(activeBefore)
   expect(otel.records().filter((r: any) => r.kind === 3).length).toBe(1)
-  reconnected.dispose()
+  reconnected.setFalse()
   globalThis.fetch = native
   otel.dispose()
 
@@ -187,7 +201,7 @@ test('exporter network is suppressed and connector disposal drops in-flight comp
     batchInterval: 100000,
     retry: { maxRetries: 0 },
   })
-  connectBrowserNetwork(exported)
+  applyNetwork(exported)
   exported.log('manual.test')
   await exported.flush()
   expect(exported.records().filter((r: any) => r.kind === 3)).toEqual([])
@@ -202,7 +216,7 @@ test('configured automatic console redactor is applied without changing native a
       redact: (key, value) => (key === 'custom' ? '[custom-redacted]' : value),
     },
   })
-  connectBrowserConsole(otel)
+  applyConsole(otel)
   const input = { custom: 'private-marker' }
   console.error(input)
   expect(input.custom).toBe('private-marker')
@@ -215,7 +229,7 @@ test('configured automatic console redactor is applied without changing native a
 })
 
 test('real analytics session and page metadata reach Faro while HTTP target remains distinct', async () => {
-  const { connectWebAnalytics } = await import('./web-analytics/index.ts')
+  const { withWebAnalytics } = await import('./web-analytics/index.ts')
   const { faroTransport } = await import('./faro/index.ts')
   const envelopes: any[] = []
   const otel = reatomOpentelemetry({
@@ -232,15 +246,17 @@ test('real analytics session and page metadata reach Faro while HTTP target rema
       }),
     ],
   })
-  const analytics = connectWebAnalytics(otel, {
-    consent: true,
-    errors: false,
-    autoPageViews: false,
-  })
+  const analytics = otel.extend(
+    withWebAnalytics({
+      consent: true,
+      errors: false,
+      autoPageViews: false,
+    }),
+  ).analytics
   analytics.pageView()
-  const session = analytics.sessionAtom().id
+  const session = analytics.session().id
   expect(session).toBeTruthy()
-  connectBrowserNetwork(otel)
+  applyNetwork(otel)
   await fetch(inject('otelCollectorUrl') + '/control/state?secret=hidden')
   otel.log('manual.metadata')
   await otel.flush()
@@ -258,7 +274,7 @@ test('real analytics session and page metadata reach Faro while HTTP target rema
   )
   expect(JSON.stringify(withNetwork.traces)).not.toContain('secret=hidden')
   expect(otel.records().filter((r: any) => r.kind === 3).length).toBe(1)
-  analytics.dispose()
+  analytics.setFalse()
   otel.dispose()
 })
 
@@ -268,7 +284,7 @@ test('HTTP client parent is the invoking action context', async () => {
     name: 'network-action-parent',
     endpoint: null,
   })
-  connectBrowserNetwork(otel)
+  applyNetwork(otel)
   const request = action(
     () => fetch(inject('otelCollectorUrl') + '/control/state'),
     'browser.request',
@@ -283,17 +299,19 @@ test('HTTP client parent is the invoking action context', async () => {
 })
 
 test('parent disposal and same-name replacement tear down analytics listeners and identity writes', async () => {
-  const { connectWebAnalytics } = await import('./web-analytics/index.ts')
+  const { withWebAnalytics } = await import('./web-analytics/index.ts')
   const { browserCaptureOf } = await import('./browserCapture.ts')
   const original = reatomOpentelemetry({
     name: 'analytics-parent-lifetime',
     endpoint: null,
   })
-  const old = connectWebAnalytics(original, {
-    consent: true,
-    navigation: 'history',
-  })
-  expect(old.sessionAtom().id).toBeTruthy()
+  const old = original.extend(
+    withWebAnalytics({
+      consent: true,
+      navigation: 'history',
+    }),
+  ).analytics
+  expect(old.session().id).toBeTruthy()
   const before = JSON.stringify(Object.entries(localStorage))
   original.dispose()
   expect(browserCaptureOf(original)!.snapshot().attributes).toEqual({})
@@ -308,16 +326,18 @@ test('parent disposal and same-name replacement tear down analytics listeners an
   )
   expect(original.records()).toEqual([])
   expect(JSON.stringify(Object.entries(localStorage))).toBe(before)
-  old.dispose()
+  old.setFalse()
 
   const replaced = reatomOpentelemetry({
     name: 'analytics-parent-replace',
     endpoint: null,
   })
-  const analytics = connectWebAnalytics(replaced, {
-    consent: true,
-    navigation: 'history',
-  })
+  const analytics = replaced.extend(
+    withWebAnalytics({
+      consent: true,
+      navigation: 'history',
+    }),
+  ).analytics
   const next = reatomOpentelemetry({
     name: 'analytics-parent-replace',
     endpoint: null,
@@ -326,25 +346,27 @@ test('parent disposal and same-name replacement tear down analytics listeners an
   analytics.pageView()
   window.dispatchEvent(new PopStateEvent('popstate'))
   expect(replaced.records()).toEqual([])
-  analytics.dispose()
+  analytics.setFalse()
   next.dispose()
 })
 
 test('general async action preserves capture-time page but removes revoked analytics identity', async () => {
   const { action, atom, wrap } = await import('@reatom/core')
-  const { connectWebAnalytics } = await import('./web-analytics/index.ts')
+  const { withWebAnalytics } = await import('./web-analytics/index.ts')
   const consent = atom(true, 'browser.analytics-consent')
   const otel = reatomOpentelemetry({
     name: 'general-identity-revoke',
     endpoint: null,
   })
-  const analytics = connectWebAnalytics(otel, {
-    consent,
-    errors: false,
-    autoPageViews: false,
-  })
+  const analytics = otel.extend(
+    withWebAnalytics({
+      consent,
+      errors: false,
+      autoPageViews: false,
+    }),
+  ).analytics
   analytics.pageView()
-  const session = analytics.sessionAtom().id
+  const session = analytics.session().id
   expect(session).toBeTruthy()
   let release!: () => void
   const gate = new Promise<void>((resolve) => {
@@ -364,7 +386,7 @@ test('general async action preserves capture-time page but removes revoked analy
   expect(span).toBeTruthy()
   expect(attrsOf(span)['session.id']).toBeUndefined()
   expect(attrsOf(span)['page.url']).toBe(location.origin + location.pathname)
-  analytics.dispose()
+  analytics.setFalse()
   otel.dispose()
 })
 
@@ -382,7 +404,7 @@ test('cross-realm Request uses its real target and preserves header precedence',
     name: 'cross-realm-network',
     endpoint: null,
   })
-  const connector = connectBrowserNetwork(otel, {
+  const connector = applyNetwork(otel, {
     propagateTraceparent: [location.origin],
   })
   try {
@@ -409,7 +431,7 @@ test('cross-realm Request uses its real target and preserves header precedence',
     expect(headers.get('traceparent')).not.toBe(existing)
     expect(allowed.headers.get('traceparent')).toBe(existing)
   } finally {
-    connector.dispose()
+    connector.setFalse()
     otel.dispose()
     globalThis.fetch = native
     frame.remove()
@@ -418,7 +440,7 @@ test('cross-realm Request uses its real target and preserves header precedence',
 
 test('reusing XHR from onload records two independent successful requests', async () => {
   const otel = reatomOpentelemetry({ name: 'xhr-reuse', endpoint: null })
-  connectBrowserNetwork(otel)
+  applyNetwork(otel)
   const statuses: number[] = []
   await new Promise<void>((resolve, reject) => {
     const xhr = new XMLHttpRequest()
@@ -461,7 +483,7 @@ test('propagation preserves inherited and non-enumerable RequestInit dictionary 
     endpoint: null,
   })
   const url = inject('otelCollectorUrl') + '/control/echo'
-  connectBrowserNetwork(otel, { propagateTraceparent: [new URL(url).origin] })
+  applyNetwork(otel, { propagateTraceparent: [new URL(url).origin] })
   const controller = new AbortController()
   const prototype = {
     method: 'POST',
@@ -501,7 +523,7 @@ test('propagation preserves inherited and non-enumerable RequestInit dictionary 
 
 test('successful XHR reopen cancels the superseded request reservation without disposing connector', async () => {
   const otel = reatomOpentelemetry({ name: 'xhr-superseded', endpoint: null })
-  connectBrowserNetwork(otel)
+  applyNetwork(otel)
   const baseline = otel.stats().active
   const xhr = new XMLHttpRequest()
   const nativeEvents: string[] = []
@@ -534,7 +556,7 @@ test('propagation predicate sees full actual query while recorded URL remains sa
     endpoint: null,
   })
   const seen: string[] = []
-  connectBrowserNetwork(otel, {
+  applyNetwork(otel, {
     propagateTraceparent: (url) => {
       seen.push(url.href)
       return !url.searchParams.has('token')
@@ -562,7 +584,7 @@ test('data fetch remains native and never records inline body or propagates', as
     endpoint: null,
   })
   let policyCalls = 0
-  connectBrowserNetwork(otel, {
+  applyNetwork(otel, {
     propagateTraceparent: () => {
       policyCalls++
       return true
@@ -598,7 +620,7 @@ test('fetch reads method dictionary getter once with its original receiver', asy
     name: 'network-method-getter',
     endpoint: null,
   })
-  connectBrowserNetwork(otel, {
+  applyNetwork(otel, {
     propagateTraceparent: [new URL(target).origin],
   })
   const captured = await (await fetch(target, makeInit())).json()
@@ -616,7 +638,7 @@ test('relative fetch and XHR propagation use document baseURI origin', async () 
   base.href = inject('otelCollectorUrl') + '/'
   document.head.prepend(base)
   const otel = reatomOpentelemetry({ name: 'network-base-uri', endpoint: null })
-  connectBrowserNetwork(otel, { propagateTraceparent: [location.origin] })
+  applyNetwork(otel, { propagateTraceparent: [location.origin] })
   try {
     const response = await (await fetch('control/echo-base-relative')).json()
     expect(response.traceparent).toBeUndefined()
@@ -650,7 +672,7 @@ test('URL-like inputs are coerced once and policy matches the actual fetch and X
   const origin = inject('otelCollectorUrl')
   const allowed = origin + '/control/echo-coercion-allowed'
   const denied = origin + '/control/echo-coercion-denied'
-  connectBrowserNetwork(otel, {
+  applyNetwork(otel, {
     propagateTraceparent: (url) => url.pathname.endsWith('allowed'),
   })
   let fetchReads = 0
@@ -722,7 +744,7 @@ test('fetch missing arguments and coercion errors retain native rejected-promise
     name: 'network-coercion-errors',
     endpoint: null,
   })
-  connectBrowserNetwork(otel)
+  applyNetwork(otel)
   const missing = (fetch as any)()
   expect(missing).toBeInstanceOf(Promise)
   await expect(missing).rejects.toBeInstanceOf(TypeError)
@@ -751,7 +773,7 @@ test('null headers retain native rejection and absent dictionaries ignore Object
     name: 'network-null-init',
     endpoint: null,
   })
-  connectBrowserNetwork(otel, { propagateTraceparent: [new URL(url).origin] })
+  applyNetwork(otel, { propagateTraceparent: [new URL(url).origin] })
   await expect(
     fetch(new Request(url), { headers: null } as any),
   ).rejects.toBeInstanceOf(TypeError)
@@ -783,7 +805,7 @@ test('XHR OPENED reentrancy uses the new request state and locks the open-time b
     name: 'xhr-opened-transaction',
     endpoint: null,
   })
-  connectBrowserNetwork(otel, {
+  applyNetwork(otel, {
     propagateTraceparent: (url) =>
       url.pathname.endsWith('/allowed') && !url.pathname.includes('denied'),
   })
@@ -841,7 +863,7 @@ test('XHR OPENED reentrancy uses the new request state and locks the open-time b
 test('nested XHR opens keep newest state and failed opens preserve pending ownership', async () => {
   const origin = inject('otelCollectorUrl')
   const otel = reatomOpentelemetry({ name: 'xhr-nested-open', endpoint: null })
-  connectBrowserNetwork(otel, {
+  applyNetwork(otel, {
     propagateTraceparent: (url) => url.pathname.endsWith('/allowed'),
   })
   await new Promise<void>((resolve, reject) => {
@@ -901,7 +923,7 @@ test('custom primary and secondary transports suppress synchronous network captu
     batchInterval: 100000,
     transports: [destination, destination],
   })
-  connectBrowserNetwork(otel)
+  applyNetwork(otel)
   otel.log('one.manual.event')
   await otel.flush()
   expect(deliveries).toBeGreaterThan(0)
@@ -927,7 +949,7 @@ test('async custom transport uses explicit URL exclusion without suppressing unr
       },
     ],
   })
-  connectBrowserNetwork(otel, {
+  applyNetwork(otel, {
     ignoreUrl: (url) => {
       seen.push(url.href)
       return url.pathname === '/control/echo-async-transport'
@@ -949,7 +971,7 @@ test('failed repeated XHR send preserves cancellation ownership through reopen',
     name: 'xhr-repeat-send-owner',
     endpoint: null,
   })
-  connectBrowserNetwork(otel)
+  applyNetwork(otel)
   const xhr = new XMLHttpRequest()
   const target = inject('otelCollectorUrl') + '/control/echo-repeat-send'
   xhr.open('GET', target)
@@ -979,7 +1001,7 @@ test('native Request conversion resolves URL after late method and signal getter
     name: 'native-request-late-base',
     endpoint: null,
   })
-  connectBrowserNetwork(otel, {
+  applyNetwork(otel, {
     propagateTraceparent: (url) => url.pathname.includes('echo-allowed'),
   })
   try {
@@ -1014,7 +1036,7 @@ test('native Request delegation preserves request body use, abort reason identit
     name: 'native-request-semantics',
     endpoint: null,
   })
-  connectBrowserNetwork(otel)
+  applyNetwork(otel)
   const target = inject('otelCollectorUrl') + '/control/echo-request-body'
   const request = new Request(target, {
     method: 'POST',
@@ -1056,7 +1078,7 @@ test('XHR completes username and password conversions before freezing URL and pr
     name: 'xhr-all-argument-conversions',
     endpoint: null,
   })
-  connectBrowserNetwork(otel, {
+  applyNetwork(otel, {
     propagateTraceparent: (url) => {
       base.href = origin + '/control/echo-policy-mutated/'
       return url.pathname.includes('echo-allowed')
@@ -1149,7 +1171,7 @@ test('native Request streaming duplex and locked body behavior match native fetc
     name: 'native-stream-duplex',
     endpoint: null,
   })
-  connectBrowserNetwork(otel)
+  applyNetwork(otel)
   const request = make()
   const result = await fetch(request).then(
     async (response) => ({
@@ -1174,7 +1196,7 @@ test('XHR omitted async remains asynchronous while explicit undefined preserves 
     name: 'xhr-async-presence',
     endpoint: null,
   })
-  connectBrowserNetwork(otel)
+  applyNetwork(otel)
   let asynchronousLoaded = false
   await new Promise<void>((resolve, reject) => {
     const xhr = new XMLHttpRequest()
@@ -1200,95 +1222,92 @@ test('XHR omitted async remains asynchronous while explicit undefined preserves 
   otel.dispose()
 })
 
-test('network policy callbacks can dispose or replace their connector without leaks or propagation', async () => {
+test('network policy callbacks can synchronously disable or toggle without leaks or propagation', async () => {
   const origin = inject('otelCollectorUrl')
   const otel = reatomOpentelemetry({
-    name: 'network-callback-dispose',
+    name: 'network-callback-disable',
     endpoint: null,
   })
   const baseline = otel.stats().active
-  let connector: ReturnType<typeof connectBrowserNetwork>
+  let mode: 'ignore' | 'propagate' | 'toggle' | 'normal' = 'ignore'
+  let control: ReturnType<typeof applyNetwork>
   let ignoreCalls = 0
-  connector = connectBrowserNetwork(otel, {
+  control = applyNetwork(otel, {
     ignoreUrl: () => {
       ignoreCalls++
-      connector.dispose()
+      if (mode === 'ignore') control.setFalse()
+      if (mode === 'toggle') {
+        mode = 'normal'
+        control.setFalse()
+        control.setTrue()
+      }
       return false
     },
-  })
-  expect((await fetch(origin + '/control/echo-ignore-dispose')).ok).toBe(true)
-  expect(ignoreCalls).toBe(1)
-  expect(otel.stats().active).toBe(baseline)
-  expect(otel.records().filter((r: any) => r.kind === 3)).toHaveLength(0)
-  connector = connectBrowserNetwork(otel, {
     propagateTraceparent: () => {
-      connector.dispose()
+      if (mode === 'propagate') control.setFalse()
       return true
     },
   })
-  const response = await (
-    await fetch(origin + '/control/echo-propagate-dispose')
-  ).json()
-  expect(response.traceparent).toBeUndefined()
-  expect(otel.stats().active).toBe(baseline)
-  expect(otel.records().filter((r: any) => r.kind === 3)).toHaveLength(0)
-  let replacement: ReturnType<typeof connectBrowserNetwork> | undefined
-  connector = connectBrowserNetwork(otel, {
-    ignoreUrl: () => {
-      replacement = connectBrowserNetwork(otel)
-      return false
-    },
-  })
-  await fetch(origin + '/control/echo-callback-replacement')
-  expect(otel.stats().active).toBe(baseline)
-  expect(otel.records().filter((r: any) => r.kind === 3)).toHaveLength(0)
-  await fetch(origin + '/control/echo-callback-replacement-next')
-  expect(otel.records().filter((r: any) => r.kind === 3)).toHaveLength(1)
-  replacement?.dispose()
-  otel.dispose()
+  try {
+    expect((await fetch(origin + '/control/echo-ignore-dispose')).ok).toBe(true)
+    expect(ignoreCalls).toBe(1)
+    expect(otel.stats().active).toBe(baseline)
+    expect(otel.records().filter((r: any) => r.kind === 3)).toHaveLength(0)
+    mode = 'propagate'
+    control.setTrue()
+    const response = await (
+      await fetch(origin + '/control/echo-propagate-dispose')
+    ).json()
+    expect(response.traceparent).toBeUndefined()
+    expect(otel.stats().active).toBe(baseline)
+    expect(otel.records().filter((r: any) => r.kind === 3)).toHaveLength(0)
+    mode = 'toggle'
+    control.setTrue()
+    await fetch(origin + '/control/echo-callback-replacement')
+    expect(otel.stats().active).toBe(baseline)
+    expect(otel.records().filter((r: any) => r.kind === 3)).toHaveLength(0)
+    await fetch(origin + '/control/echo-callback-replacement-next')
+    expect(otel.records().filter((r: any) => r.kind === 3)).toHaveLength(1)
+    control.setFalse()
+  } finally {
+    otel.dispose()
+  }
 })
 
-test('console redactors can dispose or replace connectors without recording old subscribers', () => {
+test('console redactors can synchronously disable or toggle without recording stale subscribers', () => {
   const native = console.warn
   let nativeCalls = 0
   console.warn = function (...args: unknown[]) {
     nativeCalls++
     return Reflect.apply(native, this, args)
   }
-  let connector: ReturnType<typeof connectBrowserConsole> | undefined
+  let control: ReturnType<typeof applyConsole>
+  let mode: 'disable' | 'toggle' | 'normal' = 'disable'
   const otel = reatomOpentelemetry({
     name: 'console-redactor-lifetime',
     endpoint: null,
     captureValues: {
       redact: (key, value) => {
-        if (key === 'arguments') connector!.dispose()
+        if (key === 'arguments' && mode === 'disable') control.setFalse()
+        if (key === 'arguments' && mode === 'toggle') {
+          mode = 'normal'
+          control.setFalse()
+          control.setTrue()
+        }
         return value
       },
     },
   })
-  let replacement: ReturnType<typeof connectBrowserConsole> | undefined
   try {
-    connector = connectBrowserConsole(otel)
-    console.warn('self-dispose')
+    control = applyConsole(otel)
+    console.warn('self-disable')
     expect(nativeCalls).toBe(1)
     expect(
       otel.records().filter((r: any) => r.eventName === 'reatom.console'),
     ).toHaveLength(0)
-    let replace = true
-    otel.options.set((current) => ({
-      ...current,
-      captureValues: {
-        redact: (key, value) => {
-          if (key === 'arguments' && replace) {
-            replace = false
-            replacement = connectBrowserConsole(otel)
-          }
-          return value
-        },
-      },
-    }))
-    connector = connectBrowserConsole(otel)
-    console.warn('replace-during-capture')
+    mode = 'toggle'
+    control.setTrue()
+    console.warn('toggle-during-capture')
     expect(nativeCalls).toBe(2)
     expect(
       otel.records().filter((r: any) => r.eventName === 'reatom.console'),
@@ -1298,9 +1317,8 @@ test('console redactors can dispose or replace connectors without recording old 
     expect(
       otel.records().filter((r: any) => r.eventName === 'reatom.console'),
     ).toHaveLength(1)
+    control.setFalse()
   } finally {
-    connector?.dispose()
-    replacement?.dispose()
     otel.dispose()
     console.warn = native
   }
@@ -1308,7 +1326,7 @@ test('console redactors can dispose or replace connectors without recording old 
 
 test('throwing analytics consent readers cannot leak pending network or general action reservations', async () => {
   const { action, wrap } = await import('@reatom/core')
-  const { connectWebAnalytics } = await import('./web-analytics/index.ts')
+  const { withWebAnalytics } = await import('./web-analytics/index.ts')
   let broken = false
   const consent = () => {
     if (broken) throw new Error('consent reader failed')
@@ -1319,15 +1337,17 @@ test('throwing analytics consent readers cannot leak pending network or general 
     endpoint: null,
     maxQueueSize: 4,
   })
-  const analytics = connectWebAnalytics(otel, {
-    consent,
-    autoPageViews: false,
-    errors: false,
-  })
+  const analytics = otel.extend(
+    withWebAnalytics({
+      consent,
+      autoPageViews: false,
+      errors: false,
+    }),
+  ).analytics
   analytics.pageView()
-  const session = analytics.sessionAtom().id
+  const session = analytics.session().id
   expect(session).toBeTruthy()
-  const connector = connectBrowserNetwork(otel)
+  const connector = applyNetwork(otel)
   const baseline = otel.stats().active
   const pending = fetch(
     inject('otelCollectorUrl') + '/control/echo-throwing-consent',
@@ -1356,10 +1376,11 @@ test('throwing analytics consent readers cannot leak pending network or general 
     .records()
     .find((r: any) => r.name === 'browser.throwing-reader-action') as any
   expect(attrsOf(actionSpan)['session.id']).toBeUndefined()
-  connector.dispose()
+  connector.setFalse()
   expect(otel.stats().active).toBe(baseline)
   broken = false
-  const recovered = connectBrowserNetwork(otel)
+  connector.setTrue()
+  const recovered = connector
   expect(
     (
       await fetch(
@@ -1368,7 +1389,7 @@ test('throwing analytics consent readers cannot leak pending network or general 
     ).status,
   ).toBe(200)
   expect(otel.stats().active).toBe(baseline)
-  recovered.dispose()
-  analytics.dispose()
+  recovered.setFalse()
+  analytics.setFalse()
   otel.dispose()
 })

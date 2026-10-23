@@ -33,7 +33,7 @@ const matchesName = (name: string, patterns: readonly RegExp[]): boolean => {
 }
 
 const capturesValues = (otel: ReatomOpentelemetry): boolean => {
-  const options = observe(() => otel.options())
+  const options = observe(() => otel())
   if (!options) return false
   const tracesOpen = tracerSignalEnabled(options, 'traces')
   const logsOpen = tracerSignalEnabled(options, 'logs')
@@ -44,7 +44,7 @@ const capturesValues = (otel: ReatomOpentelemetry): boolean => {
 }
 
 const admits = (otel: ReatomOpentelemetry, target: AtomLike): boolean => {
-  const options = observe(() => otel.options())
+  const options = observe(() => otel())
   const filter = options?.filter
   if (typeof filter !== 'function') return true
   return observe(() => filter(target)) === true

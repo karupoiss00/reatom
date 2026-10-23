@@ -1,12 +1,15 @@
+import type { AnalyticsFixtureOptions as WebAnalyticsCreateOptions } from './test-helpers.ts'
+import {
+  createAnalytics,
+  readAnalyticsRecords,
+  readAnalyticsStats,
+} from './test-helpers.ts'
 import { action, context } from '@reatom/core'
 import { afterEach, expect, test, vi } from 'vitest'
 
 import { reatomOpentelemetry } from '../reatomOpentelemetry.ts'
 import { parseLogRecords } from '../test-helpers.ts'
-import {
-  connectWebAnalytics,
-  type WebAnalyticsCreateOptions,
-} from './connectWebAnalytics.ts'
+import {} from './connectWebAnalytics.ts'
 
 type WindowListener = (event: unknown) => void
 
@@ -137,7 +140,7 @@ const startAnalytics = (
   const shop = installWindow()
   const analytics = context.start(() =>
     remember(
-      connectWebAnalytics({
+      createAnalytics({
         ...OPTIONS,
         ...extra,
         ...(consent === undefined ? {} : { consent }),
@@ -162,7 +165,7 @@ const exceptionLogs = (logBodies: unknown[]) =>
 const suppressedLogs = (logBodies: unknown[]) =>
   logsNamed(logBodies, 'exception.suppressed')
 
-const flushLogs = async (analytics: ReturnType<typeof connectWebAnalytics>) => {
+const flushLogs = async (analytics: ReturnType<typeof createAnalytics>) => {
   await context.start(() => analytics.otel.flush())
 }
 
@@ -289,7 +292,7 @@ test('T-050 / WA-5: 100 identical errors emit 10 records plus a suppressed summa
   for (let index = 0; index < 100; index++) {
     shop.fire('error', new TypeError('x'))
   }
-  expect(analytics.otel.stats().droppedByReason.rateLimit).toBe(90)
+  expect(readAnalyticsStats(analytics.otel).droppedByReason.rateLimit).toBe(90)
 
   shop.firePageHide()
   await flushLogs(analytics)
@@ -326,7 +329,7 @@ test('T-050 / R22: 100 alternating TypeError/RangeError cap at 10 each', async (
       index % 2 === 0 ? new TypeError('x') : new RangeError('y'),
     )
   }
-  expect(analytics.otel.stats().droppedByReason.rateLimit).toBe(180)
+  expect(readAnalyticsStats(analytics.otel).droppedByReason.rateLimit).toBe(180)
 
   shop.firePageHide()
   await flushLogs(analytics)
@@ -361,7 +364,7 @@ test('T-050 / R22: 100 app.page_view cap at 60 with stats.dropped.rateLimit', as
   for (let index = 0; index < 100; index++) {
     context.start(() => analytics.pageView())
   }
-  expect(analytics.otel.stats().droppedByReason.rateLimit).toBe(40)
+  expect(readAnalyticsStats(analytics.otel).droppedByReason.rateLimit).toBe(40)
 
   await flushLogs(analytics)
 
@@ -382,7 +385,9 @@ test('T-050 / R22: rateLimit.errorsPerMin 0 means no client cap', async () => {
 
   expect(exceptionLogs(logBodies)).toHaveLength(15)
   expect(suppressedLogs(logBodies)).toHaveLength(0)
-  expect(analytics.otel.stats().droppedByReason.rateLimit).toBeUndefined()
+  expect(
+    readAnalyticsStats(analytics.otel).droppedByReason.rateLimit,
+  ).toBeUndefined()
 })
 
 test('T-050: dispose then reconnect does not stack rate-limit stats', async () => {
@@ -403,7 +408,7 @@ test('T-050: dispose then reconnect does not stack rate-limit stats', async () =
 
   const connect = () =>
     context.start(() =>
-      connectWebAnalytics(otel, {
+      createAnalytics(otel, {
         consent: true,
         navigation: 'popstate',
         autoPageViews: false,
@@ -415,16 +420,17 @@ test('T-050: dispose then reconnect does not stack rate-limit stats', async () =
   for (let index = 0; index < 15; index++) {
     shop.fire('error', new TypeError('x'))
   }
-  expect(otel.stats().droppedByReason.rateLimit).toBe(5)
+  expect(readAnalyticsStats(otel).droppedByReason.rateLimit).toBe(5)
   context.start(() => first.dispose())
   expect(otel.stats).toBe(statsFn)
-  expect(otel.stats().droppedByReason.rateLimit).toBeUndefined()
+  expect(readAnalyticsStats(otel).droppedByReason.rateLimit).toBeUndefined()
 
-  const second = connect()
+  first.enable()
+  const second = first
   cleanups.push(() => second.dispose())
   expect(otel.stats).toBe(statsFn)
   for (let index = 0; index < 12; index++) {
     shop.fire('error', new TypeError('y'))
   }
-  expect(otel.stats().droppedByReason.rateLimit).toBe(2)
+  expect(readAnalyticsStats(otel).droppedByReason.rateLimit).toBe(2)
 })

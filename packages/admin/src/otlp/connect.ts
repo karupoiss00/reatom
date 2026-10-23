@@ -23,12 +23,7 @@ const SPLIT_LONG_TRACES_KEY = `_Admin.settings.tracing.${SPLIT_LONG_TRACES_ID}.v
 
 export interface AdminOtelOptionsSnapshot {
   endpoint: string | null
-  serviceName: string
-  serviceVersion?: string
-  environment?: string
-  resource?: Record<string, unknown>
   keepRecords?: boolean
-  maxQueueSize?: number
   /** `true` keeps live references subject to opt-out. `'all'` ignores opt-out. */
   localValues?: boolean | 'all'
   /** `true` warns when a callback without `wrap` starts a new trace. */
@@ -60,20 +55,23 @@ export interface AdminOtelStats {
  * or a fake with this shape.
  */
 export interface AdminOtelInstance {
+  (): AdminOtelOptionsSnapshot
+  set(
+    update:
+      | AdminOtelOptionsSnapshot
+      | ((current: AdminOtelOptionsSnapshot) => AdminOtelOptionsSnapshot),
+  ): unknown
+  readonly resource: Readonly<Record<string, unknown>>
+  readonly recordLimit: number
   records: {
     (): readonly unknown[]
     subscribe(listener: (records: readonly unknown[]) => void): () => void
   }
   clearRecords(): void
-  options: {
-    (): AdminOtelOptionsSnapshot
-    set(
-      update:
-        | AdminOtelOptionsSnapshot
-        | ((current: AdminOtelOptionsSnapshot) => AdminOtelOptionsSnapshot),
-    ): unknown
+  stats: {
+    (): AdminOtelStats
+    subscribe?(listener: (stats: AdminOtelStats) => void): () => void
   }
-  stats(): AdminOtelStats
   /**
    * Live references for a raw record from `records()`. Absent on older
    * instances; admin then keeps masked attributes only.
@@ -84,15 +82,15 @@ export interface AdminOtelInstance {
 export interface ConnectAdminOptions {
   host?: HTMLElement
   /**
-   * Written to `otel.options.localValues` while connected. Default `true`.
-   * `false` stops attaching new live values. `'all'` asks the instance to
-   * ignore per-target opt-out.
+   * Written to `otel().localValues` while connected. Default `true`. `false`
+   * stops attaching new live values. `'all'` asks the instance to ignore
+   * per-target opt-out.
    */
   localValues?: boolean | 'all'
   /**
-   * Register the tracing switches and forward them to `otel.options`. Default
-   * `true`. `false` skips registration and leaves those options untouched, for
-   * hosts that render their own controls.
+   * Register the tracing switches and forward them to `otel`. Default `true`.
+   * `false` skips registration and leaves those options untouched, for hosts
+   * that render their own controls.
    */
   tracingSettings?: boolean
 }
@@ -113,13 +111,13 @@ export interface AdminConnection {
   olderRecordsDropped: Atom<boolean>
   stats: Atom<AdminOtelStats | null>
   refreshStats: () => void
-  /** Mode forwarded to `otel.options.localValues`. Bind this from settings. */
+  /** Mode forwarded to `otel().localValues`. Bind this from settings. */
   localValues: Atom<boolean | 'all'>
   /** True after the store drops live values past its limit. */
   localValuesTrimmed: Atom<boolean>
   /**
-   * `true` writes `otel.options.warnContextLoss`. Default is the instance
-   * value, or `true` when that value is absent. A persisted choice wins.
+   * `true` writes `otel().warnContextLoss`. Default is the instance value, or
+   * `true` when that value is absent. A persisted choice wins.
    */
   warnContextLoss: Atom<boolean>
   /**
@@ -130,27 +128,11 @@ export interface AdminConnection {
   splitLongTraces: Atom<boolean>
 }
 
-export function resourceFromOtelOptions(
-  options: AdminOtelOptionsSnapshot,
-): Record<string, unknown> {
-  const resource: Record<string, unknown> = {
-    'service.name': options.serviceName,
-  }
-  if (typeof options.serviceVersion === 'string') {
-    resource['service.version'] = options.serviceVersion
-  }
-  if (typeof options.environment === 'string') {
-    resource['deployment.environment.name'] = options.environment
-  }
-  if (options.resource) Object.assign(resource, options.resource)
-  return resource
-}
-
 /**
  * Live connection from an in-page OpenTelemetry instance into
  * `reatomOtlpAdmin`.
  *
- * Call it in the app frame. `records.subscribe`, `clearRecords`, `options.set`,
+ * Call it in the app frame. `records.subscribe`, `clearRecords`, `otel.set`,
  * and `stats` run there. Ingest runs inside `ADMIN_FRAME`. Pass `options.host`
  * (or `setHost` later) so Escape inside that element is `preventDefault`ed
  * during capture. Headless connects skip the listener until a host is passed.
@@ -159,19 +141,19 @@ export function resourceFromOtelOptions(
  * and restored on dispose. Records that were dropped while `keepRecords` was
  * off are not backfilled. `endpoint: null` already keeps its window.
  *
- * `localValues` (default `true`) is written to `otel.options.localValues`
- * whenever that atom changes, including the initial value, and the previous
- * option is restored on dispose. When the mode is not `false` and the instance
- * has `localValuesOf`, ingest attaches those live references. Turning the atom
- * off stops attaching new values and leaves ones already stored. An instance
+ * `localValues` (default `true`) is written to `otel().localValues` whenever
+ * that atom changes, including the initial value, and the previous option is
+ * restored on dispose. When the mode is not `false` and the instance has
+ * `localValuesOf`, ingest attaches those live references. Turning the atom off
+ * stops attaching new values and leaves ones already stored. An instance
  * without `localValuesOf` still accepts the atom and the option write.
  * `localValuesTrimmed` is the store flag set after the oldest live values are
  * dropped past the store limit.
  *
  * Unless `tracingSettings` is `false`, two Local work switches are registered
- * and forwarded to `otel.options` on connect and on every change. A persisted
- * choice wins over the instance. `dispose` restores the previous tracing
- * options and unregisters those switches.
+ * and forwarded to `otel` on connect and on every change. A persisted choice
+ * wins over the instance. `dispose` restores the previous tracing options and
+ * unregisters those switches.
  *
  * @example
  *   const connection = connectAdmin(otel, { host })
@@ -188,7 +170,7 @@ export function connectAdmin(
   const runInAppFrame = bind(<Result>(callback: () => Result) => callback())
   let active = true
   let otelRef: AdminOtelInstance | undefined = otel
-  const initial = runInAppFrame(() => otel.options())
+  const initial = runInAppFrame(() => otel())
   const restoreKeepRecords = initial.endpoint !== null
   const previousKeepRecords = initial.keepRecords
   const previousLocalValues = initial.localValues
@@ -198,11 +180,11 @@ export function connectAdmin(
   const tracingSettings = options.tracingSettings !== false
   if (restoreKeepRecords) {
     runInAppFrame(() => {
-      otel.options.set((current) => ({ ...current, keepRecords: true }))
+      otel.set((current) => ({ ...current, keepRecords: true }))
     })
   }
 
-  const resource = resourceFromOtelOptions(runInAppFrame(() => otel.options()))
+  const resource = runInAppFrame(() => ({ ...otel.resource }))
   const serviceName = resource['service.name']
   const admin = reatomOtlpAdmin({
     sourceId:
@@ -255,7 +237,7 @@ export function connectAdmin(
   let escapeListening = false
 
   const maxQueueSize = () => {
-    const value = runInAppFrame(() => otelRef?.options().maxQueueSize)
+    const value = runInAppFrame(() => otelRef?.recordLimit)
     return typeof value === 'number' && value > 0
       ? value
       : DEFAULT_MAX_QUEUE_SIZE
@@ -299,9 +281,7 @@ export function connectAdmin(
       refreshStats()
       return
     }
-    const nextResource = resourceFromOtelOptions(
-      runInAppFrame(() => otelRef!.options()),
-    )
+    const nextResource = runInAppFrame(() => ({ ...otelRef!.resource }))
     const ingested = ADMIN_FRAME.run(() => {
       if (admin.paused()) return false
       admin.setResource(nextResource)
@@ -467,7 +447,7 @@ export function connectAdmin(
     const instance = otelRef
     if (!active || instance === undefined) return
     runInAppFrame(() => {
-      instance.options.set((current) => ({ ...current, localValues: mode }))
+      instance.set((current) => ({ ...current, localValues: mode }))
     })
     const lookup =
       mode !== false && typeof instance.localValuesOf === 'function'
@@ -486,7 +466,7 @@ export function connectAdmin(
     const instance = otelRef
     if (!active || instance === undefined) return
     runInAppFrame(() => {
-      instance.options.set((current) => ({
+      instance.set((current) => ({
         ...current,
         warnContextLoss: warn,
         maxSpansPerTrace: split ? previousMaxSpansPerTrace : Infinity,
@@ -523,6 +503,13 @@ export function connectAdmin(
     : []
 
   const unsubscribe = runInAppFrame(() => otel.records.subscribe(onWindow))
+  const unsubscribeStats = otel.stats.subscribe
+    ? runInAppFrame(() =>
+        otel.stats.subscribe!((snapshot) => {
+          if (active) ADMIN_FRAME.run(() => controls.stats.set(snapshot))
+        }),
+      )
+    : undefined
   listen()
 
   const dispose = () => {
@@ -532,6 +519,7 @@ export function connectAdmin(
     stopTracing?.unsubscribe()
     for (const unregister of unregisterTracing) unregister()
     runInAppFrame(unsubscribe)
+    if (unsubscribeStats) runInAppFrame(unsubscribeStats)
     cancelBatch()
     unlisten()
     if (otelRef) {
@@ -546,7 +534,7 @@ export function connectAdmin(
           }
         : {}
       runInAppFrame(() => {
-        otelRef?.options.set((current) => ({
+        otelRef?.set((current) => ({
           ...current,
           ...(restoreKeep ? { keepRecords: previousKeep } : {}),
           localValues: previousValues,

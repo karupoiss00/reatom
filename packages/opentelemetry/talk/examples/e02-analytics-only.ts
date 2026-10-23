@@ -1,20 +1,26 @@
 import { action, atom } from '@reatom/core'
-import { connectWebAnalytics } from '@reatom/opentelemetry/web-analytics'
+import { reatomOpentelemetry } from '@reatom/opentelemetry'
+import { withWebAnalytics } from '@reatom/opentelemetry/web-analytics'
 
 type Order = { id: string; total: number; currency: string }
 
 export const analyticsConsent = atom(false, 'cookieBanner.analytics')
 
-export const analytics = connectWebAnalytics({
+export const otel = reatomOpentelemetry({
   name: 'site',
   endpoint: 'https://site.example/otel',
   serviceName: 'site-web',
   skipGlobalExtension: true,
-  consent: analyticsConsent,
-})
+}).extend(
+  withWebAnalytics({
+    consent: analyticsConsent,
+  }),
+)
+
+export const analytics = otel.analytics
 
 export const purchase = action((order: Order) => order, 'app.purchase').extend(
-  analytics.otel.withOTel(),
+  otel.withOTel(),
 )
 
 document.querySelector('#accept-analytics')?.addEventListener('click', () => {

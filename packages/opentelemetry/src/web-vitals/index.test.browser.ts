@@ -1,20 +1,28 @@
+import { reatomOpentelemetry } from '../reatomOpentelemetry.ts'
 import { expect, test, vi } from 'vitest'
 
-import { installBrowserCapture } from '../browserCapture.ts'
+import { browserCaptureOf, installBrowserCapture } from '../browserCapture.ts'
 import type { BrowserCapture } from '../browserCapture.ts'
 import type { ReatomOpentelemetry } from '../reatomOpentelemetry.ts'
-import { connectWebVitals } from './index.ts'
+import { withWebVitals } from './index.ts'
+
+const applyVitals = (otel: ReatomOpentelemetry) =>
+  otel.extend(withWebVitals()).webVitals
 
 test('Chromium official web-vitals reports real buffered document TTFB without attribution payloads', async () => {
-  const otel = {} as ReatomOpentelemetry
+  const otel = reatomOpentelemetry({
+    name: 'web-vitals-observer-spy',
+    endpoint: null,
+    skipGlobalExtension: true,
+  })
   const log = vi.fn()
   installBrowserCapture(otel, {
+    ...browserCaptureOf(otel)!,
     enabled: () => true,
     snapshot: () => ({ context: {}, attributes: {} }),
     log,
-    attach: (cleanup: () => void) => cleanup,
   } as unknown as BrowserCapture)
-  const collector = connectWebVitals(otel)
+  const collector = applyVitals(otel)
   try {
     await expect
       .poll(() =>
@@ -35,6 +43,7 @@ test('Chromium official web-vitals reports real buffered document TTFB without a
     expect(ttfb.attributes).not.toHaveProperty('entries')
     expect(ttfb.attributes).not.toHaveProperty('attribution')
   } finally {
-    collector.dispose()
+    collector.setFalse()
+    otel.dispose()
   }
 })

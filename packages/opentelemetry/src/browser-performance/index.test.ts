@@ -1,9 +1,13 @@
 import { context } from '@reatom/core'
-import { afterEach, expect, test, vi } from 'vitest'
-import { installBrowserCapture, setBrowserMetadata } from '../browserCapture.ts'
+import { onTestFinished, afterEach, expect, test, vi } from 'vitest'
+import {
+  browserCaptureOf,
+  installBrowserCapture,
+  setBrowserMetadata,
+} from '../browserCapture.ts'
 import type { BrowserCapture } from '../browserCapture.ts'
 import type { ReatomOpentelemetry } from '../reatomOpentelemetry.ts'
-import { connectBrowserPerformance } from './index.ts'
+import { withBrowserPerformance } from './index.ts'
 import { reatomOpentelemetry } from '../reatomOpentelemetry.ts'
 import { installDomStubs } from '../test-helpers.ts'
 
@@ -12,23 +16,26 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 const setup = () => {
-  const otel = {} as ReatomOpentelemetry
+  const dom = installDomStubs()
+  onTestFinished(() => dom.restore())
+  const otel = reatomOpentelemetry({
+    name: 'browser-performance-observer-spy',
+    endpoint: null,
+    skipGlobalExtension: true,
+  })
+  onTestFinished(() => otel.dispose())
   const log = vi.fn()
   const observers: Array<{
     callback: PerformanceObserverCallback
     observe: ReturnType<typeof vi.fn>
     disconnect: ReturnType<typeof vi.fn>
   }> = []
-  let cleanup = () => {}
   let enabled = true
+  let page = 'current'
   installBrowserCapture(otel, {
-    attach: (next: () => void) => {
-      cleanup()
-      cleanup = next
-      return next
-    },
+    ...browserCaptureOf(otel)!,
     enabled: () => enabled,
-    snapshot: () => ({ attributes: { 'page.id': 'current' }, context: {} }),
+    snapshot: () => ({ attributes: { 'page.id': page }, context: {} }),
     log,
     isTransportUrl: (url: string) => url.includes('/collect'),
   } as unknown as BrowserCapture)
@@ -40,7 +47,6 @@ const setup = () => {
       observers.push(this)
     }
   }
-  vi.stubGlobal('window', {})
   vi.stubGlobal('PerformanceObserver', Observer)
   const deliver = (entry: Partial<PerformanceResourceTiming>) =>
     observers[0]!.callback(
@@ -50,6 +56,9 @@ const setup = () => {
   return {
     otel,
     log,
+    setPage: (id: string) => {
+      page = id
+    },
     observers,
     deliver,
     setEnabled: (value: boolean) => {
@@ -75,9 +84,14 @@ const entry = {
   initiatorType: 'fetch',
 }
 
+const applyPerformance = (
+  otel: ReatomOpentelemetry,
+  options?: Parameters<typeof withBrowserPerformance>[0],
+) => otel.extend(withBrowserPerformance(options)).browserPerformance
+
 test('buffered resource measurements sanitize URLs, units, consent and transport exclusion', () => {
   const { otel, log, observers, deliver, setEnabled } = setup()
-  const collector = connectBrowserPerformance(otel, { navigation: false })
+  const collector = applyPerformance(otel, { navigation: false })
   expect(observers[0]!.observe).toHaveBeenCalledWith({
     type: 'resource',
     buffered: true,
@@ -97,76 +111,77 @@ test('buffered resource measurements sanitize URLs, units, consent and transport
   deliver({ ...entry, name: 'data:text/plain,secret' })
   setEnabled(false)
   deliver(entry)
-  collector.dispose()
+  collector.setFalse()
   setEnabled(true)
   deliver(entry)
   expect(log).toHaveBeenCalledTimes(1)
   expect(observers[0]!.disconnect).toHaveBeenCalledTimes(1)
 })
-test('reconnection disconnects previous observers and unsupported types are skipped', () => {
+test('duplicate preflight runs before observers, including when disabled', () => {
   const { otel, observers } = setup()
-  connectBrowserPerformance(otel)
-  connectBrowserPerformance(otel, {
-    navigation: false,
-    resources: false,
-  }).dispose()
+  const control = applyPerformance(otel)
+  expect(control()).toBe(true)
+  expect(() => applyPerformance(otel)).toThrow()
   expect(observers).toHaveLength(2)
+  control.setFalse()
+  expect(() =>
+    applyPerformance(otel, { navigation: false, resources: false }),
+  ).toThrow()
   expect(
     observers.every((observer) => observer.disconnect.mock.calls.length === 1),
   ).toBe(true)
+  control.setTrue()
+  expect(observers).toHaveLength(4)
 })
 
-test('real parent disconnects native observers on explicit dispose, reconnect, parent disposal and HMR', () => {
+test('real parent toggles and HMR disconnect owned observers; disposed parent cannot restart', () => {
   const { observers, deliver } = setup()
   vi.spyOn(console, 'warn').mockImplementation(() => {})
-  const dom = installDomStubs()
-  try {
-    context.start(() => {
-      const options = {
-        name: 'performance-real-lifetime',
-        endpoint: null,
-        serviceName: 'metrics',
-        skipGlobalExtension: true,
-      }
-      const otel = reatomOpentelemetry(options)
+  context.start(() => {
+    const options = {
+      name: 'performance-real-lifetime',
+      endpoint: null,
+      serviceName: 'metrics',
+      skipGlobalExtension: true,
+    }
+    const otel = reatomOpentelemetry(options)
+    try {
+      const control = applyPerformance(otel, { navigation: false })
+      deliver(entry)
+      expect(otel.records()).toHaveLength(1)
+      control.setFalse()
+      deliver(entry)
+      expect(otel.records()).toHaveLength(1)
+      expect(observers[0]!.disconnect).toHaveBeenCalledTimes(1)
+      expect(() => applyPerformance(otel)).toThrow()
+      control.setTrue()
+      control.setFalse()
+      control.setTrue()
+      expect(observers[1]!.disconnect).toHaveBeenCalledTimes(1)
+      const replacement = reatomOpentelemetry(options)
       try {
-        const first = connectBrowserPerformance(otel, { navigation: false })
-        deliver(entry)
-        expect(otel.records()).toHaveLength(1)
-        first.dispose()
-        deliver(entry)
-        expect(otel.records()).toHaveLength(1)
-        expect(observers[0]!.disconnect).toHaveBeenCalledTimes(1)
-        connectBrowserPerformance(otel)
-        connectBrowserPerformance(otel)
-        expect(observers[1]!.disconnect).toHaveBeenCalledTimes(1)
         expect(observers[2]!.disconnect).toHaveBeenCalledTimes(1)
-        const replacement = reatomOpentelemetry(options)
-        try {
-          expect(observers[3]!.disconnect).toHaveBeenCalledTimes(1)
-          expect(observers[4]!.disconnect).toHaveBeenCalledTimes(1)
-          connectBrowserPerformance(replacement)
-          replacement.dispose()
-          connectBrowserPerformance(replacement).dispose()
-          expect(observers).toHaveLength(7)
-          expect(observers[5]!.disconnect).toHaveBeenCalledTimes(1)
-          expect(observers[6]!.disconnect).toHaveBeenCalledTimes(1)
-        } finally {
-          replacement.dispose()
-        }
+        applyPerformance(replacement)
+        replacement.dispose()
+        expect(() => applyPerformance(replacement)).toThrow()
+        expect(() => context.start(() => control.setTrue())).toThrow()
+        expect(control()).toBe(false)
+        expect(observers).toHaveLength(5)
+        expect(observers[3]!.disconnect).toHaveBeenCalledTimes(1)
+        expect(observers[4]!.disconnect).toHaveBeenCalledTimes(1)
       } finally {
-        otel.dispose()
+        replacement.dispose()
       }
-    })
-  } finally {
-    dom.restore()
-  }
+    } finally {
+      otel.dispose()
+    }
+  })
 })
 
 test('SSR does not construct PerformanceObserver', () => {
   const { otel, observers } = setup()
   vi.stubGlobal('window', undefined)
-  connectBrowserPerformance(otel).dispose()
+  applyPerformance(otel).setFalse()
   expect(observers).toHaveLength(0)
 })
 
@@ -182,7 +197,7 @@ test('custom URL exclusion sees full URL, cannot mutate emitted URL, and throwin
     url.pathname = '/mutated'
     return false
   })
-  const collector = connectBrowserPerformance(otel, {
+  const collector = applyPerformance(otel, {
     navigation: false,
     ignoreUrl,
   })
@@ -198,78 +213,95 @@ test('custom URL exclusion sees full URL, cannot mutate emitted URL, and throwin
     )
     expect(ignoreUrl).toHaveBeenCalledTimes(3)
   } finally {
-    collector.dispose()
+    collector.setFalse()
   }
 })
 
-test('real parent stops a delivered batch when ignoreUrl disposes or replaces its collector', () => {
+test('real parent stops a delivered batch when ignoreUrl disables or toggles its collector', () => {
   const { observers } = setup()
-  const dom = installDomStubs()
-  try {
-    context.start(() => {
-      const otel = reatomOpentelemetry({
-        name: 'performance-reentrant-dispose',
-        endpoint: null,
-        serviceName: 'metrics',
-        skipGlobalExtension: true,
-      })
-      const batch = {
-        getEntries: () => [
-          entry,
-          { ...entry, name: 'https://site.test/second' },
-        ],
-      } as PerformanceObserverEntryList
-      const deliver = (index: number) =>
-        observers[index]!.callback(batch, {} as PerformanceObserver)
-      try {
-        let collector: { dispose(): void }
-        const ignoreUrl = vi.fn(() => {
-          collector.dispose()
-          return false
-        })
-        collector = connectBrowserPerformance(otel, {
-          navigation: false,
-          ignoreUrl,
-        })
-        deliver(0)
-        expect(ignoreUrl).toHaveBeenCalledTimes(1)
-        expect(observers[0]!.disconnect).toHaveBeenCalledTimes(1)
-        expect(otel.records()).toHaveLength(0)
-        deliver(0)
-        expect(ignoreUrl).toHaveBeenCalledTimes(1)
-        const replace = vi.fn(() => {
-          connectBrowserPerformance(otel, { navigation: false })
-          return false
-        })
-        connectBrowserPerformance(otel, {
-          navigation: false,
-          ignoreUrl: replace,
-        })
-        deliver(1)
-        expect(replace).toHaveBeenCalledTimes(1)
-        expect(observers[1]!.disconnect).toHaveBeenCalledTimes(1)
-        expect(otel.records()).toHaveLength(0)
-        deliver(1)
-        expect(replace).toHaveBeenCalledTimes(1)
-        const snapshotCollector = connectBrowserPerformance(otel, {
-          navigation: false,
-        })
-        const clearMetadata = setBrowserMetadata(otel, () => {
-          snapshotCollector.dispose()
-          return {}
-        })
-        try {
-          deliver(3)
-          expect(observers[3]!.disconnect).toHaveBeenCalledTimes(1)
-          expect(otel.records()).toHaveLength(0)
-        } finally {
-          clearMetadata()
-        }
-      } finally {
-        otel.dispose()
-      }
+  context.start(() => {
+    const otel = reatomOpentelemetry({
+      name: 'performance-reentrant-disable',
+      endpoint: null,
+      serviceName: 'metrics',
+      skipGlobalExtension: true,
     })
-  } finally {
-    dom.restore()
+    const batch = {
+      getEntries: () => [entry, { ...entry, name: 'https://site.test/second' }],
+    } as PerformanceObserverEntryList
+    const deliver = (index: number) =>
+      observers[index]!.callback(batch, {} as PerformanceObserver)
+    let mode: 'disable' | 'toggle' | 'normal' = 'disable'
+    let control: ReturnType<typeof applyPerformance>
+    const ignoreUrl = vi.fn(() => {
+      if (mode === 'disable') control.setFalse()
+      if (mode === 'toggle') {
+        mode = 'normal'
+        control.setFalse()
+        control.setTrue()
+      }
+      return false
+    })
+    try {
+      control = applyPerformance(otel, { navigation: false, ignoreUrl })
+      deliver(0)
+      expect(ignoreUrl).toHaveBeenCalledTimes(1)
+      expect(observers[0]!.disconnect).toHaveBeenCalledTimes(1)
+      expect(otel.records()).toHaveLength(0)
+      deliver(0)
+      expect(ignoreUrl).toHaveBeenCalledTimes(1)
+      mode = 'toggle'
+      control.setTrue()
+      deliver(1)
+      expect(ignoreUrl).toHaveBeenCalledTimes(2)
+      expect(observers[1]!.disconnect).toHaveBeenCalledTimes(1)
+      expect(otel.records()).toHaveLength(0)
+      deliver(1)
+      expect(ignoreUrl).toHaveBeenCalledTimes(2)
+      const clearMetadata = setBrowserMetadata(otel, () => {
+        control.setFalse()
+        return {}
+      })
+      try {
+        deliver(2)
+        expect(observers[2]!.disconnect).toHaveBeenCalledTimes(1)
+        expect(otel.records()).toHaveLength(0)
+      } finally {
+        clearMetadata()
+      }
+    } finally {
+      otel.dispose()
+    }
+  })
+})
+
+test('buffered navigation keeps application snapshot across toggles while resources sample delivery', () => {
+  const { otel, observers, log, setPage } = setup()
+  const control = applyPerformance(otel)
+  control.setFalse()
+  setPage('new-login-page')
+  control.setTrue()
+  const navigation = {
+    ...entry,
+    entryType: 'navigation',
+    type: 'navigate',
+    domInteractive: 1,
+    domContentLoadedEventEnd: 2,
+    loadEventEnd: 3,
   }
+  observers[2]!.callback(
+    {
+      getEntries: () => [navigation],
+    } as unknown as PerformanceObserverEntryList,
+    {} as PerformanceObserver,
+  )
+  observers[3]!.callback(
+    { getEntries: () => [entry] } as unknown as PerformanceObserverEntryList,
+    {} as PerformanceObserver,
+  )
+  expect(log).toHaveBeenCalledTimes(2)
+  expect(log.mock.calls[0]![0].snapshot.attributes['page.id']).toBe('current')
+  expect(log.mock.calls[1]![0].snapshot.attributes['page.id']).toBe(
+    'new-login-page',
+  )
 })

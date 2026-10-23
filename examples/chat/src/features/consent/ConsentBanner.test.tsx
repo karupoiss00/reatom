@@ -21,14 +21,14 @@ const pageViewCount = () => countPageViews(otel.records())
 
 afterAll(() => {
   context.start(() => {
-    analytics.dispose()
     otel.dispose()
   })
 })
 
 test('web analytics uses the chat tracer and waits for consent', async () => {
-  expect(analytics.otel).toBe(otel)
-  expect(otel.name).toBe('chat')
+  expect(analytics).toBe(otel.analytics)
+  expect(otel.instanceName).toBe('chat')
+  expect(otel.name).toBe('otel.chat')
   expect(pageViewCount()).toBe(0)
 
   const host = document.createElement('div')

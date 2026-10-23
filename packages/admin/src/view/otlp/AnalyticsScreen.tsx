@@ -110,7 +110,7 @@ const OtlpAnalyticsOverview = ({ admin }: { admin: OtlpAdmin }) => (
       admin.analytics.sessions().length === 0 ? (
         <EmptyState
           title="No analytics sessions."
-          description="Analytics reads connectWebAnalytics records (app.page_view logs with session.id). Nothing is sent before consent."
+          description="Page views and sessions appear here after analytics consent. Capture activity to explore engagement and navigation."
         />
       ) : (
         <div

@@ -11,39 +11,40 @@ const viteRequire = createRequire(require.resolve('vitest/package.json'))
 const esbuildRequire = createRequire(viteRequire.resolve('vite'))
 const { build } = esbuildRequire('esbuild')
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const plugins = [
-  'browser-network',
-  'browser-console',
-  'web-vitals',
-  'browser-performance',
-]
 const names = {
-  'browser-network': 'connectBrowserNetwork',
-  'browser-console': 'connectBrowserConsole',
-  'web-vitals': 'connectWebVitals',
-  'browser-performance': 'connectBrowserPerformance',
+  'web-analytics': 'withWebAnalytics',
+  gdpr: 'withGDPR, reatomGDPR',
+  attributes: 'withAttributes',
+  'browser-network': 'withBrowserNetworkMonkeypatch',
+  'browser-console': 'withBrowserConsoleMonkeypatch',
+  'web-vitals': 'withWebVitals',
+  'browser-performance': 'withBrowserPerformance',
+  faro: 'faroTransport, logMeasurement',
 }
+const plugins = Object.keys(names)
 const cases = {
   root: {
     imports: `export { reatomOpentelemetry } from './src/index.ts'`,
     allowed: [],
   },
-  analytics: {
-    imports: `export { connectWebAnalytics } from './src/web-analytics/index.ts'`,
-    allowed: [],
-  },
-  'root+analytics': {
-    imports: `export { reatomOpentelemetry } from './src/index.ts'; export { connectWebAnalytics } from './src/web-analytics/index.ts'`,
-    allowed: [],
-  },
 }
-for (const plugin of plugins) {
-  const imports = `export { ${names[plugin]} } from './src/${plugin}/index.ts'`
-  cases[plugin] = { imports, allowed: [plugin] }
-  cases[`root+${plugin}`] = {
+for (const [plugin, exported] of Object.entries(names)) {
+  const label = plugin === 'web-analytics' ? 'analytics' : plugin
+  const imports = `export { ${exported} } from './src/${plugin}/index.ts'`
+  cases[label] = { imports, allowed: [plugin] }
+  cases[`root+${label}`] = {
     imports: `${cases.root.imports}; ${imports}`,
     allowed: [plugin],
   }
+}
+cases['root+all'] = {
+  imports: [
+    cases.root.imports,
+    ...plugins.map(
+      (plugin) => `export { ${names[plugin]} } from './src/${plugin}/index.ts'`,
+    ),
+  ].join('; '),
+  allowed: plugins,
 }
 const reports = []
 const outputDir = process.argv[2] && resolve(process.argv[2])

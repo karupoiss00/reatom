@@ -109,7 +109,7 @@ const sameWork = () => {
 
 test('localValues is off by default and localValuesOf misses every record', () => {
   const otel = start()
-  expect(otel.options().localValues).toBe(false)
+  expect(otel().localValues).toBe(false)
   const input = { n: 1 }
   context.start(() => {
     action((value: object) => value, 'lv.default')(input)
@@ -296,7 +296,7 @@ test('instance captureValues false and a diagnostics refusal still keep local va
 
   const consented = { note: 'consent-sentinel' }
   context.start(() => {
-    otel.options.set((current) => ({
+    otel.set((current) => ({
       ...current,
       consent: { diagnostics: false },
     }))
@@ -323,7 +323,7 @@ test('per-target captureValues false is skipped for true and kept for all', () =
     expect(
       otel.localValuesOf(spanNamed(otel.records(), 'lv.hidden')),
     ).toBeUndefined()
-    otel.options.set((current) => ({ ...current, localValues: 'all' }))
+    otel.set((current) => ({ ...current, localValues: 'all' }))
     target(shown)
   })
   const spans = otel
@@ -497,9 +497,9 @@ test('options.set toggles localValues at runtime', () => {
     expect(
       otel.localValuesOf(spanNamed(otel.records(), 'lv.toggle')),
     ).toBeUndefined()
-    otel.options.set((current) => ({ ...current, localValues: true }))
+    otel.set((current) => ({ ...current, localValues: true }))
     target(second)
-    otel.options.set((current) => ({ ...current, localValues: false }))
+    otel.set((current) => ({ ...current, localValues: false }))
     target(third)
   })
   const spans = otel
@@ -619,7 +619,7 @@ test('LOG payloads are kept when capture and logs consent are off', () => {
   const payload = { token: 'log-consent-sentinel' }
   let logged!: readonly unknown[]
   context.start(() => {
-    otel.options.set((current) => ({
+    otel.set((current) => ({
       ...current,
       signals: { logs: false },
     }))

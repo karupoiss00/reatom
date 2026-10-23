@@ -45,6 +45,7 @@ export interface BatchLease<T> {
 
 export interface BatchQueueInput<T> extends QueueOptions {
   send(lease: BatchLease<T>): void
+  onChange?: () => void
   onError?: (error: unknown, items: readonly T[]) => void
   onFlushTimeout?: (unfinished: number) => void
   isQuarantined?: () => boolean
@@ -95,6 +96,7 @@ export const createBatchQueue = <T>(
     pending: Set<Entry>
     finish(): void
   }
+  const changed = () => report(() => input.onChange?.())
   const entries = new Set<Entry>()
   const waiters = new Set<Waiter>()
   const queued: Entry[] = []
@@ -166,9 +168,11 @@ export const createBatchQueue = <T>(
         slot = undefined
         for (const entry of selected) settle(entry)
         schedulePump()
+        changed()
       },
     }
     slot = lease
+    changed()
     return lease
   }
   const isPaused = () => {
@@ -220,7 +224,7 @@ export const createBatchQueue = <T>(
     }
   }
 
-  return {
+  const result: BatchQueue<T> = {
     reserve() {
       if (disposed) return
       if (entries.size >= input.maxQueueSize) {
@@ -269,6 +273,7 @@ export const createBatchQueue = <T>(
         }
         const deadline = setTimeout(() => {
           flushTimeouts++
+          changed()
           const unfinished = pending.size
           waiter.finish()
           report(() => input.onFlushTimeout?.(unfinished))
@@ -341,5 +346,36 @@ export const createBatchQueue = <T>(
       }
       for (const waiter of waiters) waiter.finish()
     },
+  }
+  const wrap =
+    <Args extends unknown[], Result>(fn: (...args: Args) => Result) =>
+    (...args: Args): Result => {
+      try {
+        return fn(...args)
+      } finally {
+        changed()
+      }
+    }
+  return {
+    ...result,
+    reserve: wrap(() => {
+      const reservation = result.reserve()
+      return (
+        reservation && {
+          commit: wrap(reservation.commit),
+          cancel: wrap(reservation.cancel),
+          release: wrap(reservation.release),
+        }
+      )
+    }),
+    flush: () => {
+      const pending = result.flush()
+      changed()
+      return pending.finally(changed)
+    },
+    takeForUnload: wrap(result.takeForUnload),
+    dropQueued: wrap(result.dropQueued),
+    dispose: wrap(result.dispose),
+    wake: wrap(result.wake),
   }
 }

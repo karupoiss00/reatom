@@ -2,23 +2,32 @@ import { context } from '@reatom/core'
 import { expect, inject, test, vi } from 'vitest'
 import { reatomOpentelemetry } from '../reatomOpentelemetry.ts'
 
-import { installBrowserCapture } from '../browserCapture.ts'
+import { browserCaptureOf, installBrowserCapture } from '../browserCapture.ts'
 import type { BrowserCapture } from '../browserCapture.ts'
 import type { ReatomOpentelemetry } from '../reatomOpentelemetry.ts'
-import { connectBrowserPerformance } from './index.ts'
+import { withBrowserPerformance } from './index.ts'
+
+const applyPerformance = (
+  otel: ReatomOpentelemetry,
+  options?: Parameters<typeof withBrowserPerformance>[0],
+) => otel.extend(withBrowserPerformance(options)).browserPerformance
 
 test('Chromium native observer delivers buffered navigation and actual resource timing, then disconnects', async () => {
-  const otel = {} as ReatomOpentelemetry
+  const otel = reatomOpentelemetry({
+    name: 'browser-performance-observer-spy',
+    endpoint: null,
+    skipGlobalExtension: true,
+  })
   const log = vi.fn()
   const snapshot = { context: {}, attributes: { 'page.id': 'native-page' } }
   installBrowserCapture(otel, {
+    ...browserCaptureOf(otel)!,
     enabled: () => true,
     snapshot: () => snapshot,
     log,
-    attach: (cleanup: () => void) => cleanup,
     isTransportUrl: () => false,
   } as unknown as BrowserCapture)
-  const collector = connectBrowserPerformance(otel)
+  const collector = applyPerformance(otel)
   const path = `/@vite/client?timing-smoke=${Date.now()}`
   try {
     await fetch(path)
@@ -45,14 +54,15 @@ test('Chromium native observer delivers buffered navigation and actual resource 
       resource.attributes['measurement.values'].duration,
     ).toBeGreaterThanOrEqual(0)
     expect(resource.snapshot).toBe(snapshot)
-    collector.dispose()
+    collector.setFalse()
     const count = log.mock.calls.length
     await fetch(`/@vite/client?after-dispose=${Date.now()}`)
     // Drain the browser observer delivery task after the actual fetch.
     await new Promise((resolve) => setTimeout(resolve, 100))
     expect(log).toHaveBeenCalledTimes(count)
   } finally {
-    collector.dispose()
+    collector.setFalse()
+    otel.dispose()
   }
 })
 
@@ -88,7 +98,7 @@ test('Chromium excludes async custom transport resources without the network con
     if (url.href === customUrl) return true
     return !url.searchParams.has('performance-app')
   })
-  const collector = connectBrowserPerformance(otel, {
+  const collector = applyPerformance(otel, {
     navigation: false,
     ignoreUrl,
   })
@@ -120,7 +130,7 @@ test('Chromium excludes async custom transport resources without the network con
     expect(sent).toHaveBeenCalledTimes(sendsAfterApp)
     expect(otel.stats().queued).toBe(0)
   } finally {
-    collector.dispose()
+    collector.setFalse()
     observer.disconnect()
     otel.dispose()
   }

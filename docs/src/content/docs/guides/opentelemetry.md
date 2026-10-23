@@ -26,7 +26,7 @@ The right-hand table of contents lists every section. Jump to [Part 10](#10-scen
 
 ### Connect actions, updates and requests
 
-A checkout can involve a route loader, several state changes and a failed request. Recording their shared trace and Reatom cause ids lets you move from a visible error to the action and state that caused it. The same serialized records can go to your collector and stay in the page for local inspection.
+A checkout can involve a route loader, several state changes and a failed request. Recording their shared trace and Reatom cause ids lets you move from a visible error to the action and state that caused it. The same serialized records can go to your collector and stay in the page for local inspection. The SDK itself is a native atom, with optional features added through `.extend(with...)`.
 
 ```mermaid
 flowchart LR
@@ -56,14 +56,14 @@ flowchart LR
   subgraph app ["Browser page"]
     CORE["@reatom/core frames and variables"]
     OT["reatomOpentelemetry name shop"]
-    WA["connectWebAnalytics"]
+    WA["withWebAnalytics"]
     GDPR["reatomGDPR form"]
     CORE --> OT
     WA -->|"uses the instance pipeline"| OT
-    GDPR -->|"submitted snapshot"| WA
+    GDPR -->|"withGDPR binds submitted policy"| OT
   end
   OT -->|"OTLP JSON /v1/traces and /v1/logs"| COL["Collector or backend"]
-  OT -->|"endpoint null or keepRecords"| REC["records atom"]
+  OT -->|"endpoint null or keepRecords"| REC["readonly records computed"]
   REC --> ADMIN["Admin in the page"]
 ```
 
@@ -71,7 +71,7 @@ _Figure 2. One instance feeds the collector, analytics and admin with the same r
 
 ### Choose collection explicitly
 
-Core tracing, analytics, consent forms and browser diagnostics have separate entry points. Importing the root does not pull in the browser collectors or `web-vitals`. Each connector needs an explicit call and follows its parent instance's disposal. You can use OTLP, a self-hosted Faro receiver, or your own transport.
+Core tracing, analytics, consent forms and browser diagnostics have separate entry points. Importing the root does not pull in the browser collectors or `web-vitals`. Each extension factory must be applied through native `.extend`; calling the factory alone is inert. Applied features follow their parent instance's disposal. You can use OTLP, a self-hosted Faro receiver, or your own transport.
 
 There is no hosted service in this package. See [Part 13](#13-limits-and-sharp-edges) for current boundaries, and the [README](../../../../../packages/opentelemetry/README.md#bundle-cost) for dated bundle measurements and their method.
 
@@ -165,6 +165,7 @@ There is no default instance. You create one in `setup.ts` and import that file 
 
 ```ts title="setup.ts"
 import { reatomOpentelemetry } from '@reatom/opentelemetry'
+import { withGDPR } from '@reatom/opentelemetry/gdpr'
 
 export const otel = reatomOpentelemetry({
   name: 'shop',
@@ -172,8 +173,8 @@ export const otel = reatomOpentelemetry({
   serviceName: 'shop-web',
   serviceVersion: '1.4.0',
   environment: 'production',
-  filter: (target) => !target.name.startsWith('vendor.'),
-})
+  filter: (target) => !target.name.startsWith('analytics.'),
+}).extend(withGDPR({ name: 'consent', categories: { analytics: false } }))
 ```
 
 Import order is the whole trick: setup first.
@@ -215,7 +216,7 @@ document.querySelector('#checkout')?.addEventListener(
 
 A string must be an absolute `http:` or `https:` URL; the instance appends `/v1/traces` and `/v1/logs`. A relative path such as `/otel` throws when the instance is created. In development that throw is also printed as a warning. Build an absolute URL, for example from `location.origin`, before calling `reatomOpentelemetry`.
 
-`endpoint: null` disables the built-in OTLP destination and keeps `otel.records()` locally, bounded by `maxQueueSize`. With no additional transports, nothing is exported. Explicit `transports` can still export when the endpoint is null. This is also the in-memory test exporter ([E8](#e8-isolation-tests-devtools-only-and-ssr)). `keepRecords: true` keeps that copy next to a real endpoint; `clearRecords()` frees it.
+`endpoint: null` disables the built-in OTLP destination and keeps `otel.records()` locally, bounded by construction-time `.recordLimit`. With no additional transports, nothing is exported. Explicit `transports` can still export when the endpoint is null. This is also the in-memory test exporter ([E8](#e8-isolation-tests-devtools-only-and-ssr)). `keepRecords: true` keeps that copy next to a real endpoint; `clearRecords()` frees it.
 
 `localValues` (`false` by default) keeps the original JavaScript values beside those local records. `otel.localValuesOf(record)` returns `{ params, payload, state, error }` with only the keys that record has. The values are plain references: not copied, not masked, not truncated, and not part of the exported OTLP body. `otel.records()` stays the serialized records either way.
 
@@ -229,19 +230,21 @@ Creating the instance registers a global extension: every action defined afterwa
 
 `filter(target)` selects which automatic targets are recorded. `skipGlobalExtension: true` turns off both automatic action spans and automatic atom/computed update logs. Explicit `withOTel()` still records either way.
 
-`extend(target, withOTel)` adds per-target options automatically, for example `kind: 'client'` for everything named `api.*`.
+The constructor input `extend(target, withOTel)` adds per-target options automatically (distinct from native `otel.extend(...)`), for example `kind: 'client'` for everything named `api.*`.
 
 Per-target [`withOTel`](#15-glossary) applies `name`, `kind`, `importance`, route `boundary`, `attributes`, `captureValues`, `serialize` and `enabled`. `enabled: false` turns tracing off for that target. `attributes` are written onto the span or update log; a function of `{ params, payload, state, prevState, error }` runs at completion. A thrown callback leaves `reatom.attributes_error`. `span: true` suppresses reactive update logs; it does not supply component profiling. `captureValues: false` records the span without params, payload, atom or computed bodies, or `LOG` payloads, including strings and numbers. A per-target `serialize(value, key)` replaces the instance transform for that target and can enable capture when instance capture is off; diagnostics denial still wins.
 
 Names starting with `analytics.` or `otel.` are excluded from automatic observation, so a shared instance does not show the analytics layer's own atoms as app activity. `filter` is for the rest, such as a `vendor.` namespace. Explicit `withOTel()` on one of those names still records.
 
-### Options are an atom
+### The SDK is a settings atom
 
-`otel.options` is an atom. The pipeline reads live settings during operation, so `otel.options.set(...)` can change `endpoint`, `headers` (token refresh) or sampling at runtime. [E5](#e5-a-consent-banner-with-reatomgdpr)'s tracer gate uses this. A relative or empty `endpoint` is rejected on `options.set` with the same error as construction. `attributesVar.run(attributes, fn)` copies those attributes onto spans and logs created while `fn` runs.
+`otel()` reads live settings and `otel.set(current => ({ ...current, headers: nextHeaders }))` updates them. This is a genuine Reatom atom with native `.extend`, hooks and subscriptions; there is no `.options` alias. `.name` is the native name (`otel.shop`), and readonly `.instanceName` preserves the raw registry/storage name (`shop`). Empty/relative endpoints are rejected on writes as at construction.
 
-Queue scheduling/capacity, native retry configuration, constructor `serialize`, scope `version`, `useBeacon` and global-extension installation are fixed at construction. Filter/extend changes affect future installation; service/resource metadata is snapshotted at construction. Use `resourceAttributes` initially; changes to the exposed `options.resource` field do not refresh exported metadata. `version` is the instrumentation scope version, separate from `serviceVersion`. See the [full option reference](../../../../../packages/opentelemetry/API.md#instance-creation).
+Service/resource metadata, queue capacity/scheduling, retry, scope `version`, `useBeacon`, constructor `serialize`, injected platform functions and global model-extension installation are construction-only. They are absent from the writable settings type. `.resource` exposes the construction snapshot; `.recordLimit` exposes local retention capacity. `version` is the instrumentation scope version, distinct from `serviceVersion`. Endpoint, headers, destinations, filtering of future targets, capture, sampling, root policy and signal/category gates are live; see the [option reference](../../../../../packages/opentelemetry/API.md#live-settings).
 
-`dispose()` stops observation and batching, removes the global extensions, connectors and listeners, requests export abort, and frees `records()`. Attempt `flush()` first when shutdown delivery matters. The HMR recipe is in [E13](#e13-hmr-without-duplicate-instances).
+`records`, `stats` and `disposed` are genuine readonly computeds. Read or subscribe; do not replace their values. `log`, `clearRecords`, `flush`, `transport` and `dispose` are native actions. One SDK factory owns shared queues across Reatom roots. Isolated roots have their own record view; the default/Admin view aggregates records. A context boundary is not a separate runtime or delivery queue.
+
+`dispose()` is terminal: it stops observation/features/listeners/queues, requests abort and releases local records. Attempt `flush()` first when shutdown delivery matters. HMR disposes the old atom and constructs a fresh one ([E13](#e13-hmr-without-duplicate-instances)).
 
 ## 4. From frames to OTLP
 
@@ -430,13 +433,13 @@ _Figure 7. ParentBased sampling with a 10% root ratio._
 
 ## 6. Analytics as a by-product
 
-### What connectWebAnalytics records today
+### What withWebAnalytics records today
 
 Why a separate layer at all: not every app is on Reatom, and even in a Reatom app the tracer does not see a third-party script's error or the page lifecycle.
 
-[`connectWebAnalytics`](#15-glossary) either takes an instance or creates one from tracer options and returns it as `analytics.otel`. It reuses that instance's transport, queue, unload flush and `endpoint: null` mode; it has no exporter of its own.
+Apply `withWebAnalytics(options?)` through native `.extend` to add `otel.analytics`. It reuses the parent's transport, queues, unload behavior and local record stream. There is no instance-creating analytics overload or separate analytics exporter/teardown.
 
-It returns a Reatom model, not a tracking API: `visitorAtom`, `sessionAtom`, `pageAtom`, `attributionAtom`, `focusAtom`, `pageView`, `otel`, `dispose`.
+`otel.analytics` is a requested-enable boolean atom with readonly `visitor`, `session`, `page`, `attribution`, `focus` children and a `pageView` action. For example, `otel.analytics.session()` reads the captured analytics session. `.setFalse()` disables collection; `.setTrue()` requests it again. Requested true does not grant permission. Without an explicit source, analytics reads the effective analytics category, normally supplied by first-applied `withGDPR`.
 
 Records it emits today:
 
@@ -450,13 +453,13 @@ Records it emits today:
 
 All of them are OTLP log records with `session.id`, `app.visitor.id` (after consent) and `app.analytics.consent`.
 
-What `app.page_view` carries: `url.path`, `url.full` without query or fragment (`captureQuery: true` records the full URL; query strings often carry personal data), last-touch `app.utm.*` / `app.click_id.*`. Title, referrer, viewport and display size are not automatically enriched. Web Vitals are collected separately with `connectWebVitals`; there is no analytics `webVitals` option. General spans/logs also capture consented `session.id` and query-free `page.url`/`page.path` (with legacy `url.full`/`url.path` fallback), without automatically adding visitor or login ids. Metadata is captured with each record, not read from the page at flush; pending identity is stripped on revocation.
+What `app.page_view` carries: `url.path`, `url.full` without query or fragment (`captureQuery: true` records the full URL; query strings often carry personal data), last-touch `app.utm.*` / `app.click_id.*`. Title, referrer, viewport and display size are not automatically enriched. Web Vitals are collected separately with `withWebVitals`; there is no analytics `webVitals` option. General spans/logs also capture consented `session.id` and query-free `page.url`/`page.path` (with legacy `url.full`/`url.path` fallback), without automatically adding visitor or login ids. Metadata is captured with each record, not read from the page at flush; pending identity is stripped on revocation.
 
 ### Page views and navigation sources
 
 A page view is a watershed like a route. If the tracer's route root already opened a trace for this navigation, the page view joins it — one `traceId` for `route goods` and `app.page_view /goods/42`. Otherwise it starts a trace with a short root span `page_view <path>` (emitted today; the name is not yet frozen in the schema; the path is in the span name, so do not index span names as labels).
 
-Navigation source, chosen once at connect: `'urlAtom'` when Reatom routes exist at that moment, else `'navigation-api'` when `window.navigation` exists, else `'popstate'`. Pass it explicitly when you know.
+Navigation source, chosen when the feature starts: `'urlAtom'` when Reatom routes exist at that moment, else `'navigation-api'` when `window.navigation` exists, else `'popstate'`. Pass it explicitly when you know.
 
 Analytics never reconfigures the app's router. Reading `urlAtom` turns on its link interception, so the default never picks `'urlAtom'` without Reatom routes, and an explicit `'urlAtom'` without routes warns in dev with the two settings to change. A React Router app navigates exactly as without analytics ([E4](#e4-a-react-router-app-and-foreign-pushstate)).
 
@@ -465,7 +468,7 @@ Analytics never reconfigures the app's router. Reading `urlAtom` turns on its li
 ```mermaid
 flowchart TD
   explicit{"navigation option set?"}
-  routes{"Reatom routes exist at connect time?"}
+  routes{"Reatom routes exist when analytics starts?"}
   navApi{"window.navigation exists?"}
   useExplicit["Use the explicit source"]
   urlAtomSrc["urlAtom: read only, never writes catchLinks or sync"]
@@ -503,17 +506,19 @@ See the [analytics API reference](../../../../../packages/opentelemetry/API.md#w
 
 ### What the collection gates control
 
-Analytics starts denied. Until an analytics grant, it neither reads/writes analytics identity in storage nor emits analytics records. Engagement can accumulate in RAM on the current page and be emitted after a grant; earlier unconsented pages are discarded. This is distinct from diagnostics: tracer spans/logs and optional browser diagnostics default on unless explicitly gated.
+Analytics starts denied unless an effective analytics grant exists. Until then it neither reads/writes analytics identity in storage nor emits analytics records. Current-page engagement can accumulate in RAM and be emitted after a grant; earlier unconsented pages are discarded. Diagnostics are separate and remain available for local development/Admin when GDPR is omitted.
 
-Automatic value masking reduces some exposure; it does not guarantee that arbitrary URLs, manual attributes or user-provided text are safe. Decide what data to collect and apply your own category policy.
+Apply `withGDPR` **first**, before collectors or the first capture, to establish offered-category denials before consent-form construction. Apply the extension before constructing/capturing application models. Late GDPR attachment rejects; it cannot retroactively protect captured records. A requested-on feature boolean does not override a category denial or signal switch.
+
+Automatic value masking does not guarantee arbitrary URLs, common/domain attributes or manual text are safe. Attribute readers and manual facts require the application's privacy/category policy.
 
 ```mermaid
 stateDiagram-v2
   [*] --> NoConsent
-  NoConsent: RAM engagement for current page. No analytics storage or sends.
-  Draft: Checkbox changed, not submitted. Analytics still denied.
-  Granted: Submitted analytics grant. Identity and analytics enabled.
-  Withdrawn: Further analytics sends and identity use stop.
+  NoConsent: Offered categories denied. Analytics only keeps current engagement in RAM.
+  Draft: Checkboxes changed, not submitted. No grant.
+  Granted: Submitted analytics grant. Analytics identity and output enabled.
+  Withdrawn: Further analytics output and identity use stop.
   NoConsent --> Draft: change checkbox
   Draft --> NoConsent: undo draft
   Draft --> Granted: submit
@@ -522,90 +527,48 @@ stateDiagram-v2
   Withdrawn --> Granted: submit analytics true
 ```
 
-_Figure 9. Analytics consent does not implicitly disable diagnostics._
+_Figure 9. Submitted category choices and requested feature enablement are distinct._
 
 ### Draft versus snapshot
 
-[`reatomGDPR`](#15-glossary) is a Reatom form whose fields are category booleans (`diagnostics`, `analytics`, `marketing`, all `false` by default). The checkboxes are a draft: `consent.fields.analytics.change(true)` does not submit a choice or enable analytics. The checkbox action can still produce diagnostic spans when diagnostics is enabled.
+No-argument `withGDPR()` creates exactly the default `reatomGDPR()` form and exposes it as `otel.gdpr`. Its categories are diagnostics, analytics and marketing, all false. Use the form fields as drafts and call `submit()` when the visitor saves. Only submitted/restored `snapshot` categories are permission.
 
-Analytics reads `consent.snapshot`, which changes only on `submit()`. A ticked-but-unsaved box is not consent.
-
-Consent can also be `true`, a boolean atom/reader, or `{ analytics: reader }` for apps with their own banner; omitted means `false`. Atom/form changes are subscribed. A plain reader is reevaluated on activity and may not trigger a grant immediately.
-
-A `diagnostics`-only choice does not unlock analytics identifiers. There is no back door.
-
-```ts title="consent.ts"
+```ts title="consent-defaults.ts"
 import { action, wrap } from '@reatom/core'
 import { reatomOpentelemetry } from '@reatom/opentelemetry'
-import { reatomGDPR } from '@reatom/opentelemetry/gdpr'
-import { connectWebAnalytics } from '@reatom/opentelemetry/web-analytics'
+import { withGDPR } from '@reatom/opentelemetry/gdpr'
+import { withWebAnalytics } from '@reatom/opentelemetry/web-analytics'
 
 export const otel = reatomOpentelemetry({
   name: 'shop',
   endpoint: 'https://shop.example/otel',
   serviceName: 'shop-web',
-})
-
-export const consent = reatomGDPR({ name: 'consent', otel })
-export const analytics = connectWebAnalytics(otel, {
-  consent,
-})
-
-export const toggleAnalytics = action((checked: boolean) => {
-  consent.fields.analytics.change(checked)
-}, 'consentBanner.toggleAnalytics')
+}).extend(withGDPR(), withWebAnalytics())
 
 export const saveChoice = action(async () => {
-  await wrap(consent.submit())
+  // In an application the form fields are edited by the visitor.
+  otel.gdpr.fields.analytics.change(true)
+  await wrap(otel.gdpr.submit())
 }, 'consentBanner.save')
-
-consent.snapshot()
 ```
 
-Pass the form itself. Analytics reads `snapshot`, which changes only on `submit()`. `fields.analytics`, `fields.diagnostics` and `fields.marketing` are defined booleans. A hand-built `{ fields: { analytics } }` without `snapshot` is a type error: a ticked checkbox is not consent.
+Before submit, both offered diagnostics and analytics are denied. This example grants analytics only; diagnostics remains false. A supplied `categories` object defines the exact schema: `withGDPR({ categories: { analytics: false } })` offers only analytics, leaving diagnostic capture unaffected. [E5](#e5-a-consent-banner-with-reatomgdpr) uses that analytics-only form.
+
+For an existing app-owned form, use `withGDPR(sharedForm)`. The form may be shared across SDKs; disposing one SDK unbinds its policy without disposing the shared form. Standalone `reatomGDPR` takes `name`, `categories` and `persist`; it has no SDK `otel`/`instances` option. See [the complete form contract](../../../../../packages/opentelemetry/API.md#consent-form).
+
+`withWebAnalytics()` reads effective `otel().consent.analytics` by default. An explicit `consent` option selects a separate boolean/atom/reader/category/form source. Do not redundantly pass `consent: true` with GDPR: that chooses a separate analytics source. Plain readers are reevaluated on activity; unlike atoms/forms, they may not trigger a grant immediately.
 
 ### What submit does
 
-On `submit()` the snapshot is set and persisted under `reatom.gdpr.<name>` (opt out with `persist: false`); remembering the choice itself needs no unique id.
+Submit persists the snapshot under `reatom.gdpr.<name>` (`persist: false` disables persistence; a string selects a key) and updates SDK categories. It leaves `signals` unchanged. Granted analytics starts identity/session/page records and can emit RAM engagement from the current page. Previously visited unconsented pages are discarded. Revocation stops future analytics output/identity use and strips pending session metadata; it does not automatically delete stored identifiers.
 
-With analytics granted, the first `app.page_view` goes out with a fresh `session.id` and a new `app.visitor.id`, visitor and session keys are written, `session.start` carries first and last touch, and the RAM engagement of the **current** page is flushed. Pages visited before consent are not reported.
-
-Withdrawing later stops further analytics sends and identity use, including session identity on pending general records. Previously stored identifiers are not automatically deleted.
+Known-user logout is separate: a `withAttributes` source returning null changes future captures, without relabeling or deleting queued history.
 
 ### Diagnostics signals
 
-Analytics is the hard gate: nothing analytics-related is stored or sent before a submitted analytics grant. An instance that never uses `reatomGDPR` keeps tracer export and value capture on.
+Offered `diagnostics: false` holds diagnostic spans/logs, browser diagnostics and automatic value capture. An analytics-only form does not offer diagnostics and does not deny it. Omitting GDPR leaves development diagnostics on. A submitted diagnostics grant never grants analytics.
 
-Attaching the instance to `reatomGDPR` leaves `options.signals` unchanged. Until `submit()`, the tracer keeps exporting spans and tracer logs (`reatom.atom.update`, `reatom.computed.update`, `exception`, `reatom.log`) and keeps capturing params, payloads, update bodies, and `LOG` payloads. A draft checkbox writes neither `consent` nor `signals`.
-
-`submit()` writes `consent` and does not rewrite `signals`. Explicit `diagnostics: false` (the checkbox was offered and left off, or set false) turns tracer export and value capture off, and drops queued tracer spans, tracer logs, the unsampled error ring, and held logs so they are not sent later. A form with no diagnostics field, or a snapshot that does not include `diagnostics`, leaves trace export as it was. `diagnostics: true` leaves tracer export on. Analytics logs on the same instance keep their own gate. A submitted analytics grant still exports `app.page_view` when diagnostics is off, unless the app set `signals.logs: false`. `otel.log` honors that switch. The shared endpoint is not cleared.
-
-`signals.traces: false` and `signals.logs: false` are app kill switches. Consent submit does not clear them. `logs: false` leaves trace export on and stops public logs, including analytics events that go through `otel.log`. An `options.set` that omits `consent` or `signals` keeps the stored values.
-
-To hold diagnostics from startup, set an explicit denial before defining application models or attaching browser collectors. The submitted form can then update the categories without changing the endpoint or analytics' separate gate:
-
-```ts title="e05b-gate-tracer.ts"
-import { reatomOpentelemetry } from '@reatom/opentelemetry'
-import { reatomGDPR } from '@reatom/opentelemetry/gdpr'
-import { connectWebAnalytics } from '@reatom/opentelemetry/web-analytics'
-
-export const otel = reatomOpentelemetry({
-  name: 'shop',
-  endpoint: 'https://shop.example/otel',
-  serviceName: 'shop-web',
-})
-otel.options.set((current) => ({
-  ...current,
-  consent: { diagnostics: false },
-}))
-export const consent = reatomGDPR({ name: 'consent', otel })
-export const analytics = connectWebAnalytics(otel, { consent })
-```
-
-`consent` and `signals` are configured through `options.set` or form submission,
-not constructor inputs. Diagnostic browser collectors follow diagnostics and
-signal gates too. Public manual logs and measurements require caller-owned
-category checks; they are not a substitute for wiring the correct gate.
+App-owned `otel().signals.traces/logs` independently block those signals. Set them through `otel.set(...)`; they are not constructor inputs and form submit does not rewrite them. Public `otel.log` and `logMeasurement` obey the logs signal, while their caller owns category checks and explicit-attribute privacy. Use the bound form to change categories; it is the effective source rather than draft checkboxes or an unrelated settings write.
 
 ## 8. Visitors and sessions
 
@@ -654,9 +617,11 @@ _Figure 10. When a session id rotates._
 
 ### Login linking
 
-Analytics never learns who the user is: it does not read cookies, tokens or the DOM.
+Analytics' random visitor/session identifiers remain distinct from authenticated users. Bind an existing application computed with `withAttributes(source)` from `/attributes` to add user/tenant/domain data without creating another auth store. The reader returns a complete readonly attribute map or null.
 
-There is no automatic login/logout linking or identity-stitching helper. The app can use `attributesVar.run({ 'user.id': internalId }, callback)` or explicit domain attributes under its own category and identity-lifecycle policy. Visitor identity is not automatically copied into general diagnostic records.
+Admission captures immutable bounded snapshots, including absence, so a new login cannot backfill a formerly anonymous async operation. Async logs and native HTTP inside it keep the initiating identity through `wrap`. An app can scope a complete override with `attributesVar.run(...)`. Source errors or budget failures omit the whole map and add `reatom.attributes_error`. Null after logout affects future captures, not queued history or consent. See the [complete attributes example](../../../../../packages/opentelemetry/API.md#common-attributes).
+
+Faro maps captured `user.id`, `user.name`, `user.email`, `user.full_name`, `user.hash` and valid string-array roles to `meta.user`, grouping envelopes by that identity. There is no resource-user fallback or anonymous visitor/session-to-user conversion. The app owns login/logout and category policy.
 
 ## 9. Errors without duplicates
 
@@ -718,6 +683,7 @@ Each scenario names a team, shows the code, lists the records you should expect 
 
 ```ts title="setup.ts"
 import { reatomOpentelemetry } from '@reatom/opentelemetry'
+import { withGDPR } from '@reatom/opentelemetry/gdpr'
 
 export const otel = reatomOpentelemetry({
   name: 'shop',
@@ -725,8 +691,8 @@ export const otel = reatomOpentelemetry({
   serviceName: 'shop-web',
   serviceVersion: '1.4.0',
   environment: 'production',
-  filter: (target) => !target.name.startsWith('vendor.'),
-})
+  filter: (target) => !target.name.startsWith('analytics.'),
+}).extend(withGDPR({ name: 'consent', categories: { analytics: false } }))
 ```
 
 ```ts title="routes.ts"
@@ -795,18 +761,15 @@ export const checkout = action(async () => {
 ```
 
 ```ts title="analytics.ts"
-import { reatomGDPR } from '@reatom/opentelemetry/gdpr'
-import { connectWebAnalytics } from '@reatom/opentelemetry/web-analytics'
+import { withWebAnalytics } from '@reatom/opentelemetry/web-analytics'
 
 import { otel } from './setup'
 import './routes'
 
-export const consent = reatomGDPR({ name: 'consent', otel })
-
-export const analytics = connectWebAnalytics(otel, {
-  navigation: 'urlAtom',
-  consent,
-})
+export const consent = otel.gdpr
+export const analytics = otel.extend(
+  withWebAnalytics({ navigation: 'urlAtom' }),
+).analytics
 ```
 
 ```ts title="main.ts"
@@ -885,7 +848,7 @@ If the visitor closes the tab while `api.createOrder` is still waiting, the span
 
 #### Common mistake
 
-Connecting analytics in a module that runs before the routes exist. The navigation source is decided at connect time: with no Reatom routes yet, the default becomes `'navigation-api'`, and an explicit `'urlAtom'` prints a dev warning. Import the routes before `connectWebAnalytics`, as `analytics.ts` does, and import `setup.ts` before both.
+Connecting analytics in a module that runs before the routes exist. The navigation source is decided when analytics starts: with no Reatom routes yet, the default becomes `'navigation-api'`, and an explicit `'urlAtom'` prints a dev warning. Import routes before applying `withWebAnalytics`, as `analytics.ts` does, and import `setup.ts` before both.
 
 Naming an app action `analytics.something` hides it from automatic tracing. That prefix belongs to the analytics layer; call `withOTel()` if that action should still be a span.
 
@@ -898,29 +861,34 @@ Naming an app action `analytics.something` hides it from automatic tracing. That
 #### Code
 
 ```ts title="e02-analytics-only.ts"
-import { action, atom, wrap } from '@reatom/core'
-import { connectWebAnalytics } from '@reatom/opentelemetry/web-analytics'
+import { action, atom } from '@reatom/core'
+import { reatomOpentelemetry } from '@reatom/opentelemetry'
+import { withWebAnalytics } from '@reatom/opentelemetry/web-analytics'
 
 type Order = { id: string; total: number; currency: string }
 
 export const analyticsConsent = atom(false, 'cookieBanner.analytics')
 
-export const analytics = connectWebAnalytics({
+export const otel = reatomOpentelemetry({
   name: 'site',
   endpoint: 'https://site.example/otel',
   serviceName: 'site-web',
   skipGlobalExtension: true,
-  consent: analyticsConsent,
-})
+}).extend(
+  withWebAnalytics({
+    consent: analyticsConsent,
+  }),
+)
+
+export const analytics = otel.analytics
 
 export const purchase = action((order: Order) => order, 'app.purchase').extend(
-  analytics.otel.withOTel(),
+  otel.withOTel(),
 )
 
-document.querySelector('#accept-analytics')?.addEventListener(
-  'click',
-  wrap(() => analyticsConsent.set(true)),
-)
+document.querySelector('#accept-analytics')?.addEventListener('click', () => {
+  analyticsConsent.set(true)
+})
 
 purchase({ id: 'o-1', total: 59.9, currency: 'EUR' })
 ```
@@ -948,35 +916,32 @@ In real life the two halves live in different bundles; they are in one file here
 ```ts title="e03-widget.ts"
 import { action } from '@reatom/core'
 import { reatomOpentelemetry } from '@reatom/opentelemetry'
-import { connectWebAnalytics } from '@reatom/opentelemetry/web-analytics'
+import { withWebAnalytics } from '@reatom/opentelemetry/web-analytics'
 
 export const hostOtel = reatomOpentelemetry({
   name: 'host',
   endpoint: 'https://otel.host.example',
   serviceName: 'host-web',
-})
-export const hostAnalytics = connectWebAnalytics(hostOtel, { consent: true })
+}).extend(withWebAnalytics({ consent: true }))
+export const hostAnalytics = hostOtel.analytics
 
 export const widgetOtel = reatomOpentelemetry({
   name: 'widget',
   endpoint: 'https://otel.reviews-vendor.example',
   serviceName: 'reviews-widget',
   filter: (target) => target.name.startsWith('reviews.'),
-})
-export const widgetAnalytics = connectWebAnalytics(widgetOtel, {
-  consent: true,
-  errors: false,
-})
+}).extend(withWebAnalytics({ consent: true, errors: false }))
+export const widgetAnalytics = widgetOtel.analytics
 
 export const submitReview = action((stars: number) => stars, 'reviews.submit')
 
-hostAnalytics.visitorAtom()
-widgetAnalytics.visitorAtom()
+hostAnalytics.visitor()
+widgetAnalytics.visitor()
 ```
 
 #### What appears
 
-Storage keys `host.visitor`, `host.session`, `widget.visitor`, `widget.session`; two different visitor ids. Each collector receives its own `app.session`, page views and spans; records, stats and trace variables never mix. The unload budget (60 KiB) is per page and shared by both.
+Storage keys `host.visitor`, `host.session`, `widget.visitor`, `widget.session`; two different visitor ids. Each collector receives its own `app.session`, page views and spans; each instance owns its runtime, stats and trace variable. An instance's queues are shared across its Reatom roots; isolated record views do not create independent queues. The unload budget (60 KiB) is per page and shared by both.
 
 ```mermaid
 flowchart LR
@@ -1012,7 +977,8 @@ Both picking `name: 'app'`: the second replaces the first and warns in dev. Use 
 
 ```ts title="e04-foreign-router.ts"
 import { atom } from '@reatom/core'
-import { connectWebAnalytics } from '@reatom/opentelemetry/web-analytics'
+import { reatomOpentelemetry } from '@reatom/opentelemetry'
+import { withWebAnalytics } from '@reatom/opentelemetry/web-analytics'
 
 type HistoryAction = 'POP' | 'PUSH' | 'REPLACE'
 
@@ -1020,14 +986,19 @@ const hasNavigationApi = 'navigation' in window
 
 export const analyticsConsent = atom(false, 'site.consent.analytics')
 
-export const analytics = connectWebAnalytics({
+export const otel = reatomOpentelemetry({
   name: 'site',
   endpoint: 'https://site.example/otel',
   serviceName: 'site-web',
   skipGlobalExtension: true,
-  consent: analyticsConsent,
-  navigation: hasNavigationApi ? 'navigation-api' : 'popstate',
-})
+}).extend(
+  withWebAnalytics({
+    consent: analyticsConsent,
+    navigation: hasNavigationApi ? 'navigation-api' : 'popstate',
+  }),
+)
+
+export const analytics = otel.analytics
 
 export const reportRouterNavigation = (historyAction: HistoryAction) => {
   if (hasNavigationApi || historyAction === 'POP') return
@@ -1065,26 +1036,27 @@ Calling `pageView()` on every location change in `'popstate'` mode: back and for
 
 **Team.** The shop from E1, before launch in the EU and Russia.
 
-**Scene.** A banner with three checkboxes and a Save button. Nothing may be stored or sent by analytics before Save.
+**Scene.** A banner with an Analytics checkbox and a Save button. Analytics must stay denied before Save, while diagnostics remain available.
 
 #### Code
 
 ```ts title="consent.ts"
 import { action, wrap } from '@reatom/core'
 import { reatomOpentelemetry } from '@reatom/opentelemetry'
-import { reatomGDPR } from '@reatom/opentelemetry/gdpr'
-import { connectWebAnalytics } from '@reatom/opentelemetry/web-analytics'
+import { withGDPR } from '@reatom/opentelemetry/gdpr'
+import { withWebAnalytics } from '@reatom/opentelemetry/web-analytics'
 
 export const otel = reatomOpentelemetry({
   name: 'shop',
   endpoint: 'https://shop.example/otel',
   serviceName: 'shop-web',
-})
+}).extend(
+  withGDPR({ name: 'consent', categories: { analytics: false } }),
+  withWebAnalytics(),
+)
 
-export const consent = reatomGDPR({ name: 'consent', otel })
-export const analytics = connectWebAnalytics(otel, {
-  consent,
-})
+export const consent = otel.gdpr
+export const analytics = otel.analytics
 
 export const toggleAnalytics = action((checked: boolean) => {
   consent.fields.analytics.change(checked)
@@ -1101,16 +1073,16 @@ See [Figure 9](#what-the-collection-gates-control) for the consent states.
 
 #### What appears
 
-| Moment                                        | Analytics records                                                                                                                                                                    | Identity storage                                                                      | Tracer                                       |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- | -------------------------------------------- |
-| Page load                                     | none                                                                                                                                                                                 | none; RAM session id only                                                             | spans as usual                               |
-| `toggleAnalytics(true)`                       | none                                                                                                                                                                                 | none                                                                                  | span `consentBanner.toggleAnalytics`         |
-| `saveChoice()`                                | `session.start`, `app.page_view` with new `session.id`, `app.visitor.id`, `app.utm.*` from the landing URL, `app.analytics.consent = analytics`; `app.page.engagement` for this page | `shop.visitor`, `shop.session`, plus the consent snapshot under `reatom.gdpr.consent` | `consent.submit` and form internals          |
-| Submit with diagnostics true, analytics false | none                                                                                                                                                                                 | consent snapshot only                                                                 | diagnostic export allowed; signals unchanged |
+| Moment                  | Analytics records                                                                                                                                                                    | Identity storage                                                                      | Tracer                                               |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| Page load               | none                                                                                                                                                                                 | none; RAM session id only                                                             | spans as usual                                       |
+| `toggleAnalytics(true)` | none                                                                                                                                                                                 | none                                                                                  | span `consentBanner.toggleAnalytics`                 |
+| `saveChoice()`          | `session.start`, `app.page_view` with new `session.id`, `app.visitor.id`, `app.utm.*` from the landing URL, `app.analytics.consent = analytics`; `app.page.engagement` for this page | `shop.visitor`, `shop.session`, plus the consent snapshot under `reatom.gdpr.consent` | `consent.submit` and form internals                  |
+| Submit analytics false  | none                                                                                                                                                                                 | consent snapshot only                                                                 | diagnostics unaffected by this analytics-only schema |
 
 #### Common mistake
 
-Wiring analytics to the live checkbox atom (`consent: consent.fields.analytics`) instead of the form: the live field flips on tick, before Save, so analytics would start sending without a submitted choice. Pass the form; analytics then reads `snapshot`. Second mistake: assuming attaching an unsubmitted banner stops diagnostics (it does not; use the explicit gate in [Part 7](#diagnostics-signals)).
+Wiring an explicit analytics source to a live checkbox: the field flips before Save and bypasses submitted-choice semantics. Apply `withGDPR` first and let `withWebAnalytics()` use the effective submitted category. Second mistake: assuming an analytics-only schema denies diagnostics. Include a diagnostics category when you need that gate, and apply GDPR first ([Part 7](#diagnostics-signals)).
 
 ### E6. Sessions, campaigns and a kiosk
 
@@ -1121,20 +1093,26 @@ Wiring analytics to the live checkbox atom (`consent: consent.fields.analytics`)
 #### Code
 
 ```ts title="e06-identity.ts"
-import { connectWebAnalytics } from '@reatom/opentelemetry/web-analytics'
+import { reatomOpentelemetry } from '@reatom/opentelemetry'
+import { withWebAnalytics } from '@reatom/opentelemetry/web-analytics'
 
-export const analytics = connectWebAnalytics({
+export const otel = reatomOpentelemetry({
   name: 'kiosk',
   endpoint: 'https://kiosk.example/otel',
   serviceName: 'kiosk-web',
   skipGlobalExtension: true,
-  consent: true,
-  persistVisitor: false,
-  sessionTimeout: 10 * 60 * 1000,
-  perTab: true,
-})
+}).extend(
+  withWebAnalytics({
+    consent: true,
+    persistVisitor: false,
+    sessionTimeout: 10 * 60 * 1000,
+    perTab: true,
+  }),
+)
 
-analytics.sessionAtom.subscribe((session) => {
+export const analytics = otel.analytics
+
+analytics.session.subscribe((session) => {
   if (session.previousId) console.info('rotated from', session.previousId)
 })
 ```
@@ -1160,15 +1138,15 @@ Putting `utm_*` on internal links to "track banners": it does not rotate session
 ```ts title="e07-errors.ts"
 import { action } from '@reatom/core'
 import { reatomOpentelemetry } from '@reatom/opentelemetry'
-import { connectWebAnalytics } from '@reatom/opentelemetry/web-analytics'
+import { withWebAnalytics } from '@reatom/opentelemetry/web-analytics'
 
 export const otel = reatomOpentelemetry({
   name: 'shop',
   endpoint: 'https://shop.example/otel',
   serviceName: 'shop-web',
-})
+}).extend(withWebAnalytics({ consent: true }))
 
-export const analytics = connectWebAnalytics(otel, { consent: true })
+export const analytics = otel.analytics
 
 export const applyCoupon = action((code: string) => {
   if (!/^[A-Z0-9]{6}$/.test(code)) throw new TypeError(`Bad coupon ${code}`)
@@ -1277,7 +1255,7 @@ The server puts `traceparent` from `renderProductPage` into `<meta name="tracepa
 
 #### Common mistake
 
-Sharing one module-level array of records between tests instead of reading `otel.records()` inside each `context.start()`. Second: expecting `connectWebAnalytics` to do anything on the server; without `window` it is a no-op with one dev warning. Third: server resources still report `telemetry.sdk.language = webjs`; there is no Node-specific automatic resource detection here.
+Sharing one module-level array of records between tests instead of reading `otel.records()` inside each `context.start()`. Second: expecting `withWebAnalytics` to do anything on the server; without `window` it is a no-op with one dev warning. Third: server resources still report `telemetry.sdk.language = webjs`; there is no Node-specific automatic resource detection here.
 
 ### E9. Debugging a failed checkout in admin
 
@@ -1291,7 +1269,7 @@ Use E1 with `endpoint: null` in `setup.ts`; the records stay in `otel.records()`
 
 #### What appears
 
-With `endpoint: null`, the instance's `records()` atom holds the OTLP records in memory. Reatom admin can ingest those records and show them in its Railway chrome: Activity, State, Timeline, Graph, Filters, and an Inspector. Overview shows state or payload, then params, expanded in one column for model records. Event logs show grouped attributes instead. The other tabs are the cause chain, last-write history, and the record JSON. A failed checkout feed shows `route goods`, `cart.add`, `cart.lines`, `checkout.submit` and `api.createOrder` marked as errors, and `exception` with `Error: Order failed: HTTP 500`. Selecting `api.createOrder` shows `reatom.params` under the payload — the cart lines sent in the request body. The screenshot lives in [Part 11](#in-the-page-admin-on-records).
+With `endpoint: null`, the instance's `records` computed holds the OTLP records in memory. Reatom admin can ingest those records and show them in its Railway chrome: Activity, State, Timeline, Graph, Filters, and an Inspector. Overview shows state or payload, then params, expanded in one column for model records. Event logs show grouped attributes instead. The other tabs are the cause chain, last-write history, and the record JSON. A failed checkout feed shows `route goods`, `cart.add`, `cart.lines`, `checkout.submit` and `api.createOrder` marked as errors, and `exception` with `Error: Order failed: HTTP 500`. Selecting `api.createOrder` shows `reatom.params` under the payload — the cart lines sent in the request body. The screenshot lives in [Part 11](#in-the-page-admin-on-records).
 
 How to open admin on an instance's records is not a published API yet.
 
@@ -1395,18 +1373,15 @@ Comparing the flags string to `"01"`. Sampled is `flags & 0x01`; `03` is sampled
 ```ts title="e12-island.ts"
 import { action, atom, withAsync, wrap } from '@reatom/core'
 import { reatomOpentelemetry } from '@reatom/opentelemetry'
-import { connectWebAnalytics } from '@reatom/opentelemetry/web-analytics'
+import { withWebAnalytics } from '@reatom/opentelemetry/web-analytics'
 
 export const otel = reatomOpentelemetry({
   name: 'crm',
   endpoint: 'https://crm.example/otel',
   serviceName: 'crm-web',
   filter: (target) => target.name.startsWith('search.'),
-})
-export const analytics = connectWebAnalytics(otel, {
-  consent: true,
-  navigation: 'navigation-api',
-})
+}).extend(withWebAnalytics({ consent: true, navigation: 'navigation-api' }))
+export const analytics = otel.analytics
 
 export const searchQuery = atom('', 'search.query')
 export const runSearch = action(async () => {
@@ -1429,7 +1404,7 @@ Calling `runSearch` from a debounced handler built with a plain `setTimeout` in 
 
 **Team.** Anyone on Vite.
 
-**Scene.** Editing `setup.ts` re-runs it; without cleanup two `shop` instances would be live.
+**Scene.** Editing `setup.ts` reruns it; dispose the old SDK and create a fresh one so feature lifetimes stay explicit.
 
 #### Code
 
@@ -1628,7 +1603,7 @@ Believing only object keys are masked. A string atom named `login.password`, or 
 
 ### In the page: admin on records()
 
-With `endpoint: null` (or `keepRecords: true`), the instance's `records()` atom holds the OTLP records in memory. Reatom admin can ingest OTLP records and show them in its "Railway" chrome: Activity (a log feed of actions, atoms and exceptions with an error badge), State, Timeline, Graph (the cause graph from `reatom.cause.ids`), Filters, and an Inspector. Overview shows state or payload, then params, expanded in one column for model records. Event logs show grouped attributes instead. The other tabs are the cause chain, last-write history, and the record JSON.
+With `endpoint: null` (or `keepRecords: true`), the instance's readonly `records` computed holds the OTLP records in memory. Reatom admin can ingest OTLP records and show them in its "Railway" chrome: Activity (a log feed of actions, atoms and exceptions with an error badge), State, Timeline, Graph (the cause graph from `reatom.cause.ids`), Filters, and an Inspector. Overview shows state or payload, then params, expanded in one column for model records. Event logs show grouped attributes instead. The other tabs are the cause chain, last-write history, and the record JSON.
 
 Analytics opens its **Sessions** view for local and replay investigations. Search captures, filter sessions with errors, sort by start/captured duration/page views/errors, and open a chronological journey of spans, logs, exceptions and measurements. Both lists show up to 100 rows per page. Select a record for the inspector or open the captured session in Timeline. Explicit `session.id` identifies a session; records without it appear as **Diagnostic capture**, grouped conservatively by source and resource. A trace joins a session only when ownership is unambiguous within that boundary. Captured duration covers recorded timestamps, not an inferred full session lifetime; remote data is partial (latest 500 records per signal).
 
@@ -1636,7 +1611,9 @@ Analytics opens its **Sessions** view for local and replay investigations. Searc
 
 `connectAdmin(otel, { host })` turns on `localValues` while admin is connected, and also `keepRecords` when `endpoint` is a real collector. `dispose()` restores both. Pass `localValues: false` to keep admin on the masked records, or `'all'` to include targets with `withOTel({ captureValues: false })`. Ingest attaches the live values to each admin record. The Activity preview, Overview, History, the State tree and search read them. The record JSON tab, the records download and MCP still use the masked attributes. Only the newest 5,000 records keep live values; older ones fall back to the masked attributes and `connection.localValuesTrimmed` turns `true`. `connection.localValues` is a writable atom for a settings switch. `examples/chat/src/devtools.ts` registers it as the "Live values" switch in the Local work section of the Settings tab.
 
-```ts
+This UI integration fragment assumes your `otel` and host element are defined:
+
+```ts title="admin-ui-fragment.ts"
 import {
   ADMIN_FRAME,
   connectAdmin,
@@ -1698,48 +1675,51 @@ The package e2e suite (`test:e2e:clickhouse`) checks spans, logs and `reatom.cau
 
 ### Attach only the collectors you use
 
-The root package does not import browser collectors. Each entry is tree-shakeable and needs an explicit connect call. This complete setup enables all four diagnostics collectors and attaches analytics first so already-consented identity can join document measurements:
+The root package does not import browser collectors. Factories are inert until native `.extend` applies them; applied collectors start eagerly without subscribers. Apply GDPR first, then analytics/common attributes, then measurements whose document identity should use those sources:
 
 ```ts title="browser-diagnostics.ts"
-import { atom } from '@reatom/core'
 import { reatomOpentelemetry } from '@reatom/opentelemetry'
-import { connectBrowserNetwork } from '@reatom/opentelemetry/browser-network'
-import { connectBrowserConsole } from '@reatom/opentelemetry/browser-console'
-import { connectBrowserPerformance } from '@reatom/opentelemetry/browser-performance'
-import { connectWebAnalytics } from '@reatom/opentelemetry/web-analytics'
-import { connectWebVitals } from '@reatom/opentelemetry/web-vitals'
+import { withGDPR } from '@reatom/opentelemetry/gdpr'
+import { withBrowserNetworkMonkeypatch } from '@reatom/opentelemetry/browser-network'
+import { withBrowserConsoleMonkeypatch } from '@reatom/opentelemetry/browser-console'
+import { withBrowserPerformance } from '@reatom/opentelemetry/browser-performance'
+import { withWebAnalytics } from '@reatom/opentelemetry/web-analytics'
+import { withWebVitals } from '@reatom/opentelemetry/web-vitals'
 
-const analyticsAllowed = atom(false, 'browserConsent.analytics')
 const otel = reatomOpentelemetry({
   name: 'browser-diagnostics',
   endpoint: 'https://shop.example/otel',
   serviceName: 'shop-web',
-})
-connectWebAnalytics(otel, { consent: analyticsAllowed })
-connectBrowserNetwork(otel, {
-  propagateTraceparent: ['https://api.shop.example'],
-})
-connectBrowserConsole(otel) // warn/error by default
-connectWebVitals(otel)
-connectBrowserPerformance(otel) // navigation and resources by default
+}).extend(
+  withGDPR({ categories: { analytics: false } }),
+  withWebAnalytics(),
+  withBrowserNetworkMonkeypatch({
+    propagateTraceparent: ['https://api.shop.example'],
+  }),
+  withBrowserConsoleMonkeypatch(),
+  withWebVitals(),
+  withBrowserPerformance(),
+)
 
+otel.browserConsole.setFalse()
+otel.browserConsole.setTrue()
 import.meta.hot?.dispose(() => otel.dispose())
 ```
 
-Analytics defaults denied in this example. Diagnostics default on; use [Part 7](#diagnostics-signals)'s explicit denial before attaching collectors if your policy requires a diagnostics grant. Web Vitals and navigation metadata are captured at attachment, so a later analytics grant does not backfill session identity.
+Analytics requires the form's submitted grant. This schema offers only analytics, so diagnostics remain on. Use default `withGDPR()` to initially deny all three default categories. Document measurements retain extension-application-time identity, including absent identity, across toggles. Later login/consent changes do not relabel those measurements.
 
-| Collector                                   | Data and options                                                                                                                                                                                                                                  |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `connectBrowserNetwork(otel, options?)`     | Native fetch/XHR CLIENT spans, method, sanitized URL, status and duration. `propagateTraceparent` defaults off; accepts exact origins or a full-URL predicate. Existing headers are preserved. `ignoreUrl(URL)` excludes capture and propagation. |
-| `connectBrowserConsole(otel, options?)`     | `reatom.console` logs with bounded/redacted arguments and captured Error details. `levels` defaults to warn/error; debug/info/log are opt-in.                                                                                                     |
-| `connectWebVitals(otel)`                    | Official `web-vitals` 6.2.3 collector: CLS, FCP, INP, LCP, TTFB. Document metrics, not per-route SPA metrics; browser support and late attachment limit availability.                                                                             |
-| `connectBrowserPerformance(otel, options?)` | Native buffered navigation/resource timings, durations in ms and sizes in bytes. `navigation`/`resources` default true; `ignoreUrl(URL)` excludes entries. Cross-origin fields may be restricted or zero.                                         |
+| Extension                                 | Added switch and data                                                                                                                                                                          |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `withBrowserNetworkMonkeypatch(options?)` | `.browserNetwork`: fetch/XHR CLIENT spans, sanitized URL, method/status/duration. Propagation defaults off; exact origins or full-URL predicate. `ignoreUrl` excludes capture and propagation. |
+| `withBrowserConsoleMonkeypatch(options?)` | `.browserConsole`: `reatom.console` logs with bounded/redacted arguments and Error details. Levels default warn/error; debug/info/log are opt-in.                                              |
+| `withWebVitals()`                         | `.webVitals`: official `web-vitals` 6.2.3 CLS/FCP/INP/LCP/TTFB document metrics. Availability depends on browser and application timing.                                                       |
+| `withBrowserPerformance(options?)`        | `.browserPerformance`: native buffered navigation/resource measurements; both enabled by default. `ignoreUrl` excludes entries. Cross-origin fields may be restricted or zero.                 |
 
-All return `{ dispose() }`, follow parent disposal and replace their own prior attachment on a parent. SSR or missing browser APIs produce no-ops. Native network/console collection is page-wide: host and widget instances each receive the page's activity; they do not partition browser requests. Multiple instances may record a request, but only the first eligible propagation context is injected.
+Feature switches are requested-enable boolean atoms (`.setTrue`, `.setFalse`, `.toggle`, `.reset`), independent of permission and signals. Toggling applies synchronously. Duplicate installation, even when disabled, throws before effects. Parent disposal is terminal and tears down features; construct a new SDK after HMR. A failing extension rolls back its own setup, while earlier successfully applied extensions remain. Missing browser APIs make capture a no-op.
 
-HTTP spans snapshot metadata at request start, resource timings at observer delivery, and navigation/Web Vitals at attachment. Fetch duration ends when a response is available; XHR ends at completion, not after body consumption. Exported URLs omit credentials/query/hash; predicates receive full resolved URL clones before sanitization. Predicate throws exclude the entry/request.
+Network/console observation is page-wide. Host and widget instances each receive their own records, without partitioning native requests. Only the first eligible propagation context is injected. HTTP spans snapshot identity at request start, resources at observer delivery, and navigation/Web Vitals when their extension is first applied. Fetch duration ends when the response is available; XHR ends at completion, neither after body consumption. Exported URLs omit credentials/query/hash; predicates see full resolved URL clones before sanitization and fail closed if they throw.
 
-Built-in OTLP/Faro destinations are excluded. A custom transport starting requests after an await needs `ignoreUrl` on network capture; performance capture needs it regardless because observer delivery is asynchronous. Use the same exact collector-origin/path predicate on both connectors, as shown in the [custom collector example](../../../../../packages/opentelemetry/API.md#excluding-custom-collectors). Unrelated application requests remain captured. Avoid captured console logging after an await inside custom transports.
+Built-in OTLP/Faro destinations are excluded. Custom transport requests after an await need network `ignoreUrl`; performance needs it regardless because delivery is asynchronous. Use the same origin/path predicate on both, as in the [custom collector example](../../../../../packages/opentelemetry/API.md#excluding-custom-collectors). Unrelated requests remain captured. Console has no URL filter; avoid captured console levels after awaits in custom transports.
 
 ### Understand measurement records
 
@@ -1751,7 +1731,7 @@ Performance emits `browser-navigation` / `browser-resource` measurement types. V
 
 Native OTLP appends `/v1/traces` and `/v1/logs`. Extra `Transport` destinations work with that endpoint or with `endpoint: null`. A transport receives the batch payload/body, signal, item count, abort, deadline and keepalive flag, and returns accepted/rejected counts.
 
-The optional `/faro` entry supplies `faroTransport({ endpoint, headers?, fetch? })` for an exact absolute Faro collection URL and `logMeasurement` for finite numeric log-derived measurements. It maps captured events, console logs, exceptions, traces and measurements, grouping envelopes by app/session/page metadata. Vitals retain lowercase values and Faro `id`/`rating`/`navigation_type` aliases; performance uses this package's custom schema. Existing dashboards may need panels for that schema. Exception stack text is context, without automatic structured frames or symbolication.
+The optional `/faro` entry supplies `faroTransport({ endpoint, headers?, fetch? })` for an exact absolute Faro collection URL and `logMeasurement` for finite numeric log-derived measurements. It maps captured events, console logs, exceptions, traces and measurements, grouping envelopes by captured app/user/session/page metadata. Vitals retain lowercase values and Faro `id`/`rating`/`navigation_type` aliases; performance uses this package's custom schema. Existing dashboards may need panels for that schema. Exception stack text is context, without automatic structured frames or symbolication.
 
 The [package README](../../../../../packages/opentelemetry/README.md#self-hosted-faro-receiver) has a self-hosted Alloy → Loki/Tempo recipe based on the receiver documentation; it has not been validated against a running receiver here. Managed Grafana Cloud Frontend Observability has not been verified. The bridge requires HTTP 202, rejects an invalid session response, and leaves rotation to the application. It does not implement managed session lifecycle parity.
 
@@ -1775,7 +1755,7 @@ The [API reference](../../../../../packages/opentelemetry/API.md) lists the comp
 4. `serviceName`, `serviceVersion`, `environment` set.
 5. Collector accepts your origin (CORS); your API allows the `traceparent` header.
 6. Filter vendor namespaces on shared instances. `analytics.` and `otel.` are already excluded from automatic observation.
-7. Consent wired before `connectWebAnalytics`. Analytics stores and sends nothing until a submitted analytics grant. Explicit `diagnostics: false` holds the tracer. A form that does not offer diagnostics does not. Until that submit, the tracer keeps exporting. `signals` stay under app control.
+7. Apply `withGDPR` first when category control is required. Default categories initially deny diagnostics/analytics/marketing until submit; an exact analytics-only schema leaves diagnostics available. Feature enablement and signal switches remain separate.
 8. Collector redaction processor as the second layer behind client redaction.
 9. Tail sampling at the collector: keep error and slow traces, sample the rest.
 10. Nothing high-cardinality in index labels.
@@ -1800,7 +1780,7 @@ The [API reference](../../../../../packages/opentelemetry/API.md) lists the comp
 
 **Cause ids** — `reatom.frame.id` and `reatom.cause.ids` on Reatom activity records; enough to follow the Reatom cause graph in OTLP.
 
-**`connectWebAnalytics`** — Automatic, light web analytics on top of one tracer instance; returns a Reatom model, not a tracking API.
+**`withWebAnalytics`** — Native optional extension adding a requested-enable analytics atom with readonly session/page/visitor/attribution/focus children and a page-view action.
 
 **Computed** — Derived Reatom state; uses an existing trace or app-session context.
 
@@ -1808,7 +1788,7 @@ The [API reference](../../../../../packages/opentelemetry/API.md) lists the comp
 
 **Frame** — The record of one Reatom call and its causes; what the tracer reads instead of its own context model.
 
-**Instance `name`** — The registry key of a tracer instance; namespaces its trace variable and the default analytics storage key.
+**Instance `name`** — Constructor registry key, exposed as `.instanceName`; native `.name` is `otel.<name>`. It supplies the default analytics storage key.
 
 **`localValues`** — Instance option that keeps live references to params, payload, state and errors next to local records; `localValuesOf(record)` reads them. Never exported.
 
@@ -1816,9 +1796,9 @@ The [API reference](../../../../../packages/opentelemetry/API.md) lists the comp
 
 **ParentBased sampling** — Children follow the sampled flag of their parent; only roots use the ratio.
 
-**`records()`** — In-memory atom of OTLP records, filled when `endpoint` is `null` or `keepRecords` is on.
+**`records()`** — Readonly computed view of retained OTLP records, filled when `endpoint` is `null` or `keepRecords` is on.
 
-**`reatomGDPR`** — Consent form of category booleans; live fields are a draft, `snapshot` holds the last submitted choice.
+**`reatomGDPR`** — Standalone app-owned consent form; fields are drafts and snapshot holds submitted choices. `withGDPR` binds it, or creates a default form when omitted.
 
 **`reatomGDPR.snapshot`** — The submitted consent `{ submitted: true, categories }` or `null`; what analytics reads.
 

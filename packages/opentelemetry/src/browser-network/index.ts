@@ -1,3 +1,5 @@
+import type { BooleanAtom, Ext } from '@reatom/core'
+import { assertFeature, featureControl } from '../feature.ts'
 import type { ReatomOpentelemetry } from '../reatomOpentelemetry.ts'
 import { browserCaptureOf, type BrowserCapture } from '../browserCapture.ts'
 import { isObserving } from '../observation.ts'
@@ -41,7 +43,7 @@ const cleanUrl = (raw: string) => {
   url.password = ''
   return url
 }
-export const connectBrowserNetwork = (
+const installBrowserNetwork = (
   otel: ReatomOpentelemetry,
   options: BrowserNetworkOptions = {},
 ) => {
@@ -333,3 +335,17 @@ export const connectBrowserNetwork = (
     },
   }
 }
+
+/** Eager optional capture controlled by its assigned requested-enable atom. */
+export const withBrowserNetworkMonkeypatch =
+  (
+    options: BrowserNetworkOptions = {},
+  ): Ext<ReatomOpentelemetry, { browserNetwork: BooleanAtom }> =>
+  (otel) => {
+    assertFeature(otel, 'browserNetwork')
+    return {
+      browserNetwork: featureControl(otel, 'browserNetwork', () =>
+        installBrowserNetwork(otel, options),
+      ),
+    }
+  }

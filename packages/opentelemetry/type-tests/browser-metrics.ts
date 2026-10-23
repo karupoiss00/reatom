@@ -1,30 +1,77 @@
-import { connectBrowserNetwork } from '../src/browser-network/index.ts'
-import { connectBrowserConsole } from '../src/browser-console/index.ts'
+import type { BooleanAtom } from '@reatom/core'
+import { withBrowserNetworkMonkeypatch } from '../src/browser-network/index.ts'
+import { withBrowserConsoleMonkeypatch } from '../src/browser-console/index.ts'
 import type { ReatomOpentelemetry } from '../src/index.ts'
-import { connectBrowserPerformance } from '../src/browser-performance/index.ts'
-import { connectWebVitals } from '../src/web-vitals/index.ts'
+import { withBrowserPerformance } from '../src/browser-performance/index.ts'
+import { withWebVitals } from '../src/web-vitals/index.ts'
+import * as network from '../src/browser-network/index.ts'
+import * as consoleCapture from '../src/browser-console/index.ts'
+import * as performanceCapture from '../src/browser-performance/index.ts'
+import * as vitals from '../src/web-vitals/index.ts'
+
+declare function expectNever<Check extends never>(_check?: Check): void
 
 export const verifyMetrics = (otel: ReatomOpentelemetry) => {
-  connectBrowserNetwork(otel, {
-    propagateTraceparent: ['https://api.example.test'],
-  }).dispose()
-  connectBrowserConsole(otel, { levels: ['warn', 'error'] }).dispose()
+  // @ts-expect-error Capture controls exist only after their extension.
+  otel.browserNetwork
+  // @ts-expect-error Console capture is not installed by constructing an SDK.
+  otel.browserConsole
+  // @ts-expect-error Web Vitals is an optional entry.
+  otel.webVitals
+  // @ts-expect-error Performance capture is an optional entry.
+  otel.browserPerformance
+  const extended = otel.extend(
+    withBrowserNetworkMonkeypatch({
+      propagateTraceparent: ['https://api.example.test'],
+    }),
+    withBrowserConsoleMonkeypatch({ levels: ['warn', 'error'] }),
+    withWebVitals(),
+    withBrowserPerformance({
+      navigation: true,
+      resources: false,
+      ignoreUrl: (url) => url.pathname === '/custom-collector',
+    }),
+  )
+  const networkControl: BooleanAtom = extended.browserNetwork
+  const consoleControl: BooleanAtom = extended.browserConsole
+  const vitalsControl: BooleanAtom = extended.webVitals
+  const performanceControl: BooleanAtom = extended.browserPerformance
+  networkControl.setFalse()
+  consoleControl.setTrue()
+  vitalsControl.toggle()
+  performanceControl.set(false)
   // @ts-expect-error Propagation requires an explicit origin list or URL predicate.
-  connectBrowserNetwork(otel, { propagateTraceparent: true })
+  withBrowserNetworkMonkeypatch({ propagateTraceparent: true })
   // @ts-expect-error Console capture only supports named console levels.
-  connectBrowserConsole(otel, { levels: ['trace'] })
-  connectWebVitals(otel).dispose()
-  connectBrowserPerformance(otel, {
-    navigation: true,
-    resources: false,
-    ignoreUrl: (url) => url.pathname === '/custom-collector',
-  }).dispose()
+  withBrowserConsoleMonkeypatch({ levels: ['trace'] })
+  // @ts-expect-error URL exclusion requires a synchronous URL predicate.
+  withBrowserNetworkMonkeypatch({ ignoreUrl: ['https://collector.test'] })
+  // @ts-expect-error URL predicates cannot return promises.
+  withBrowserNetworkMonkeypatch({ ignoreUrl: async () => true })
   // @ts-expect-error Web Vitals has no configuration registry.
-  connectWebVitals(otel, { enabled: true })
+  withWebVitals({ enabled: true })
   // @ts-expect-error resources must be a boolean.
-  connectBrowserPerformance(otel, { resources: 'all' })
+  withBrowserPerformance({ resources: 'all' })
   // @ts-expect-error URL exclusion must be a URL predicate.
-  connectBrowserPerformance(otel, { ignoreUrl: ['https://collector.test'] })
-  // @ts-expect-error replay is outside the timing connector.
-  connectBrowserPerformance(otel, { replay: true })
+  withBrowserPerformance({ ignoreUrl: ['https://collector.test'] })
+  // @ts-expect-error Replay is outside the timing extension.
+  withBrowserPerformance({ replay: true })
+  expectNever(
+    null as unknown as Extract<keyof typeof network, 'connectBrowserNetwork'>,
+  )
+  expectNever(
+    null as unknown as Extract<
+      keyof typeof consoleCapture,
+      'connectBrowserConsole'
+    >,
+  )
+  expectNever(
+    null as unknown as Extract<
+      keyof typeof performanceCapture,
+      'connectBrowserPerformance'
+    >,
+  )
+  expectNever(
+    null as unknown as Extract<keyof typeof vitals, 'connectWebVitals'>,
+  )
 }

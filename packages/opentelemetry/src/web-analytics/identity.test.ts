@@ -1,11 +1,10 @@
+import type { AnalyticsFixtureOptions as WebAnalyticsCreateOptions } from './test-helpers.ts'
+import { createAnalytics, readAnalyticsRecords } from './test-helpers.ts'
 import { atom, context } from '@reatom/core'
 import { afterEach, expect, test, vi } from 'vitest'
 
 import { reatomOpentelemetry } from '../reatomOpentelemetry.ts'
-import {
-  connectWebAnalytics,
-  type WebAnalyticsCreateOptions,
-} from './connectWebAnalytics.ts'
+import {} from './connectWebAnalytics.ts'
 import {
   campaignFingerprint,
   DEFAULT_ATTRIBUTION_PARAMS,
@@ -285,21 +284,21 @@ const collectNamed = (
 }
 
 const readRecords = (
-  otel: ReturnType<typeof connectWebAnalytics>['otel'],
-): readonly unknown[] => [...otel.records()]
+  otel: ReturnType<typeof createAnalytics>['otel'],
+): readonly unknown[] => [...readAnalyticsRecords(otel)]
 
 const connectShop = (overrides: Partial<WebAnalyticsCreateOptions> = {}) =>
   remember(
-    connectWebAnalytics({
+    createAnalytics({
       ...OPTIONS,
       ...overrides,
     }),
   )
 
-const identityOf = (analytics: ReturnType<typeof connectWebAnalytics>) => ({
-  visitor: analytics.visitorAtom(),
-  session: analytics.sessionAtom(),
-  attribution: analytics.attributionAtom(),
+const identityOf = (analytics: ReturnType<typeof createAnalytics>) => ({
+  visitor: analytics.visitor(),
+  session: analytics.session(),
+  attribution: analytics.attribution(),
 })
 
 const parseStored = (
@@ -662,7 +661,7 @@ test('WA-3 / R10: analytics does not persist user.id and does not write cookies'
   }
 })
 
-test('WA-3 / spec 03.5: connectWebAnalytics(otel) storageKey defaults to instance name, not instance', () => {
+test('WA-3 / spec 03.5: createAnalytics(otel) storageKey defaults to instance name, not instance', () => {
   const shop = installShopWindow()
   context.start(() => {
     const tracerInput = {
@@ -687,11 +686,11 @@ test('WA-3 / spec 03.5: connectWebAnalytics(otel) storageKey defaults to instanc
       () => hostOtel.dispose(),
       () => widgetOtel.dispose(),
     )
-    expect(hostOtel.name).toBe('host')
-    expect(widgetOtel.name).toBe('widget')
+    expect(hostOtel.instanceName).toBe('host')
+    expect(widgetOtel.instanceName).toBe('widget')
 
-    const host = remember(connectWebAnalytics(hostOtel, { consent: true }))
-    const widget = remember(connectWebAnalytics(widgetOtel, { consent: true }))
+    const host = remember(createAnalytics(hostOtel, { consent: true }))
+    const widget = remember(createAnalytics(widgetOtel, { consent: true }))
     expect(identityOf(host).visitor).not.toBe(identityOf(widget).visitor)
     expect(identityOf(host).session.id).not.toBe(identityOf(widget).session.id)
   })

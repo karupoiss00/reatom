@@ -185,7 +185,16 @@ Mounts the product shell into a specific DOM element.
 Feeds an in-page `@reatom/opentelemetry` instance into the OTLP admin. Call it
 in the app frame and mount the view with `mountAdminView`.
 
-- `localValues` (default `true`) is written to `otel.options.localValues` while
+The SDK is a native settings atom. `connectAdmin` observes its readonly
+`records` and `stats` children; use `otel()`/`otel.set(...)` for live
+settings and `.resource` for construction-time producing-service metadata.
+One SDK owns shared queues across Reatom roots. Isolated-root record views and
+the aggregate Admin stream do not create separate delivery runtimes. Optional
+telemetry features are applied through native `.extend(with...)` and collect
+eagerly without an Admin subscriber. See the
+[telemetry setup](../opentelemetry/README.md) for composition and consent ordering.
+
+- `localValues` (default `true`) is written to `otel().localValues` through `otel.set(...)` while
   connected and restored on `dispose()`. Admin records then carry the live
   params, payload, state and errors (`recordValues(record)`). The Activity
   preview, Overview, History, the State tree and search use them. The record
@@ -199,7 +208,7 @@ in the app frame and mount the view with `mountAdminView`.
   `connection.localValuesTrimmed` turns `true` once older records fall back to
   masked attributes.
 - Two Local work switches are registered while connected. "Warn about lost
-  trace context" writes `options.warnContextLoss` (default: the instance value,
+  trace context" writes `otel().warnContextLoss` through `otel.set(...)` (default: the instance value,
   or on when it is absent). "Split long traces" (default on) writes the
   connect-time `maxSpansPerTrace` / `maxTraceMs`, or `Infinity` for both when
   off.
@@ -208,7 +217,7 @@ in the app frame and mount the view with `mountAdminView`.
   the switches.
 - `connection.warnContextLoss` and `connection.splitLongTraces` are writable
   boolean atoms. `tracingSettings: false` skips the switches and leaves those
-  otel options untouched.
+  SDK settings untouched.
 
 ### `createAdminDevtools(options?)`
 

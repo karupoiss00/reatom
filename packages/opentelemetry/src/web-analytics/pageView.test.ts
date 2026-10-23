@@ -1,11 +1,10 @@
+import type { AnalyticsFixtureOptions as WebAnalyticsCreateOptions } from './test-helpers.ts'
+import { createAnalytics, readAnalyticsRecords } from './test-helpers.ts'
 import { context, noop, reatomRoute, urlAtom, wrap } from '@reatom/core'
 import { afterEach, expect, test, vi } from 'vitest'
 
 import { reatomOpentelemetry } from '../reatomOpentelemetry.ts'
-import {
-  connectWebAnalytics,
-  type WebAnalyticsCreateOptions,
-} from './connectWebAnalytics.ts'
+import {} from './connectWebAnalytics.ts'
 
 const LANDING = 'https://shop.test/home?utm_source=google&gclid=abc#promo'
 const STRIPPED_FULL = 'https://shop.test/home'
@@ -275,10 +274,10 @@ const collectPageViews = (records: readonly unknown[]): PageViewLog[] => {
 }
 
 const readRecords = (
-  otel: ReturnType<typeof connectWebAnalytics>['otel'],
+  otel: ReturnType<typeof createAnalytics>['otel'],
 ): readonly unknown[] => {
   expect(typeof otel.records).toBe('function')
-  const snapshot = otel.records()
+  const snapshot = readAnalyticsRecords(otel)
   expect(Array.isArray(snapshot)).toBe(true)
   return snapshot
 }
@@ -323,7 +322,7 @@ const connectSite = (
   ),
 ) => {
   const analytics = remember(
-    connectWebAnalytics({
+    createAnalytics({
       ...OPTIONS,
       fetch: fetchMock,
       ...overrides,
@@ -439,7 +438,7 @@ test('WA-2: connect once does not emit two app.page_view logs for one load', () 
   expect(collectPageViews(readRecords(analytics.otel))).toHaveLength(1)
 })
 
-test('WA-2 / F-09: a second connectWebAnalytics on a new instance is a new page view', () => {
+test('WA-2 / F-09: a second createAnalytics on a new instance is a new page view', () => {
   installShopWindow()
 
   const first = context.start(
@@ -462,7 +461,7 @@ test('WA-2 / F-09: a second connectWebAnalytics on a new instance is a new page 
   expect(collectPageViews(readRecords(second.otel))).toHaveLength(1)
 })
 
-test('WA-2 / F-09: double connectWebAnalytics on the same instance still throws', () => {
+test('WA-2 / F-09: double createAnalytics on the same instance still throws', () => {
   installShopWindow()
 
   const analytics = context.start(
@@ -475,7 +474,7 @@ test('WA-2 / F-09: double connectWebAnalytics on the same instance still throws'
 
   expect(collectPageViews(readRecords(analytics.otel))).toHaveLength(1)
   expect(() =>
-    context.start(() => connectWebAnalytics(analytics.otel, { consent: true })),
+    context.start(() => createAnalytics(analytics.otel, { consent: true })),
   ).toThrowError(/analytics/i)
   expect(collectPageViews(readRecords(analytics.otel))).toHaveLength(1)
 })
@@ -500,7 +499,7 @@ test('F-08: dispose then reconnect on the same path records one app.page_view; a
   const connect = () =>
     context.start(() =>
       remember(
-        connectWebAnalytics(otel, {
+        createAnalytics(otel, {
           consent: true,
           navigation: 'popstate',
         }),
@@ -512,7 +511,8 @@ test('F-08: dispose then reconnect on the same path records one app.page_view; a
 
   context.start(() => first.dispose())
 
-  const second = connect()
+  first.enable()
+  const second = first
   expect(collectPageViews(readRecords(otel))).toHaveLength(1)
 
   shop.clickSpaLink('/product/1')
@@ -562,7 +562,7 @@ test('WA-2 / F-08: consented page view joins the route watershed traceId', async
     expect(goodsRoute.match()).toBe(true)
 
     const analytics = remember(
-      connectWebAnalytics(otel, {
+      createAnalytics(otel, {
         consent: true,
         autoPageViews: false,
         navigation: 'popstate',

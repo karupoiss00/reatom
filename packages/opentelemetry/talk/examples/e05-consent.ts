@@ -1,18 +1,19 @@
 import { action, wrap } from '@reatom/core'
 import { reatomOpentelemetry } from '@reatom/opentelemetry'
-import { reatomGDPR } from '@reatom/opentelemetry/gdpr'
-import { connectWebAnalytics } from '@reatom/opentelemetry/web-analytics'
+import { withGDPR } from '@reatom/opentelemetry/gdpr'
+import { withWebAnalytics } from '@reatom/opentelemetry/web-analytics'
 
 export const otel = reatomOpentelemetry({
   name: 'shop',
   endpoint: 'https://shop.example/otel',
   serviceName: 'shop-web',
-})
+}).extend(
+  withGDPR({ name: 'consent', categories: { analytics: false } }),
+  withWebAnalytics(),
+)
 
-export const consent = reatomGDPR({ name: 'consent', otel })
-export const analytics = connectWebAnalytics(otel, {
-  consent,
-})
+export const consent = otel.gdpr
+export const analytics = otel.analytics
 
 export const toggleAnalytics = action((checked: boolean) => {
   consent.fields.analytics.change(checked)

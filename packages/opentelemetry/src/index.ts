@@ -6,6 +6,7 @@ export type { LocalValues, LocalValuesMode } from './localValues.ts'
 export type {
   ReatomOpentelemetry,
   ReatomOpentelemetryInput,
+  OtelOptions,
 } from './reatomOpentelemetry.ts'
 export { reatomOpentelemetry } from './reatomOpentelemetry.ts'
 export type {

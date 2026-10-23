@@ -2,7 +2,7 @@ import { action, atom, bind, context, wrap } from '@reatom/core'
 import { afterEach, expect, test, vi } from 'vitest'
 
 import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
-import { connectWebAnalytics } from './web-analytics/index.ts'
+import { withWebAnalytics } from './web-analytics/index.ts'
 
 const nativeFetch = globalThis.fetch
 const VENDOR_NAME = /(?:^|[."'])(vendor\.|vue\.|react\.)/
@@ -217,13 +217,11 @@ test('F-14: island action spans appear while filter silences vendor names and fe
   })
 
   const analytics = context.start(() => {
-    const model = connectWebAnalytics({
+    const model = reatomOpentelemetry({
       name: 'site',
       endpoint: null,
       serviceName: 'site-web',
       skipGlobalExtension: true,
-      consent: true,
-      navigation: 'navigation-api',
       fetch: analyticsTransportFetch,
       useBeacon: false,
       retry: { maxRetries: 0 },
@@ -231,6 +229,9 @@ test('F-14: island action spans appear while filter silences vendor names and fe
       maxBatchSize: 100,
       maxQueueSize: 100,
     })
+    model.extend(
+      withWebAnalytics({ consent: true, navigation: 'navigation-api' }),
+    )
     cleanups.push(() => model.dispose())
     return model
   })
@@ -268,7 +269,7 @@ test('F-14: island action spans appear while filter silences vendor names and fe
   expect(run(() => models.islandQuery())).toBe('hits')
 
   await context.start(() => islandOtel.flush())
-  await context.start(() => analytics.otel.flush())
+  await context.start(() => analytics.flush())
 
   expect(globalThis.fetch).toBe(nativeFetch)
   expect(appFetch).toHaveBeenCalledTimes(1)
@@ -277,7 +278,7 @@ test('F-14: island action spans appear while filter silences vendor names and fe
   expect(analyticsTransportFetch).not.toHaveBeenCalled()
 
   const islandRecords = [...islandOtel.records()]
-  const analyticsRecords = [...analytics.otel.records()]
+  const analyticsRecords = [...analytics.records()]
   const islandSpans = islandActionSpans(islandRecords)
   const views = pageViewRecords(analyticsRecords)
   const islandNames = collectNames(islandRecords)

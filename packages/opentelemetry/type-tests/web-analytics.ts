@@ -1,84 +1,94 @@
-/**
- * Create-mode analytics options must compile next to tracer sampling.
- * `errorSampling` is the analytics exception ratio; `sampling.errors` stays the
- * tracer ring-buffer flag (`'always'`).
- *
- * Public entry is `@reatom/opentelemetry/web-analytics` (package exports →
- * dist). Type-tests compile source, so they import the barrel path rather than
- * the root package (the root must not export `connectWebAnalytics`).
- */
+/** Analytics is an optional native atom extension, never an owned SDK factory. */
+import type { BooleanAtom, Computed } from '@reatom/core'
+
 import * as root from '../src/index.ts'
+import { reatomOpentelemetry } from '../src/index.ts'
 import * as webAnalytics from '../src/web-analytics/index.ts'
 import {
-  connectWebAnalytics,
+  withWebAnalytics,
   type AnalyticsPage,
   type AnalyticsSession,
   type Attribution,
   type NavigationSource,
   type WebAnalytics,
-  type WebAnalyticsCreateOptions,
   type WebAnalyticsOptions,
 } from '../src/web-analytics/index.ts'
 
 declare function expectNever<Check extends never>(_check?: Check): void
 
-export function connectWebAnalyticsIsNotARootExport() {
+export function optionalAnalyticsExportsStaySeparate() {
   expectNever(
-    null as unknown as Extract<keyof typeof root, 'connectWebAnalytics'>,
+    null as unknown as Extract<
+      keyof typeof root,
+      'withWebAnalytics' | 'connectWebAnalytics'
+    >,
   )
-}
-
-export function pageViewsSymbolIsNotAWebAnalyticsExport() {
   expectNever(
     null as unknown as Extract<
       keyof typeof webAnalytics,
+      | 'connectWebAnalytics'
       | 'PAGE_VIEWS_KEY'
       | 'recordedPageViewsThisLoad'
       | 'hasRecordedPageView'
       | 'rememberRecordedPageView'
     >,
   )
+  // @ts-expect-error The owned-SDK creation overload and its options type are removed.
+  const removed: webAnalytics.WebAnalyticsCreateOptions = undefined as never
+  void removed
 }
 
-export function createModeAnalyticsOptionsCompile(): WebAnalytics {
+export function analyticsExtensionInference(): WebAnalytics {
   const options: WebAnalyticsOptions = {
     consent: true,
     errorSampling: 1,
     rateLimit: { errorsPerMin: 10, eventsPerMin: 60 },
   }
-  const create: WebAnalyticsCreateOptions = {
+  const otel = reatomOpentelemetry({
     name: 'site',
-    endpoint: 'https://collector.invalid/otel',
+    endpoint: null,
     serviceName: 'site-web',
-    skipGlobalExtension: true,
     sampling: { ratio: 0.2, errors: 'always' },
-    ...options,
-  }
-  const analytics = connectWebAnalytics(create)
-  const page: AnalyticsPage = analytics.pageAtom()
-  const session: AnalyticsSession = analytics.sessionAtom()
-  const attribution: Attribution = analytics.attributionAtom()
+  })
+  // @ts-expect-error Optional analytics members do not exist before extension.
+  otel.analytics
+  const extended = otel.extend(withWebAnalytics(options))
+  const analytics: BooleanAtom = extended.analytics
+  const visitor: Computed<string | undefined> = extended.analytics.visitor
+  const page: AnalyticsPage = extended.analytics.page()
+  const session: AnalyticsSession = extended.analytics.session()
+  const attribution: Attribution = extended.analytics.attribution()
+  const focus: boolean = extended.analytics.focus()
   const navigation: NavigationSource = 'popstate'
+  extended.analytics.setFalse()
+  extended.analytics.setTrue()
+  extended.analytics.pageView({ 'checkout.step': 2 })
+  // @ts-expect-error Identity and page state are readonly child observables.
+  extended.analytics.page.set({})
+  // @ts-expect-error Analytics feature lifetime belongs to the SDK.
+  extended.analytics.dispose()
+  // @ts-expect-error Analytics is a boolean atom, not an owned SDK wrapper.
+  extended.analytics.otel
+  void analytics
+  void visitor
   void page
   void session
   void attribution
+  void focus
   void navigation
-  return analytics
+  return extended.analytics
 }
 
-export function analyticsErrorSamplingIsNotTracerErrors() {
-  connectWebAnalytics({
+export function invalidAnalyticsOptions() {
+  reatomOpentelemetry({
     name: 'site',
-    endpoint: 'https://collector.invalid/otel',
-    serviceName: 'site-web',
-    // @ts-expect-error analytics exception ratio is errorSampling, not sampling.errors
+    endpoint: null,
+    serviceName: 'site',
+    // @ts-expect-error Tracer sampling.errors is not an analytics exception ratio.
     sampling: { errors: 0.5 },
   })
-}
-
-export function removedWebVitalsOptionIsRejected(
-  otel: import('../src/index.ts').ReatomOpentelemetry,
-) {
-  // @ts-expect-error Web Vitals requires its explicit optional connector.
-  connectWebAnalytics(otel, { webVitals: true })
+  // @ts-expect-error An analytics extension cannot construct an SDK.
+  withWebAnalytics({ name: 'site', endpoint: null, serviceName: 'site' })
+  // @ts-expect-error Web Vitals requires its own optional extension.
+  withWebAnalytics({ webVitals: true })
 }

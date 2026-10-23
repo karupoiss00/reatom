@@ -1,4 +1,12 @@
-import { notify, top, withLocalStorage } from '@reatom/core'
+import {
+  action,
+  notify,
+  sleep,
+  top,
+  withLocalStorage,
+  wrap,
+} from '@reatom/core'
+import { reatomOpentelemetry } from '@reatom/opentelemetry'
 import { afterEach, expect, test, vi } from 'test'
 
 import { canPersistToLocalStorage } from '../filters/persistence'
@@ -33,17 +41,30 @@ const span = (name: string, spanId: string) => ({
   endTimeUnixNano: '1000000001000000',
 })
 
+type FakeOptions = AdminOtelOptionsSnapshot & {
+  serviceName?: string
+  serviceVersion?: string
+  environment?: string
+  resource?: Record<string, unknown>
+  maxQueueSize?: number
+}
+
 function createFake(
-  init: Partial<AdminOtelOptionsSnapshot> = {},
+  init: Partial<FakeOptions> = {},
   localValuesOfRecord?: (record: unknown) => AdminLocalValues | undefined,
 ) {
   let windowRecords: unknown[] = []
-  let options: AdminOtelOptionsSnapshot = {
-    endpoint: null,
-    serviceName: 'demo',
-    maxQueueSize: 1000,
-    ...init,
-  }
+  const {
+    serviceName = 'demo',
+    serviceVersion,
+    environment,
+    resource,
+    maxQueueSize: recordLimit = 1000,
+    ...live
+  } = init
+  let options: AdminOtelOptionsSnapshot = { endpoint: null, ...live }
+  let currentStats = emptyStats()
+  const statsListeners = new Set<(stats: AdminOtelStats) => void>()
   const listeners = new Set<(records: readonly unknown[]) => void>()
   const calls: string[] = []
   const roots: object[] = []
@@ -54,7 +75,14 @@ function createFake(
   const emit = () => {
     for (const listener of [...listeners]) listener(windowRecords)
   }
-  const otel: AdminOtelInstance = {
+  const otel: AdminOtelInstance = Object.assign(() => options, {
+    resource: {
+      'service.name': serviceName,
+      ...(serviceVersion ? { 'service.version': serviceVersion } : {}),
+      ...(environment ? { 'deployment.environment.name': environment } : {}),
+      ...resource,
+    },
+    recordLimit,
     records: Object.assign(() => windowRecords.slice(), {
       subscribe(listener: (records: readonly unknown[]) => void) {
         note('subscribe')
@@ -71,20 +99,31 @@ function createFake(
       windowRecords = []
       emit()
     },
-    options: Object.assign(() => options, {
-      set(
-        update:
-          | AdminOtelOptionsSnapshot
-          | ((current: AdminOtelOptionsSnapshot) => AdminOtelOptionsSnapshot),
-      ) {
-        note('options.set')
-        options = typeof update === 'function' ? update(options) : update
-      },
-    }),
-    stats() {
-      note('stats')
-      return emptyStats()
+    set(
+      update:
+        | AdminOtelOptionsSnapshot
+        | ((current: AdminOtelOptionsSnapshot) => AdminOtelOptionsSnapshot),
+    ) {
+      note('set')
+      options = typeof update === 'function' ? update(options) : update
     },
+    stats: Object.assign(
+      () => {
+        note('stats')
+        return currentStats
+      },
+      {
+        subscribe(listener: (stats: AdminOtelStats) => void) {
+          note('stats.subscribe')
+          statsListeners.add(listener)
+          listener(currentStats)
+          return () => {
+            note('stats.unsubscribe')
+            statsListeners.delete(listener)
+          }
+        },
+      },
+    ),
     ...(localValuesOfRecord
       ? {
           localValuesOf(record: unknown) {
@@ -93,9 +132,13 @@ function createFake(
           },
         }
       : {}),
-  }
+  })
   return {
     otel,
+    setStats(next: AdminOtelStats) {
+      currentStats = next
+      for (const listener of statsListeners) listener(next)
+    },
     calls,
     roots,
     push(...items: unknown[]) {
@@ -199,10 +242,7 @@ test('turns keepRecords on only when an endpoint is set, without backfilling', (
   flush()
   expect(kept.options.keepRecords).toBeUndefined()
   expect(kept.options.localValues).toBe(true)
-  expect(kept.calls.filter((call) => call === 'options.set')).toEqual([
-    'options.set',
-    'options.set',
-  ])
+  expect(kept.calls.filter((call) => call === 'set')).toEqual(['set', 'set'])
   expect(kept.window).toBe(keptWindow)
   expect(names(live)).toEqual(['already'])
 
@@ -213,19 +253,52 @@ test('turns keepRecords on only when an endpoint is set, without backfilling', (
   })
   const before = exported.window.slice()
   const connection = connect(exported)
-  expect(exported.calls[0]).toBe('options.set')
-  expect(exported.calls[1]).toBe('options.set')
-  expect(exported.calls[2]).toBe('options.set')
+  expect(exported.calls[0]).toBe('set')
+  expect(exported.calls[1]).toBe('set')
+  expect(exported.calls[2]).toBe('set')
   expect(exported.calls[3]).toBe('subscribe')
   expect(exported.options.keepRecords).toBe(true)
   expect(exported.options.localValues).toBe(true)
   expect(exported.options.endpoint).toBe('https://collector.example/v1/traces')
-  expect(exported.options.serviceVersion).toBe('1.2.3')
+  expect(exported.otel.resource['service.version']).toBe('1.2.3')
   expect(exported.window).toEqual(before)
   connection.dispose()
   expect(exported.options.keepRecords).toBe(false)
   expect(exported.options.localValues).toBeUndefined()
   expect(exported.calls).toContain('unsubscribe')
+})
+
+test('subscribes to delivery stats without waiting for another record', () => {
+  const fake = createFake()
+  const connection = connect(fake)
+  const delivered = { ...emptyStats(), queued: 0, exported: 12 }
+  fake.setStats(delivered)
+  expect(ADMIN_FRAME.run(() => connection.stats())).toEqual(delivered)
+  connection.dispose()
+  expect(fake.calls).toContain('stats.unsubscribe')
+  fake.setStats({ ...delivered, exported: 20 })
+  expect(ADMIN_FRAME.run(() => connection.stats())).toEqual(delivered)
+})
+
+test('connects a native telemetry atom and follows its readonly record stream', async () => {
+  const otel = reatomOpentelemetry({
+    name: 'admin-native-atom',
+    endpoint: null,
+    serviceName: 'native-app',
+  })
+  const connection = connectAdmin(otel, { tracingSettings: false })
+  try {
+    action(() => 'saved', 'nativeApp.save')()
+    notify()
+    await wrap(sleep(0))
+    expect(names(connection)).toContain('nativeApp.save')
+    expect(ADMIN_FRAME.run(() => connection.stats())).toEqual(otel.stats())
+    expect(otel().localValues).toBe(true)
+  } finally {
+    connection.dispose()
+    expect(otel().localValues).toBe(false)
+    otel.dispose()
+  }
 })
 
 test('pause holds the window and resume ingests it; replay still ingests', () => {

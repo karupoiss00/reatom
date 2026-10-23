@@ -1,12 +1,19 @@
 import { Button, Checkbox, Group, Paper, Stack, Text } from '@mantine/core'
 import { wrap } from '@reatom/core'
-import type { ReatomGDPR } from '@reatom/opentelemetry/gdpr'
+import type {
+  GdprConsentSnapshot,
+  ReatomGDPR,
+} from '@reatom/opentelemetry/gdpr'
 import { reatomComponent } from '@reatom/react'
 
 import { consent } from '../../setup'
 
 type ConsentBannerProps = {
-  model?: ReatomGDPR
+  model?: {
+    fields: Pick<ReatomGDPR<{ analytics: boolean }>['fields'], 'analytics'>
+    snapshot: () => GdprConsentSnapshot<{ analytics: boolean }> | null
+    submit: () => Promise<void>
+  }
 }
 
 export const ConsentBanner = reatomComponent(

@@ -237,12 +237,18 @@ export interface CreateWithOTelInput {
    */
   logRevision?: () => number
   /** Admission precedes IDs/capture; rejected invocations still carry context. */
-  reserveSpan: () => Reservation<SpanCommit> | undefined
+  reserveSpan: (
+    attributes?: Record<string, OtlpAttrValue>,
+    metadata?: Record<string, OtlpAttrValue>,
+  ) => Reservation<SpanCommit> | undefined
   /**
    * Variant-2 atom/computed updates. When omitted, updates are not written —
    * the factory owns the logs queue and must pass this to emit records.
    */
-  reserveLog?: () => Reservation<LogRecordInput> | undefined
+  reserveLog?: (
+    attributes?: Record<string, OtlpAttrValue>,
+    metadata?: Record<string, OtlpAttrValue>,
+  ) => Reservation<LogRecordInput> | undefined
   /**
    * App-session (or other leftover) context when `traceVar` is empty. Orphan
    * computeds attach here and must not mint a `traceId`.
@@ -285,6 +291,8 @@ export interface CreateWithOTelInput {
   autoUpdates?: boolean
   /** Read at the update, before the hook queue, so a variable scope is not lost. */
   instanceAttributes?: () => Record<string, OtlpAttrValue>
+  instanceMetadata?: () => Record<string, OtlpAttrValue>
+  pinInstanceAttributes?: (attributes: Record<string, OtlpAttrValue>) => void
   /**
    * When not `false`, completion attaches raw value references for the local
    * sink. `true` still honors per-target `captureValues: false`. `'all'` does
@@ -349,6 +357,8 @@ export const createWithOTel = ({
   autoUpdates = true,
   captureBlocked,
   instanceAttributes,
+  instanceMetadata,
+  pinInstanceAttributes,
   logRevision,
   localValues,
 }: CreateWithOTelInput) => {
@@ -690,6 +700,7 @@ export const createWithOTel = ({
     const attempt = nextAttempt(parent?.spanId, target)
     const span = observe(() => {
       const instanceAttributesAtStart = instanceAttributes?.() ?? {}
+      pinInstanceAttributes?.(instanceAttributesAtStart)
       const startTimeMs = Date.now()
       const startPerfMs = performance.now()
       const recordedName = options.name ?? name
@@ -1007,8 +1018,12 @@ export const createWithOTel = ({
     others: TracedCause[],
     state: unknown,
     prevState: unknown,
+    instanceAttributesAtUpdate: Record<string, OtlpAttrValue>,
+    metadataAtUpdate: Record<string, OtlpAttrValue>,
   ) => {
-    const reservation = observe(reserveSpan)
+    const reservation = observe(() =>
+      reserveSpan(instanceAttributesAtUpdate, metadataAtUpdate),
+    )
     if (!reservation) return
     observe(() => {
       if (!isActive()) {
@@ -1036,6 +1051,7 @@ export const createWithOTel = ({
         startTimeMs: nowMs,
         endTimeMs: nowMs,
         extraAttributes: {
+          ...instanceAttributesAtUpdate,
           ...recordNameAttributes(parsed),
           'reatom.kind': 'computed',
           'reatom.parent.reason': placed.reason,
@@ -1060,6 +1076,7 @@ export const createWithOTel = ({
     instanceAttributesAtUpdate: Record<string, OtlpAttrValue> = {},
     prevState?: unknown,
     parentReason?: ParentReason,
+    metadataAtUpdate: Record<string, OtlpAttrValue> = {},
   ) => {
     if (
       isUntracedRoot() ||
@@ -1079,13 +1096,17 @@ export const createWithOTel = ({
         cross.others,
         state,
         prevState,
+        instanceAttributesAtUpdate,
+        metadataAtUpdate,
       )
       return
     }
     if (!reserveLog) return
     const spanContext = pair ?? currentTrace()
     if (!spanContext) return
-    const reservation = observe(reserveLog)
+    const reservation = observe(() =>
+      reserveLog(instanceAttributesAtUpdate, metadataAtUpdate),
+    )
     if (!reservation) return
     observe(() => {
       if (!isActive()) {
@@ -1155,6 +1176,7 @@ export const createWithOTel = ({
                 ? pickCrossTraceCauses(causes.tracedCauses(frame))
                 : undefined
             const attributesAtUpdate = instanceAttributes?.() ?? {}
+            const metadataAtUpdate = instanceMetadata?.() ?? {}
             const revision = logRevision?.() ?? 0
             _enqueue(() => {
               if (logRevision && logRevision() !== revision) return
@@ -1169,6 +1191,7 @@ export const createWithOTel = ({
                 attributesAtUpdate,
                 prevState,
                 parentReason,
+                metadataAtUpdate,
               )
             }, 'hook')
             return result

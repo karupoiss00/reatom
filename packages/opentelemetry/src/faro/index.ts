@@ -41,7 +41,7 @@ const trace = (item: { traceId: string; spanId: string }) => ({
   trace_id: item.traceId,
   span_id: item.spanId,
 })
-const meta = (fields: Fields, version: string): Fields => {
+const meta = (fields: Fields, version: string, userFields: Fields): Fields => {
   const app = Object.fromEntries(
     [
       ['name', 'service.name'],
@@ -58,6 +58,32 @@ const meta = (fields: Fields, version: string): Fields => {
       return value === undefined ? [] : [[key, value]]
     }),
   )
+  // Identity is projected atomically from captured record attributes only.
+  // Resource defaults must not resurrect logout identity or fill another
+  // principal's missing name/email. Anonymous visitor/session IDs stay separate.
+  const user: Fields = {}
+  for (const [attribute, key] of [
+    ['user.id', 'id'],
+    ['user.name', 'username'],
+    ['user.email', 'email'],
+    ['user.full_name', 'fullName'],
+    ['user.hash', 'hash'],
+  ] as const) {
+    const value = text(userFields, attribute)
+    if (value !== undefined) user[key] = value
+  }
+  // Omit empty/invalid or non-round-trippable roles from metadata, preserving
+  // typed record data. Commas cannot represent one role without ambiguity.
+  const roles = userFields['user.roles']
+  if (
+    Array.isArray(roles) &&
+    roles.length > 0 &&
+    roles.every(
+      (role) =>
+        typeof role === 'string' && role.length > 0 && !role.includes(','),
+    )
+  )
+    user.roles = roles.join(',')
   const id = text(fields, 'session.id')
   const url = text(fields, 'page.url') ?? text(fields, 'url.full')
   const pageId = text(fields, 'page.id')
@@ -67,6 +93,7 @@ const meta = (fields: Fields, version: string): Fields => {
       version: text(fields, 'telemetry.sdk.version') ?? version,
     },
     app,
+    ...(Object.keys(user).length ? { user } : {}),
     ...(id ? { session: { id } } : {}),
     ...(url || pageId
       ? { page: { ...(url ? { url } : {}), ...(pageId ? { id: pageId } : {}) } }
@@ -143,8 +170,8 @@ export const faroTransport = (options: FaroTransportOptions): Transport => {
       batch.payload ??
       (batch.body === undefined ? undefined : JSON.parse(batch.body))
     const envelopes = new Map<string, { body: FaroBody; count: number }>()
-    const groupFor = (fields: Fields, version: string) => {
-      const metadata = meta(fields, version)
+    const groupFor = (fields: Fields, version: string, userFields: Fields) => {
+      const metadata = meta(fields, version, userFields)
       const key = JSON.stringify(metadata)
       let group = envelopes.get(key)
       if (!group)
@@ -171,7 +198,11 @@ export const faroTransport = (options: FaroTransportOptions): Transport => {
             }
             const eventName =
               log.eventName ?? text(fields, 'event.name') ?? 'reatom.log'
-            const body = groupFor(fields, scope.scope.version)
+            const body = groupFor(
+              fields,
+              scope.scope.version,
+              attributes(log.attributes),
+            )
             const common = {
               timestamp: timestamp(log.timeUnixNano),
               trace: trace(log),
@@ -259,6 +290,7 @@ export const faroTransport = (options: FaroTransportOptions): Transport => {
                 ...attributes(span.attributes),
               },
               scope.scope.version,
+              attributes(span.attributes),
             )
             const traces = (body.traces ??= { resourceSpans: [] }) as {
               resourceSpans: unknown[]

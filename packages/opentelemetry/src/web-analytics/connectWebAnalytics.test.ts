@@ -1,15 +1,22 @@
 import { action, atom, context, notify, urlAtom, wrap } from '@reatom/core'
 import { afterEach, expect, test, vi } from 'vitest'
 
-import { reatomGDPR } from '../gdpr/reatomGDPR.ts'
+import { reatomGDPR, withGDPR } from '../gdpr/reatomGDPR.ts'
 import { withWarnSpy } from '../test-helpers.ts'
-import { connectWebAnalytics } from './index.ts'
+import {
+  createAnalytics,
+  readAnalyticsRecords,
+  readAnalyticsStats,
+} from './test-helpers.ts'
+import { reatomOpentelemetry } from '../reatomOpentelemetry.ts'
+import { browserMetadataOf } from '../browserCapture.ts'
+import { withWebAnalytics } from './index.ts'
 import { sessionStorageKey, visitorStorageKey } from './identity.ts'
 
 // F-10 / spec 03 test 4 / WA-4 / R11: omitted or false consent stores nothing
 // and sends no analytics OTLP. Categories toggle synchronously.
 
-type AnalyticsModel = ReturnType<typeof connectWebAnalytics>
+type AnalyticsModel = ReturnType<typeof createAnalytics>
 type ManualApiKeys = Extract<keyof AnalyticsModel, 'trackEvent' | 'record'>
 type AssertNever<T extends never> = T
 type _NoTrackEventOrRecord = AssertNever<ManualApiKeys>
@@ -143,7 +150,7 @@ test('spec 03.5: two analytics instances do not share queue, visitor, or session
 
   const host = context.start(() =>
     remember(
-      connectWebAnalytics({
+      createAnalytics({
         ...OPTIONS,
         name: 'host',
         endpoint: 'https://collector.invalid/otel-host',
@@ -153,7 +160,7 @@ test('spec 03.5: two analytics instances do not share queue, visitor, or session
   )
   const widget = context.start(() =>
     remember(
-      connectWebAnalytics({
+      createAnalytics({
         ...OPTIONS,
         name: 'widget',
         endpoint: 'https://collector.invalid/otel-widget',
@@ -164,10 +171,12 @@ test('spec 03.5: two analytics instances do not share queue, visitor, or session
 
   expect(host).not.toBe(widget)
   expect(host.otel).not.toBe(widget.otel)
-  expect(host.visitorAtom).not.toBe(widget.visitorAtom)
-  expect(host.sessionAtom).not.toBe(widget.sessionAtom)
+  expect(host.visitor).not.toBe(widget.visitor)
+  expect(host.session).not.toBe(widget.session)
   expect(host.otel.stats).not.toBe(widget.otel.stats)
-  expect(host.otel.stats()).not.toBe(widget.otel.stats())
+  expect(readAnalyticsStats(host.otel)).not.toBe(
+    readAnalyticsStats(widget.otel),
+  )
 })
 
 test('spec 03.9 / F-09: React Router-shaped pushState and link click keep the same URL sequence', () => {
@@ -184,7 +193,7 @@ test('spec 03.9 / F-09: React Router-shaped pushState and link click keep the sa
   context.start(() => {
     const catchLinksBefore = urlAtom.catchLinks()
     const syncBefore = urlAtom.sync()
-    remember(connectWebAnalytics(OPTIONS))
+    remember(createAnalytics(OPTIONS))
     expect(urlAtom.catchLinks()).toBe(catchLinksBefore)
     expect(urlAtom.sync()).toBe(syncBefore)
     shop.clickSpaLink('/product/1')
@@ -198,7 +207,7 @@ test('spec 03.9 / F-09: React Router-shaped pushState and link click keep the sa
   )
 })
 
-test('spec 03.12 / F-08: connectWebAnalytics without window is a no-op and never throws', async () => {
+test('spec 03.12 / F-08: createAnalytics without window is a no-op and never throws', async () => {
   const globalObject = globalThis as {
     window?: unknown
     document?: unknown
@@ -213,9 +222,7 @@ test('spec 03.12 / F-08: connectWebAnalytics without window is a no-op and never
       delete globalObject.window
       delete globalObject.document
       expect(typeof window).toBe('undefined')
-      expect(() =>
-        context.start(() => connectWebAnalytics(OPTIONS)),
-      ).not.toThrow()
+      expect(() => context.start(() => createAnalytics(OPTIONS))).not.toThrow()
     } finally {
       if (hadWindow) globalObject.window = windowRef
       else delete globalObject.window
@@ -233,7 +240,7 @@ test('spec 03.15 / F-09: options-only connect exposes analytics.otel and a purch
 
   context.start(() => {
     const analytics = remember(
-      connectWebAnalytics({
+      createAnalytics({
         ...OPTIONS,
         name: 'purchase-trace',
         endpoint: null,
@@ -256,7 +263,7 @@ test('spec 03.15 / F-09: options-only connect exposes analytics.otel and a purch
     expect(typeof purchase).toBe('function')
     expect(purchase({ total: 42 })).toEqual({ total: 42 })
 
-    const snapshot = [...analytics.otel.records()]
+    const snapshot = [...readAnalyticsRecords(analytics.otel)]
     const views = collectNamed(snapshot, 'app.page_view')
     expect(views).toHaveLength(1)
     expect(typeof views[0]!.traceId).toBe('string')
@@ -274,7 +281,7 @@ test('spec 03.16: default navigation is not urlAtom when no Reatom routes exist'
     context.start(() => {
       const catchLinksBefore = urlAtom.catchLinks()
       const syncBefore = urlAtom.sync()
-      remember(connectWebAnalytics(OPTIONS))
+      remember(createAnalytics(OPTIONS))
       expect(urlAtom.catchLinks()).toBe(catchLinksBefore)
       expect(urlAtom.sync()).toBe(syncBefore)
     })
@@ -301,7 +308,7 @@ test('spec 03.16: explicit urlAtom without catchLinks/sync off warns once in dev
 
   await withWarnSpy((warn) => {
     context.start(() =>
-      remember(connectWebAnalytics({ ...OPTIONS, navigation: 'urlAtom' })),
+      remember(createAnalytics({ ...OPTIONS, navigation: 'urlAtom' })),
     )
 
     expect(warn).toHaveBeenCalledTimes(1)
@@ -320,7 +327,7 @@ test('spec 03.16: navigation-api sees foreign pushState and does not call setupU
   context.start(() => {
     const catchLinksBefore = urlAtom.catchLinks()
     const syncBefore = urlAtom.sync()
-    remember(connectWebAnalytics({ ...OPTIONS, navigation: 'navigation-api' }))
+    remember(createAnalytics({ ...OPTIONS, navigation: 'navigation-api' }))
     expect(urlAtom.catchLinks()).toBe(catchLinksBefore)
     expect(urlAtom.catchLinks()).toBe(true)
     expect(urlAtom.sync()).toBe(syncBefore)
@@ -344,27 +351,27 @@ test('spec 03.16: popstate source exposes pageView', () => {
   installShopWindow({ navigationApi: false })
 
   const analytics = context.start(() =>
-    remember(connectWebAnalytics({ ...OPTIONS, navigation: 'popstate' })),
+    remember(createAnalytics({ ...OPTIONS, navigation: 'popstate' })),
   )
 
   expect(typeof analytics.pageView).toBe('function')
   expect(() => context.start(() => analytics.pageView())).not.toThrow()
 })
 
-test('F-08: double connectWebAnalytics on one instance errors with a clear message', () => {
+test('F-08: double createAnalytics on one instance errors with a clear message', () => {
   installShopWindow()
 
-  const analytics = context.start(() => remember(connectWebAnalytics(OPTIONS)))
+  const analytics = context.start(() => remember(createAnalytics(OPTIONS)))
 
   expect(() =>
-    context.start(() => connectWebAnalytics(analytics.otel)),
+    context.start(() => createAnalytics(analytics.otel)),
   ).toThrowError(/analytics/i)
 })
 
 test('F-09: trackEvent and record are not on the analytics model', () => {
   installShopWindow()
 
-  const analytics = context.start(() => remember(connectWebAnalytics(OPTIONS)))
+  const analytics = context.start(() => remember(createAnalytics(OPTIONS)))
 
   // @ts-expect-error no trackEvent — manual facts use traced actions (R21, spec 03 А9)
   const trackEvent = analytics.trackEvent
@@ -613,9 +620,9 @@ const spanNamed = (
 }
 
 const analyticsRecordsOf = (
-  otel: ReturnType<typeof connectWebAnalytics>['otel'],
+  otel: ReturnType<typeof createAnalytics>['otel'],
 ) => {
-  const snapshot = [...otel.records()]
+  const snapshot = [...readAnalyticsRecords(otel)]
   return ANALYTICS_EVENTS.flatMap((eventName) =>
     collectNamed(snapshot, eventName),
   )
@@ -654,7 +661,7 @@ test('WA-4 / R11: consent atom false then true emits the first identified page v
   context.start(() => {
     const consent = atom(false, 'wa4.consent')
     const analytics = remember(
-      connectWebAnalytics({
+      createAnalytics({
         ...CONSENT_OPTIONS,
         name: 'wa4-atom-flip',
         endpoint: 'https://collector.test',
@@ -663,9 +670,9 @@ test('WA-4 / R11: consent atom false then true emits the first identified page v
         consent,
       }),
     )
-    const memorySession = analytics.sessionAtom().id
+    const memorySession = analytics.session().id
     expect(typeof memorySession).toBe('string')
-    expect(analytics.visitorAtom()).toBeUndefined()
+    expect(analytics.visitor()).toBeUndefined()
     expect(analyticsRecordsOf(analytics.otel)).toEqual([])
     expect(fetchMock).not.toHaveBeenCalled()
 
@@ -673,13 +680,16 @@ test('WA-4 / R11: consent atom false then true emits the first identified page v
     consent.set(true)
     notify()
 
-    const visitorId = analytics.visitorAtom()
-    const sessionId = analytics.sessionAtom().id
+    const visitorId = analytics.visitor()
+    const sessionId = analytics.session().id
     expect(typeof visitorId).toBe('string')
     expect(typeof sessionId).toBe('string')
     expect(sessionId).not.toBe(memorySession)
 
-    const views = collectNamed([...analytics.otel.records()], 'app.page_view')
+    const views = collectNamed(
+      [...readAnalyticsRecords(analytics.otel)],
+      'app.page_view',
+    )
     expect(views).toHaveLength(1)
     expect(views[0]!.attributes['app.visitor.id']).toBe(visitorId)
     expect(views[0]!.attributes['session.id']).toBe(sessionId)
@@ -687,7 +697,7 @@ test('WA-4 / R11: consent atom false then true emits the first identified page v
     expect(views[0]!.attributes['app.analytics.consent']).toBe('granted')
 
     const engagement = collectNamed(
-      [...analytics.otel.records()],
+      [...readAnalyticsRecords(analytics.otel)],
       'app.page.engagement',
     )
     const engagementOnView = asNumber(
@@ -715,20 +725,20 @@ test('WA-4: reatomGDPR analytics submit grants identifiers on the first page vie
       categories: { diagnostics: false, analytics: false, marketing: false },
     })
     const analytics = remember(
-      connectWebAnalytics({
+      createAnalytics({
         ...CONSENT_OPTIONS,
         name: 'wa4-gdpr-submit',
         consent,
       }),
     )
-    const memorySession = analytics.sessionAtom().id
+    const memorySession = analytics.session().id
     expect(analyticsRecordsOf(analytics.otel)).toEqual([])
-    expect(analytics.visitorAtom()).toBeUndefined()
+    expect(analytics.visitor()).toBeUndefined()
 
     consent.fields.analytics.change(true)
     notify()
     expect(analyticsRecordsOf(analytics.otel)).toEqual([])
-    expect(analytics.visitorAtom()).toBeUndefined()
+    expect(analytics.visitor()).toBeUndefined()
     expect(identityStorageKeys(page.localStorage)).toEqual([])
     expect(
       page.localStorage.getItem(visitorStorageKey('wa4-gdpr-submit')),
@@ -740,11 +750,14 @@ test('WA-4: reatomGDPR analytics submit grants identifiers on the first page vie
     await wrap(consent.submit())
     notify()
 
-    const views = collectNamed([...analytics.otel.records()], 'app.page_view')
+    const views = collectNamed(
+      [...readAnalyticsRecords(analytics.otel)],
+      'app.page_view',
+    )
     expect(views).toHaveLength(1)
-    expect(typeof analytics.visitorAtom()).toBe('string')
-    expect(views[0]!.attributes['app.visitor.id']).toBe(analytics.visitorAtom())
-    expect(views[0]!.attributes['session.id']).toBe(analytics.sessionAtom().id)
+    expect(typeof analytics.visitor()).toBe('string')
+    expect(views[0]!.attributes['app.visitor.id']).toBe(analytics.visitor())
+    expect(views[0]!.attributes['session.id']).toBe(analytics.session().id)
     expect(views[0]!.attributes['session.id']).not.toBe(memorySession)
     expect(views[0]!.attributes['app.analytics.consent']).toBe('analytics')
   })
@@ -761,7 +774,7 @@ test('WA-4 / R11: diagnostics-only true sends no page view and no visitor id', a
     })
     await wrap(consent.submit())
     const analytics = remember(
-      connectWebAnalytics({
+      createAnalytics({
         ...CONSENT_OPTIONS,
         name: 'wa4-diagnostics-only',
         consent,
@@ -769,9 +782,9 @@ test('WA-4 / R11: diagnostics-only true sends no page view and no visitor id', a
     )
     notify()
     expect(
-      collectNamed([...analytics.otel.records()], 'app.page_view'),
+      collectNamed([...readAnalyticsRecords(analytics.otel)], 'app.page_view'),
     ).toEqual([])
-    expect(analytics.visitorAtom()).toBeUndefined()
+    expect(analytics.visitor()).toBeUndefined()
     expect(
       analyticsRecordsOf(analytics.otel).some(
         (record) => record.attributes['app.visitor.id'] != null,
@@ -787,7 +800,7 @@ test('WA-4 / R11: navigation without consent drops RAM engagement so grant is on
   context.start(() => {
     const consent = atom(false, 'wa4.nav-drop')
     const analytics = remember(
-      connectWebAnalytics({
+      createAnalytics({
         ...CONSENT_OPTIONS,
         name: 'wa4-nav-drop',
         consent,
@@ -799,10 +812,13 @@ test('WA-4 / R11: navigation without consent drops RAM engagement so grant is on
     consent.set(true)
     notify()
 
-    const views = collectNamed([...analytics.otel.records()], 'app.page_view')
+    const views = collectNamed(
+      [...readAnalyticsRecords(analytics.otel)],
+      'app.page_view',
+    )
     expect(views).toHaveLength(1)
     const engagement = collectNamed(
-      [...analytics.otel.records()],
+      [...readAnalyticsRecords(analytics.otel)],
       'app.page.engagement',
     )
     const visibleMs =
@@ -823,14 +839,14 @@ test('WA-4: re-grant after withdraw does not flush withdrawn-period engagement',
   context.start(() => {
     const consent = atom(true, 'wa4.regrant')
     const analytics = remember(
-      connectWebAnalytics({
+      createAnalytics({
         ...CONSENT_OPTIONS,
         name: 'wa4-regrant',
         consent,
       }),
     )
     expect(
-      collectNamed([...analytics.otel.records()], 'app.page_view'),
+      collectNamed([...readAnalyticsRecords(analytics.otel)], 'app.page_view'),
     ).toHaveLength(1)
 
     clock.advance(100)
@@ -844,7 +860,7 @@ test('WA-4: re-grant after withdraw does not flush withdrawn-period engagement',
     notify()
 
     const engagement = collectNamed(
-      [...analytics.otel.records()],
+      [...readAnalyticsRecords(analytics.otel)],
       'app.page.engagement',
     )
     expect(engagement).toHaveLength(1)
@@ -860,7 +876,7 @@ test('WA-4: withdrawing analytics stops further pageView and hide OTLP', () => {
   context.start(() => {
     const consent = atom(true, 'wa4.withdraw')
     const analytics = remember(
-      connectWebAnalytics({
+      createAnalytics({
         ...CONSENT_OPTIONS,
         name: 'wa4-withdraw',
         consent,
@@ -868,7 +884,7 @@ test('WA-4: withdrawing analytics stops further pageView and hide OTLP', () => {
     )
     const before = analyticsRecordsOf(analytics.otel)
     expect(
-      collectNamed([...analytics.otel.records()], 'app.page_view'),
+      collectNamed([...readAnalyticsRecords(analytics.otel)], 'app.page_view'),
     ).toHaveLength(1)
 
     consent.set(false)
@@ -891,7 +907,7 @@ test('F-10: reatomGDPR withdraw stops pageView OTLP and new events lack visitor 
       categories: { diagnostics: false, analytics: false, marketing: false },
     })
     const analytics = remember(
-      connectWebAnalytics({
+      createAnalytics({
         ...CONSENT_OPTIONS,
         name: 'f10-gdpr-withdraw',
         consent,
@@ -905,11 +921,11 @@ test('F-10: reatomGDPR withdraw stops pageView OTLP and new events lack visitor 
     notify()
 
     const viewsAfterGrant = collectNamed(
-      [...analytics.otel.records()],
+      [...readAnalyticsRecords(analytics.otel)],
       'app.page_view',
     )
     expect(viewsAfterGrant).toHaveLength(1)
-    const visitorId = analytics.visitorAtom()
+    const visitorId = analytics.visitor()
     expect(typeof visitorId).toBe('string')
     expect(viewsAfterGrant[0]!.attributes['app.visitor.id']).toBe(visitorId)
 
@@ -926,7 +942,7 @@ test('F-10: reatomGDPR withdraw stops pageView OTLP and new events lack visitor 
     expect(analyticsRecordsOf(analytics.otel)).toEqual(afterWithdraw)
 
     const viewsAfterWithdraw = collectNamed(
-      [...analytics.otel.records()],
+      [...readAnalyticsRecords(analytics.otel)],
       'app.page_view',
     )
     expect(viewsAfterWithdraw).toHaveLength(1)
@@ -937,12 +953,12 @@ test('F-10: reatomGDPR withdraw stops pageView OTLP and new events lack visitor 
     analytics.pageView()
     notify()
     const viewsAfterRestore = collectNamed(
-      [...analytics.otel.records()],
+      [...readAnalyticsRecords(analytics.otel)],
       'app.page_view',
     )
     expect(viewsAfterRestore).toHaveLength(2)
     expect(viewsAfterRestore[1]!.attributes['app.visitor.id']).toBe(
-      analytics.visitorAtom(),
+      analytics.visitor(),
     )
     expect(viewsAfterRestore[1]!.attributes['app.analytics.consent']).toBe(
       'analytics',
@@ -959,7 +975,7 @@ test('WA-4: diagnostics category object is not a back door for analytics identif
       diagnostics: atom(true, 'wa4.cat.diagnostics'),
     }
     const analytics = remember(
-      connectWebAnalytics({
+      createAnalytics({
         ...CONSENT_OPTIONS,
         name: 'wa4-category-object',
         consent: categories,
@@ -967,8 +983,254 @@ test('WA-4: diagnostics category object is not a back door for analytics identif
     )
     notify()
     expect(
-      collectNamed([...analytics.otel.records()], 'app.page_view'),
+      collectNamed([...readAnalyticsRecords(analytics.otel)], 'app.page_view'),
     ).toEqual([])
-    expect(analytics.visitorAtom()).toBeUndefined()
+    expect(analytics.visitor()).toBeUndefined()
   })
 })
+
+test('native extension starts eagerly, exposes stable readonly children, and toggles listeners', () => {
+  installShopWindow()
+  context.start(() => {
+    const fixture = remember(
+      createAnalytics({
+        ...OPTIONS,
+        endpoint: null,
+        consent: true,
+        navigation: 'popstate',
+      }),
+    )
+    const { analytics, otel } = fixture
+    expect(analytics()).toBe(true)
+    expect(analytics).not.toHaveProperty('otel')
+    expect(analytics).not.toHaveProperty('dispose')
+    const page = analytics.page
+    const session = analytics.session
+    expect(
+      collectNamed([...readAnalyticsRecords(otel)], 'app.page_view'),
+    ).toHaveLength(1)
+    analytics.setFalse()
+    expect(analytics()).toBe(false)
+    const before = [...readAnalyticsRecords(otel)]
+    analytics.pageView()
+    expect([...readAnalyticsRecords(otel)]).toEqual(before)
+    analytics.setTrue()
+    expect(analytics.page).toBe(page)
+    expect(analytics.session).toBe(session)
+    expect(typeof session().id).toBe('string')
+    analytics.pageView()
+    expect(
+      collectNamed([...readAnalyticsRecords(otel)], 'app.page_view'),
+    ).toHaveLength(2)
+    otel.dispose()
+    expect(analytics()).toBe(false)
+    expect(() => analytics.setTrue()).toThrow(/disposed/)
+  })
+})
+
+test('default submitted GDPR drives eager analytics; draft grant emits no first pageview', async () => {
+  installShopWindow()
+  await context.start(async () => {
+    const otel = reatomOpentelemetry({
+      ...OPTIONS,
+      name: 'gdpr-analytics-native',
+      endpoint: null,
+    }).extend(
+      withGDPR({ persist: false }),
+      withWebAnalytics({ navigation: 'popstate' }),
+    )
+    cleanups.push(() => otel.dispose())
+    expect(
+      collectNamed([...readAnalyticsRecords(otel)], 'app.page_view'),
+    ).toHaveLength(0)
+    otel.gdpr.fields.analytics.change(true)
+    expect(
+      collectNamed([...readAnalyticsRecords(otel)], 'app.page_view'),
+    ).toHaveLength(0)
+    await wrap(otel.gdpr.submit())
+    expect(
+      collectNamed([...readAnalyticsRecords(otel)], 'app.page_view'),
+    ).toHaveLength(1)
+    otel.gdpr.fields.analytics.change(false)
+    await wrap(otel.gdpr.submit())
+    otel.analytics.pageView()
+    expect(
+      collectNamed([...readAnalyticsRecords(otel)], 'app.page_view'),
+    ).toHaveLength(1)
+  })
+})
+
+test('owning app records subscriber receives eager analytics captures', () => {
+  installShopWindow()
+  context.start(() => {
+    const otel = reatomOpentelemetry({
+      ...OPTIONS,
+      name: 'analytics-subscriber',
+      endpoint: null,
+    }).extend(withWebAnalytics({ consent: true, navigation: 'popstate' }))
+    cleanups.push(() => otel.dispose())
+    let observed: readonly unknown[] = []
+    const stop = otel.records.subscribe((records) => {
+      observed = records
+    })
+    otel.analytics.pageView()
+    notify()
+    expect(collectNamed(observed, 'app.page_view')).toHaveLength(2)
+    stop()
+  })
+})
+
+test('reentrant analytics enable keeps only the winning installer and cleans its listeners', () => {
+  const shop = installShopWindow()
+  context.start(() => {
+    const otel = reatomOpentelemetry({
+      ...OPTIONS,
+      name: 'analytics-reentrant',
+      endpoint: null,
+    })
+    let first = true
+    const extended = otel.extend(
+      withWebAnalytics({
+        navigation: 'navigation-api',
+        consent: () => {
+          if (first) {
+            first = false
+            const control = (
+              otel as unknown as {
+                analytics: { setFalse(): void; setTrue(): void }
+              }
+            ).analytics
+            control.setFalse()
+            control.setTrue()
+          }
+          return true
+        },
+      }),
+    )
+    cleanups.push(() => otel.dispose())
+    const pageViews = () =>
+      collectNamed([...otel.records()], 'app.page_view').length
+    otel.clearRecords()
+    extended.analytics.pageView()
+    expect(pageViews()).toBe(1)
+    expect(browserMetadataOf(otel)['session.id']).toBe(
+      extended.analytics.session().id,
+    )
+    expect(browserMetadataOf(otel)['page.url']).toBe('https://shop.test/home')
+    shop.history.pushState({}, '', '/next')
+    shop.fireNavigationChange()
+    expect(pageViews()).toBe(2)
+    extended.analytics.setFalse()
+    shop.history.pushState({}, '', '/off')
+    shop.fireNavigationChange()
+    extended.analytics.pageView()
+    expect(pageViews()).toBe(2)
+    extended.analytics.setTrue()
+    otel.clearRecords()
+    shop.history.pushState({}, '', '/resumed')
+    shop.fireNavigationChange()
+    expect(pageViews()).toBe(1)
+    otel.dispose()
+    const count = pageViews()
+    shop.history.pushState({}, '', '/disposed')
+    shop.fireNavigationChange()
+    expect(pageViews()).toBe(count)
+    expect(shop.navigation!.removeEventListener.mock.calls.length).toBe(
+      shop.navigation!.addEventListener.mock.calls.length,
+    )
+  })
+})
+
+test.each([2, 3, 4, 5, 6, 7])(
+  'analytics setup failure at consent read %i releases resources and permits retry',
+  (failAt) => {
+    class TrackedTarget extends EventTarget {
+      listeners = new Map<string, Set<EventListenerOrEventListenerObject>>()
+      override addEventListener(
+        type: string,
+        listener: EventListenerOrEventListenerObject | null,
+        options?: AddEventListenerOptions | boolean,
+      ) {
+        if (listener) {
+          const listeners = this.listeners.get(type) ?? new Set()
+          listeners.add(listener)
+          this.listeners.set(type, listeners)
+        }
+        super.addEventListener(type, listener, options)
+      }
+      override removeEventListener(
+        type: string,
+        listener: EventListenerOrEventListenerObject | null,
+        options?: EventListenerOptions | boolean,
+      ) {
+        if (listener) this.listeners.get(type)?.delete(listener)
+        super.removeEventListener(type, listener, options)
+      }
+      count() {
+        return [...this.listeners.values()].reduce(
+          (count, listeners) => count + listeners.size,
+          0,
+        )
+      }
+    }
+    const document = Object.assign(new TrackedTarget(), {
+      visibilityState: 'visible',
+      referrer: '',
+      hasFocus: () => true,
+      body: new TrackedTarget(),
+    })
+    const window = Object.assign(new TrackedTarget(), {
+      document,
+      location: new URL('https://rollback.test/home'),
+    })
+    vi.stubGlobal('window', window)
+    vi.stubGlobal('document', document)
+    vi.stubGlobal('location', window.location)
+    context.start(() => {
+      const otel = reatomOpentelemetry({
+        ...OPTIONS,
+        name: `analytics-rollback-${failAt}`,
+        endpoint: null,
+      })
+      cleanups.push(() => otel.dispose())
+      const windowBaseline = window.count()
+      const documentBaseline = document.count()
+      let reads = 0
+      const failure = new Error('consent setup failed')
+      expect(() =>
+        otel.extend(
+          withWebAnalytics({
+            navigation: 'popstate',
+            consent: () => {
+              if (++reads === failAt) throw failure
+              return true
+            },
+          }),
+        ),
+      ).toThrow(failure)
+      expect('analytics' in otel).toBe(false)
+      expect(browserMetadataOf(otel)).toEqual({})
+      expect(window.count()).toBe(windowBaseline)
+      expect(document.count()).toBe(documentBaseline)
+      const count = otel.records().length
+      window.location.pathname = '/failed'
+      window.dispatchEvent(new Event('popstate'))
+      window.dispatchEvent(new Event('error'))
+      expect(otel.records()).toHaveLength(count)
+      const retried = otel.extend(
+        withWebAnalytics({ navigation: 'popstate', consent: true }),
+      )
+      otel.clearRecords()
+      window.location.pathname = '/retry'
+      window.dispatchEvent(new Event('popstate'))
+      expect(collectNamed([...otel.records()], 'app.page_view')).toHaveLength(1)
+      expect(browserMetadataOf(otel)['session.id']).toBe(
+        retried.analytics.session().id,
+      )
+      otel.dispose()
+      expect(window.count()).toBe(0)
+      expect(document.count()).toBe(0)
+      expect(browserMetadataOf(otel)).toEqual({})
+    })
+  },
+)

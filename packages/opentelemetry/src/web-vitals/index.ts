@@ -1,7 +1,9 @@
+import type { BooleanAtom, Ext } from '@reatom/core'
+import { assertFeature, featureControl } from '../feature.ts'
 import { onCLS, onFCP, onINP, onLCP, onTTFB } from 'web-vitals'
 import type { Metric } from 'web-vitals'
 
-import { browserCaptureOf } from '../browserCapture.ts'
+import { browserCaptureOf, type CaptureSnapshot } from '../browserCapture.ts'
 import type { ReatomOpentelemetry } from '../reatomOpentelemetry.ts'
 
 type Measurement = Pick<
@@ -51,8 +53,9 @@ const observeDocument = (): DocumentObserver => {
  * disposal stops reports, while upstream observers may live until document
  * end.
  */
-export const connectWebVitals = (
+const installWebVitals = (
   otel: ReatomOpentelemetry,
+  snapshot: CaptureSnapshot,
 ): { dispose(): void } => {
   const capture = browserCaptureOf(otel)
   if (
@@ -62,7 +65,6 @@ export const connectWebVitals = (
   )
     return { dispose() {} }
   const cell: Reporter = {}
-  const snapshot = capture.snapshot()
   cell.report = (metric) => {
     if (!capture.enabled('logs')) return
     capture.log({
@@ -108,3 +110,15 @@ export const connectWebVitals = (
   for (const metric of state.latest.values()) cell.report?.(metric)
   return { dispose }
 }
+
+/** Eager optional capture controlled by its assigned requested-enable atom. */
+export const withWebVitals =
+  (): Ext<ReatomOpentelemetry, { webVitals: BooleanAtom }> => (otel) => {
+    assertFeature(otel, 'webVitals')
+    const snapshot = browserCaptureOf(otel)!.snapshot()
+    return {
+      webVitals: featureControl(otel, 'webVitals', () =>
+        installWebVitals(otel, snapshot),
+      ),
+    }
+  }

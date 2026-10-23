@@ -1,5 +1,6 @@
 import { atom } from '@reatom/core'
-import { connectWebAnalytics } from '@reatom/opentelemetry/web-analytics'
+import { reatomOpentelemetry } from '@reatom/opentelemetry'
+import { withWebAnalytics } from '@reatom/opentelemetry/web-analytics'
 
 type HistoryAction = 'POP' | 'PUSH' | 'REPLACE'
 
@@ -7,14 +8,19 @@ const hasNavigationApi = 'navigation' in window
 
 export const analyticsConsent = atom(false, 'site.consent.analytics')
 
-export const analytics = connectWebAnalytics({
+export const otel = reatomOpentelemetry({
   name: 'site',
   endpoint: 'https://site.example/otel',
   serviceName: 'site-web',
   skipGlobalExtension: true,
-  consent: analyticsConsent,
-  navigation: hasNavigationApi ? 'navigation-api' : 'popstate',
-})
+}).extend(
+  withWebAnalytics({
+    consent: analyticsConsent,
+    navigation: hasNavigationApi ? 'navigation-api' : 'popstate',
+  }),
+)
+
+export const analytics = otel.analytics
 
 export const reportRouterNavigation = (historyAction: HistoryAction) => {
   if (hasNavigationApi || historyAction === 'POP') return

@@ -1,56 +1,87 @@
-/**
- * `reatomGDPR` is part of `test:types` so strict checking covers the consent
- * form, not only its runtime tests. `fields.*` are defined booleans, and the
- * form is a legal `connectWebAnalytics` consent value. A checkbox object
- * without `snapshot` is not.
- */
+/** Consent form fields are drafts; only the submitted snapshot is permission. */
 import { atom } from '@reatom/core'
-import { reatomGDPR } from '../src/gdpr/index.ts'
+import { reatomGDPR, withGDPR, type ReatomGDPR } from '../src/gdpr/index.ts'
 import { reatomOpentelemetry } from '../src/index.ts'
-import { connectWebAnalytics } from '../src/web-analytics/index.ts'
+import { withWebAnalytics } from '../src/web-analytics/index.ts'
 
-const otel = reatomOpentelemetry({
-  name: 'shop',
-  endpoint: 'https://shop.example/otel',
-  serviceName: 'shop-web',
-})
+const createOtel = () =>
+  reatomOpentelemetry({ name: 'shop', endpoint: null, serviceName: 'shop-web' })
 
-const consent = reatomGDPR({ name: 'consent', otel })
-
-export const analytics = connectWebAnalytics(otel, { consent })
-
-consent.fields.analytics.change(true)
-consent.fields.diagnostics.change(false)
-consent.fields.marketing.change(false)
-
-const saved = consent.snapshot()
-if (saved) {
-  const analyticsAllowed: boolean = saved.categories.analytics
-  const diagnosticsAllowed: boolean = saved.categories.diagnostics
-  const marketingAllowed: boolean = saved.categories.marketing
-  void analyticsAllowed
-  void diagnosticsAllowed
-  void marketingAllowed
+export function defaultedAndSharedConsent() {
+  const defaulted = createOtel().extend(withGDPR(), withWebAnalytics())
+  const form: ReatomGDPR = defaulted.gdpr
+  form.fields.analytics.change(true)
+  form.fields.diagnostics.change(false)
+  form.fields.marketing.change(false)
+  const draft: boolean = form.fields.analytics.value()
+  const submitted = form.snapshot()
+  if (submitted) {
+    const marker: true = submitted.submitted
+    const analytics: boolean = submitted.categories.analytics
+    void marker
+    void analytics
+  }
+  const shared = reatomGDPR()
+  const first = createOtel().extend(withGDPR(shared))
+  const second = createOtel().extend(withGDPR(shared))
+  const firstForm: typeof shared = first.gdpr
+  const secondForm: typeof shared = second.gdpr
+  void draft
+  void firstForm
+  void secondForm
+  // @ts-expect-error Standalone consent has no instance-writing options.
+  reatomGDPR({ otel: first })
+  // @ts-expect-error Standalone consent is not bound to a single SDK instance.
+  reatomGDPR({ instance: first })
+  // @ts-expect-error Legacy instance lists are not consent form options.
+  reatomGDPR({ instances: [first, second] })
 }
 
-const custom = reatomGDPR({
-  name: 'custom',
-  categories: { experiments: false },
-})
-custom.fields.experiments.change(true)
-custom.fields.analytics.change(false)
+export function exactCustomConsentCategories() {
+  const custom = reatomGDPR({
+    name: 'custom',
+    categories: { experiments: false },
+  })
+  custom.fields.experiments.change(true)
+  // @ts-expect-error Supplied categories are the exact schema, not merged defaults.
+  custom.fields.analytics
+  // @ts-expect-error A custom schema does not offer diagnostic consent implicitly.
+  custom.fields.diagnostics
+  const withCustom = createOtel().extend(withGDPR(custom))
+  withCustom.gdpr.fields.experiments.change(false)
+  const withOptions = createOtel().extend(
+    withGDPR({ categories: { analytics: false } }),
+  )
+  withOptions.gdpr.fields.analytics.change(true)
+  // @ts-expect-error Analytics-only consent leaves diagnostics unoffered.
+  withOptions.gdpr.fields.diagnostics
+  const saved = withCustom.gdpr.snapshot()
+  if (saved) {
+    const allowed: boolean = saved.categories.experiments
+    // @ts-expect-error Submitted categories retain the exact custom schema.
+    saved.categories.marketing
+    void allowed
+  }
+}
 
-const flag = atom(false, 'consent.flag')
-connectWebAnalytics(otel, { consent: flag })
-connectWebAnalytics(otel, { consent: { analytics: flag } })
-connectWebAnalytics(otel, {
-  consent: {
-    fields: { analytics: consent.fields.analytics },
-    snapshot: consent.snapshot,
-  },
-})
-
-connectWebAnalytics(otel, {
-  // @ts-expect-error live checkboxes without a submitted snapshot are not consent
-  consent: { fields: { analytics: consent.fields.analytics } },
-})
+export function analyticsConsentSources() {
+  const consent = reatomGDPR()
+  const flag = atom(false, 'consent.flag')
+  createOtel().extend(withWebAnalytics({ consent: flag }))
+  createOtel().extend(withWebAnalytics({ consent: { analytics: flag } }))
+  createOtel().extend(withWebAnalytics({ consent }))
+  createOtel().extend(
+    withWebAnalytics({
+      consent: {
+        fields: { analytics: consent.fields.analytics },
+        snapshot: consent.snapshot,
+      },
+    }),
+  )
+  withWebAnalytics({
+    // @ts-expect-error Draft checkbox fields without a submitted snapshot are not a consent form source.
+    consent: { fields: { analytics: consent.fields.analytics } },
+  })
+  // @ts-expect-error Boolean consent drafts require a boolean value.
+  consent.fields.analytics.change('yes')
+}

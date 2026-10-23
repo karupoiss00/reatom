@@ -1,3 +1,5 @@
+import type { BooleanAtom, Ext } from '@reatom/core'
+import { assertFeature, featureControl } from '../feature.ts'
 import type { ReatomOpentelemetry } from '../reatomOpentelemetry.ts'
 import { browserCaptureOf, type BrowserCapture } from '../browserCapture.ts'
 import { isObserving, observe } from '../observation.ts'
@@ -10,7 +12,7 @@ type Subscriber = {
 }
 type Patch = { subscribers: Set<Subscriber>; restore: () => void }
 const key = Symbol.for('@reatom/opentelemetry/browser-console')
-export const connectBrowserConsole = (
+const installBrowserConsole = (
   otel: ReatomOpentelemetry,
   options: BrowserConsoleOptions = {},
 ) => {
@@ -120,3 +122,17 @@ export const connectBrowserConsole = (
     },
   }
 }
+
+/** Eager optional capture controlled by its assigned requested-enable atom. */
+export const withBrowserConsoleMonkeypatch =
+  (
+    options: BrowserConsoleOptions = {},
+  ): Ext<ReatomOpentelemetry, { browserConsole: BooleanAtom }> =>
+  (otel) => {
+    assertFeature(otel, 'browserConsole')
+    return {
+      browserConsole: featureControl(otel, 'browserConsole', () =>
+        installBrowserConsole(otel, options),
+      ),
+    }
+  }

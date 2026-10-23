@@ -33,7 +33,7 @@ test('diagnostic capture reserves client spans and preserves capture-time page m
 
 test('diagnostic logs follow diagnostics while public logs stay independent', () => {
   const otel = reatomOpentelemetry({ name: 'capture-consent', endpoint: null })
-  otel.options.set((current) => ({
+  otel.set((current) => ({
     ...current,
     consent: { diagnostics: false },
   }))
@@ -78,7 +78,7 @@ test('custom diagnostic names are excluded at export after consent revocation', 
   const capture = browserCaptureOf(otel)!
   capture.log({ eventName: 'custom.diagnostic', timeMs: 1 })
   otel.log('custom.public')
-  otel.options.set((current) => ({
+  otel.set((current) => ({
     ...current,
     consent: { diagnostics: false },
   }))

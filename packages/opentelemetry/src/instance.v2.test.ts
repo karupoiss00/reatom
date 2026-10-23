@@ -719,8 +719,8 @@ test('span budget defaults are 1000 spans and 60000 ms', () => {
     endpoint: null,
     serviceName: 'probe-budget-defaults',
   })
-  expect(otel.options().maxSpansPerTrace).toBe(1000)
-  expect(otel.options().maxTraceMs).toBe(60_000)
+  expect(otel().maxSpansPerTrace).toBe(1000)
+  expect(otel().maxTraceMs).toBe(60_000)
 })
 
 test('the 1001st span of a trace starts a linked continuation', () => {
@@ -917,7 +917,7 @@ test('options.set changes the span budget for later spans', () => {
   const child = action(() => 1, 'budget.runtime.child')
   const parent = action(() => {
     child()
-    otel.options.set((current) => ({ ...current, maxSpansPerTrace: 2 }))
+    otel.set((current) => ({ ...current, maxSpansPerTrace: 2 }))
     child()
   }, 'budget.runtime.parent')
 

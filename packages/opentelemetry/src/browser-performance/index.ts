@@ -1,4 +1,6 @@
-import { browserCaptureOf } from '../browserCapture.ts'
+import type { BooleanAtom, Ext } from '@reatom/core'
+import { assertFeature, featureControl } from '../feature.ts'
+import { browserCaptureOf, type CaptureSnapshot } from '../browserCapture.ts'
 import type { ReatomOpentelemetry } from '../reatomOpentelemetry.ts'
 import type { OtlpAttrValue } from '../toOtlpValue.ts'
 
@@ -39,8 +41,9 @@ const safeUrl = (
  * Native timing measurements, without request spans, replay, or DOM
  * observation.
  */
-export const connectBrowserPerformance = (
+const installBrowserPerformance = (
   otel: ReatomOpentelemetry,
+  documentSnapshot: CaptureSnapshot,
   options: BrowserPerformanceOptions = {},
 ): { dispose(): void } => {
   const capture = browserCaptureOf(otel)
@@ -50,7 +53,6 @@ export const connectBrowserPerformance = (
     typeof PerformanceObserver === 'undefined'
   )
     return { dispose() {} }
-  const documentSnapshot = capture.snapshot()
   const observers: PerformanceObserver[] = []
   let active = true
   const dispose = capture.attach(() => {
@@ -136,3 +138,18 @@ export const connectBrowserPerformance = (
   }
   return { dispose }
 }
+
+/** Eager optional capture controlled by its assigned requested-enable atom. */
+export const withBrowserPerformance =
+  (
+    options: BrowserPerformanceOptions = {},
+  ): Ext<ReatomOpentelemetry, { browserPerformance: BooleanAtom }> =>
+  (otel) => {
+    assertFeature(otel, 'browserPerformance')
+    const snapshot = browserCaptureOf(otel)!.snapshot()
+    return {
+      browserPerformance: featureControl(otel, 'browserPerformance', () =>
+        installBrowserPerformance(otel, snapshot, options),
+      ),
+    }
+  }

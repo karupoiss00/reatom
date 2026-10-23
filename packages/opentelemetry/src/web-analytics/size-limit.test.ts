@@ -7,6 +7,8 @@ type SizeLimitEntry = {
   name: string
   limit: string
   ignore?: string[]
+  path: string | string[]
+  import: string | Record<string, string>
 }
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -18,16 +20,13 @@ const sizeLimitConfig = () =>
     readFileSync(join(pkgRoot, '.size-limit.json'), 'utf8'),
   ) as SizeLimitEntry[]
 
-test('F-17 / WA-8: honest analytics delta is 4.5 KB, not a fake 3 KB', () => {
+test('analytics extension retains its budget and excludes only the core peer', () => {
   const analytics = sizeLimitConfig().find(
-    (entry) => entry.name === 'web-analytics (over opentelemetry)',
+    (entry) => entry.name === 'web-analytics (optional extension)',
   )
   expect(analytics).toBeDefined()
   expect(analytics!.limit).toBe('4.5 KB')
-  expect(analytics!.ignore).toEqual([
-    '@reatom/core',
-    '../reatomOpentelemetry-*',
-  ])
+  expect(analytics!.ignore).toEqual(['@reatom/core'])
 })
 
 test('F-17 / WA-8: combined tracer+analytics measurement has no ignored tracer chunk', () => {
@@ -37,6 +36,15 @@ test('F-17 / WA-8: combined tracer+analytics measurement has no ignored tracer c
   expect(combined).toBeDefined()
   expect(combined!.limit).toBe('19 KB')
   expect(combined!.ignore).toEqual(['@reatom/core'])
+  expect(combined!.path).toEqual([
+    'dist/index.js',
+    'dist/web-analytics/index.js',
+  ])
+  expect(combined!.import).toEqual({
+    './dist/index.js':
+      '{ reatomOpentelemetry, otlpTransport, checkSensitiveNames }',
+    './dist/web-analytics/index.js': '{ withWebAnalytics }',
+  })
 })
 
 test('tracer factory does not import web-analytics', () => {

@@ -9,9 +9,9 @@ export const ANALYTICS_EVENTS = {
 } as const
 
 /**
- * A log from `connectWebAnalytics` or a manual `otel.log`, inferred from the
- * wire without a dedicated origin attribute. Model logs carry a `reatom.*`
- * event name, `reatom.kind` / `reatom.name` / `reatom.frame.id`, or
+ * A page/session analytics log or a manual `otel.log`, inferred from the wire
+ * without a dedicated origin attribute. Model logs carry a `reatom.*` event
+ * name, `reatom.kind` / `reatom.name` / `reatom.frame.id`, or
  * `reatom.cause.ids` (present on tracer exceptions even when the array is
  * empty). Root tracer exceptions are excluded by `reatom.frame.id`.
  */
