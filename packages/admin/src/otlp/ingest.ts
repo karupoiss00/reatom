@@ -140,10 +140,15 @@ export function reatomOtlpStore(options: OtlpStoreOptions) {
     `${PREFIX}.recordList`,
   )
   const recordEpoch = atom(0, `${PREFIX}.recordEpoch`)
+  // Revisions belong to the records' store, rather than any particular
+  // subscriber: multiple ingests may coalesce before a view reads the signal.
+  const contentRevisions = new WeakMap<AdminRecord, number>()
+  const revisionOf = (record: AdminRecord) => contentRevisions.get(record) ?? 0
   const contentChanges = atom<{
     revision: number
     records: readonly AdminRecord[]
-  }>({ revision: 0, records: [] }, `${PREFIX}.contentChanges`)
+    revisionOf: (record: AdminRecord) => number
+  }>({ revision: 0, records: [], revisionOf }, `${PREFIX}.contentChanges`)
   const records = computed(() => {
     contentChanges()
     return recordList.array().slice()
@@ -160,11 +165,15 @@ export function reatomOtlpStore(options: OtlpStoreOptions) {
   const spanKey = (record: AdminRecord) =>
     `${record.sourceId}:${record.traceId}:${record.spanId}`
   const publishContent = () => {
-    if (touched.size)
+    if (touched.size) {
+      for (const record of touched)
+        contentRevisions.set(record, revisionOf(record) + 1)
       contentChanges.set((previous) => ({
         revision: previous.revision + 1,
         records: [...touched],
+        revisionOf,
       }))
+    }
     touched.clear()
   }
   const appendRecords = (batch: AdminRecord[]) => {
@@ -250,6 +259,15 @@ export function reatomOtlpStore(options: OtlpStoreOptions) {
             takeLocalValues(item),
           )
       if (record) {
+        if (
+          record.kind === 'log' &&
+          record.eventName === 'exception' &&
+          record.outcome !== 'abort' &&
+          record.outcome !== 'suspense'
+        ) {
+          record.error ??= errorFromExceptionLog(record)
+          record.outcome ??= 'error'
+        }
         nextSeq += 1
         rememberLocalValues(record)
         batch.push(record)

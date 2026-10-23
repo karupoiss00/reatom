@@ -1,0 +1,25 @@
+{
+  "meta": {
+    "sdk": { "name": "@reatom/opentelemetry", "version": "test" },
+    "app": { "name": "shop", "version": "1" },
+    "session": { "id": "session-a" },
+    "page": { "url": "https://shop.test/a" }
+  },
+  "measurements": [
+    {
+      "type": "checkout",
+      "values": { "duration_ms": 12.5 },
+      "timestamp": "1970-01-01T00:00:00.001Z",
+      "trace": {
+        "trace_id": "0123456789abcdef0123456789abcdef",
+        "span_id": "0123456789abcdef"
+      },
+      "context": {
+        "service.name": "shop",
+        "service.version": "1",
+        "session.id": "session-a",
+        "url.full": "https://shop.test/a"
+      }
+    }
+  ]
+}

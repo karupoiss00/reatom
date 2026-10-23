@@ -1,3 +1,10 @@
+import {
+  browserMetadataOf,
+  installBrowserCapture,
+  isTelemetryUrl,
+  type BrowserCapture,
+} from './browserCapture.ts'
+import { createChildContext } from './traceContext.ts'
 import type { Action, Atom, AtomLike, Ext, Variable } from '@reatom/core'
 import {
   action,
@@ -269,8 +276,8 @@ export interface ReatomOpentelemetryInput {
    */
   transports?: ReadonlyArray<Transport>
   /**
-   * Construction-time defaults. For per-trace runtime overrides set
-   * `resourceAttributesVar`.
+   * Resource attributes captured with service metadata when this instance is
+   * constructed. Later option updates do not change this resource snapshot.
    */
   resourceAttributes?: Record<string, OtlpAttrValue>
   /**
@@ -716,15 +723,34 @@ export const reatomOpentelemetry = (
         return { accepted: batch.itemCount, rejected: 0 }
       }
       const [primary, ...rest] = destinations
-      const extraJobs = rest.map((destination) =>
+      const extraJobs = rest.map((destination, index) =>
         Promise.resolve()
-          .then(() => destination(batch))
+          .then(() => suppressTracing(() => destination(batch)))
+          .then((result) => {
+            if (result.rejected > 0 || result.errorMessage) {
+              observe(() =>
+                warnOnce(
+                  `secondary-transport-result:${index}`,
+                  '[@reatom/opentelemetry] Additional transport reported delivery failure:',
+                  {
+                    destination: index + 2,
+                    signal: batch.signal,
+                    rejected: result.rejected,
+                  },
+                ),
+              )
+            }
+            return result
+          })
           .catch((error) => {
             logExportError(error)
             return { accepted: 0, rejected: batch.itemCount }
           }),
       )
-      const results = await Promise.all([primary!(batch), ...extraJobs])
+      const results = await Promise.all([
+        suppressTracing(() => primary!(batch)),
+        ...extraJobs,
+      ])
       return results[0]!
     },
     `otel.${name}.transport`,
@@ -864,6 +890,7 @@ export const reatomOpentelemetry = (
         ),
       ),
   })
+  const diagnosticLogs = new WeakSet<OtlpLogRecord>()
   type LogQueueItem = {
     log: OtlpLogRecord
     resourceAttributes: Record<string, OtlpAttrValue>
@@ -921,7 +948,8 @@ export const reatomOpentelemetry = (
     send: async (items, { signal, deadline, keepalive, excludeOversized }) => {
       const allowed = items.filter((item) => {
         const flags = flagsFor(item.root)
-        return TRACE_BOUND_LOG.has(item.log.eventName)
+        return diagnosticLogs.has(item.log) ||
+          TRACE_BOUND_LOG.has(item.log.eventName)
           ? flags.logs
           : flags.publicLogs
       })
@@ -1002,6 +1030,7 @@ export const reatomOpentelemetry = (
         ),
       ),
   })
+  let instance: ReatomOpentelemetry
   let disposed = false
   const resumeExport = () => {
     if (disposed || isOffline()) return
@@ -1075,7 +1104,9 @@ export const reatomOpentelemetry = (
     if (tracerLogsClosed || publicLogsClosed) {
       logsQueue.dropQueued((item) => {
         if (item.root !== root) return false
-        const tracerEvent = TRACE_BOUND_LOG.has(item.log.eventName)
+        const tracerEvent =
+          diagnosticLogs.has(item.log) ||
+          TRACE_BOUND_LOG.has(item.log.eventName)
         return tracerEvent ? tracerLogsClosed : publicLogsClosed
       })
     }
@@ -1183,136 +1214,154 @@ export const reatomOpentelemetry = (
       return next.length > limit ? next.slice(next.length - limit) : next
     })
   }
-  const reserveSpan = ():
-    (Reservation<SpanCommit> & { accepted: boolean }) | undefined => {
+  const reserveSpan = (
+    metadataOverride?: Record<string, OtlpAttrValue>,
+  ): (Reservation<SpanCommit> & { accepted: boolean }) | undefined => {
     if (disposed) return
-    const reservation = queue.reserve()
-    const localOnly = !reservation && localValuesActive()
-    if (!reservation && !localOnly) return
-    const resources = snapshotResources()
-    if (!resources) {
+    let reservation: ReturnType<typeof queue.reserve>
+    try {
+      const captureMetadata = metadataOverride ?? browserMetadataOf(instance)
+      reservation = queue.reserve()
+      const localOnly = !reservation && localValuesActive()
+      if (!reservation && !localOnly) return
+      const resources = snapshotResources()
+      if (!resources) {
+        reservation?.cancel('observation')
+        return
+      }
+      const root = rootNow()
+      try {
+        syncFlags(top().root, options())
+      } catch {
+        // Admission outside a frame keeps the detached root's flags.
+      }
+      const accepted = { current: false }
+      return {
+        get accepted() {
+          return accepted.current
+        },
+        commit: (span) => {
+          try {
+            if (!resourceAttributes) {
+              reservation?.cancel('observation')
+              return
+            }
+            const spanLocal = span.local
+            const spanFields = spanLocal === undefined ? span : { ...span }
+            if (spanLocal !== undefined) delete spanFields.local
+            if (
+              (span.name.length > MAX_RECORD_BYTES ||
+                version.length > MAX_RECORD_BYTES) &&
+              !localValuesActive()
+            ) {
+              reservation?.cancel('oversized')
+              return
+            }
+            const adopted = adoptedParents.get(span.spanId)
+            adoptedParents.delete(span.spanId)
+            const linked: SpanInput = adopted
+              ? {
+                  ...spanFields,
+                  traceId: adopted.traceId as SpanInput['traceId'],
+                  parentSpanId:
+                    adopted.parentSpanId as SpanInput['parentSpanId'],
+                }
+              : spanFields
+            if (reservation && linked.status?.code === 'error') {
+              sampler.promote(linked.traceId)
+            }
+            const decision = sampler.of(linked.traceId)
+            const parentIsRemote = !!(
+              linked.parentSpanId && remoteSpanIds.has(linked.parentSpanId)
+            )
+            const flags = otlpSpanFlags(decision.sampled, parentIsRemote)
+            const payload = linked.attributes?.payload
+            const extraOutcome = linked.extraAttributes?.['reatom.outcome']
+            const reatomOutcome =
+              typeof extraOutcome === 'string'
+                ? extraOutcome
+                : linked.status?.code === 'error'
+                  ? 'error'
+                  : payload === '[AbortError]'
+                    ? 'abort'
+                    : payload === '[Suspension]'
+                      ? 'suspense'
+                      : 'ok'
+            const nameUtf8Bytes = encoder.encode(linked.name).byteLength
+            const otlp = buildSpan({
+              ...linked,
+              attributes: {
+                ...(nameUtf8Bytes <= REATOM_NAME_DUP_MAX_UTF8
+                  ? { 'reatom.name': linked.name }
+                  : {}),
+                'reatom.kind': 'action',
+                ...allowedMetadata(captureMetadata),
+                'reatom.outcome': reatomOutcome,
+                ...readInstanceAttributes(),
+                ...linked.attributes,
+              },
+            })
+            const stamped = otlp as OtlpSpan & {
+              flags?: number
+              links?: OtlpSpanLink[]
+            }
+            stamped.flags = flags
+            const links = (linked as SpanCommit).links
+            if (links?.length) stamped.links = links
+            const record = {
+              span: otlp,
+              resourceAttributes: resources,
+              root,
+            }
+            const size = encoder.encode(
+              JSON.stringify({
+                span: record.span,
+                resource: buildResource(resources),
+                scope: { name: '@reatom/opentelemetry', version },
+              }),
+            ).length
+            if (!reservation) {
+              if (spanLocal !== undefined)
+                rememberRecord(record.span, spanLocal)
+              return
+            }
+            if (size > MAX_RECORD_BYTES) reservation.cancel('oversized')
+            else if (!flagsFor(root).traces) {
+              rememberRecord(record.span, spanLocal)
+              reservation.release()
+              return
+            }
+            if (decision.sampled) {
+              flushHeldLogs(linked.traceId)
+              rememberRecord(record.span, spanLocal)
+              reservation.commit(record)
+              accepted.current = true
+              flushHeldSpans(linked.traceId)
+            } else {
+              rememberRecord(record.span, spanLocal)
+              errorRing.add(linked.traceId, record)
+              reservation.release()
+              accepted.current = true
+            }
+          } catch {
+            reservation?.cancel('observation')
+          } finally {
+            reservation?.release()
+          }
+        },
+        cancel: (reason) => {
+          reservation?.cancel(reason)
+        },
+        release: () => {
+          reservation?.release()
+        },
+      }
+    } catch {
       reservation?.cancel('observation')
       return
     }
-    const root = rootNow()
-    try {
-      syncFlags(top().root, options())
-    } catch {
-      // Admission outside a frame keeps the detached root's flags.
-    }
-    const accepted = { current: false }
-    return {
-      get accepted() {
-        return accepted.current
-      },
-      commit: (span) => {
-        if (!resourceAttributes) {
-          reservation?.cancel('observation')
-          return
-        }
-        const spanLocal = span.local
-        const spanFields = spanLocal === undefined ? span : { ...span }
-        if (spanLocal !== undefined) delete spanFields.local
-        if (
-          (span.name.length > MAX_RECORD_BYTES ||
-            version.length > MAX_RECORD_BYTES) &&
-          !localValuesActive()
-        ) {
-          reservation?.cancel('oversized')
-          return
-        }
-        const adopted = adoptedParents.get(span.spanId)
-        adoptedParents.delete(span.spanId)
-        const linked: SpanInput = adopted
-          ? {
-              ...spanFields,
-              traceId: adopted.traceId as SpanInput['traceId'],
-              parentSpanId: adopted.parentSpanId as SpanInput['parentSpanId'],
-            }
-          : spanFields
-        if (reservation && linked.status?.code === 'error') {
-          sampler.promote(linked.traceId)
-        }
-        const decision = sampler.of(linked.traceId)
-        const parentIsRemote = !!(
-          linked.parentSpanId && remoteSpanIds.has(linked.parentSpanId)
-        )
-        const flags = otlpSpanFlags(decision.sampled, parentIsRemote)
-        const payload = linked.attributes?.payload
-        const extraOutcome = linked.extraAttributes?.['reatom.outcome']
-        const reatomOutcome =
-          typeof extraOutcome === 'string'
-            ? extraOutcome
-            : linked.status?.code === 'error'
-              ? 'error'
-              : payload === '[AbortError]'
-                ? 'abort'
-                : payload === '[Suspension]'
-                  ? 'suspense'
-                  : 'ok'
-        const nameUtf8Bytes = encoder.encode(linked.name).byteLength
-        const otlp = buildSpan({
-          ...linked,
-          attributes: {
-            ...(nameUtf8Bytes <= REATOM_NAME_DUP_MAX_UTF8
-              ? { 'reatom.name': linked.name }
-              : {}),
-            'reatom.kind': 'action',
-            'reatom.outcome': reatomOutcome,
-            ...readInstanceAttributes(),
-            ...linked.attributes,
-          },
-        })
-        const stamped = otlp as OtlpSpan & {
-          flags?: number
-          links?: OtlpSpanLink[]
-        }
-        stamped.flags = flags
-        const links = (linked as SpanCommit).links
-        if (links?.length) stamped.links = links
-        const record = {
-          span: otlp,
-          resourceAttributes: resources,
-          root,
-        }
-        const size = encoder.encode(
-          JSON.stringify({
-            span: record.span,
-            resource: buildResource(resources),
-            scope: { name: '@reatom/opentelemetry', version },
-          }),
-        ).length
-        if (!reservation) {
-          if (spanLocal !== undefined) rememberRecord(record.span, spanLocal)
-          return
-        }
-        if (size > MAX_RECORD_BYTES) reservation.cancel('oversized')
-        else if (!flagsFor(root).traces) {
-          rememberRecord(record.span, spanLocal)
-          reservation.release()
-          return
-        }
-        if (decision.sampled) {
-          flushHeldLogs(linked.traceId)
-          rememberRecord(record.span, spanLocal)
-          reservation.commit(record)
-          accepted.current = true
-          flushHeldSpans(linked.traceId)
-        } else {
-          rememberRecord(record.span, spanLocal)
-          errorRing.add(linked.traceId, record)
-          reservation.release()
-          accepted.current = true
-        }
-      },
-      cancel: (reason) => {
-        reservation?.cancel(reason)
-      },
-      release: () => {
-        reservation?.release()
-      },
-    }
   }
+
   const serialize = input.serialize
   const liveCapture = () => {
     const current = options()
@@ -1413,10 +1462,11 @@ export const reatomOpentelemetry = (
         : {
             ...record,
             attributes: [
-              ...record.attributes,
               ...toOtlpAttributes(instanceAttributes),
+              ...record.attributes,
             ],
           }
+    if (source === 'tracer') diagnosticLogs.add(stamped)
     const size = encoder.encode(
       JSON.stringify({
         log: stamped,
@@ -1462,10 +1512,18 @@ export const reatomOpentelemetry = (
   }
   const reserveLog = (): Reservation<LogRecordInput> | undefined => {
     if (disposed) return
+    const metadata = browserMetadataOf(instance)
     return {
       commit: (input) => {
         if (disposed) return
-        commitLogRecord(buildLogRecord(input), 'tracer', input.local)
+        commitLogRecord(
+          buildLogRecord({
+            ...input,
+            attributes: { ...input.attributes, ...allowedMetadata(metadata) },
+          }),
+          'tracer',
+          input.local,
+        )
       },
       cancel: () => {},
       release: () => {},
@@ -1552,7 +1610,7 @@ export const reatomOpentelemetry = (
         spanId: spanContext.spanId as OtlpLogRecord['spanId'],
         timeMs: Date.now(),
         body,
-        attributes,
+        attributes: { ...browserMetadataOf(instance), ...attributes },
       }),
       source,
       local,
@@ -1629,13 +1687,17 @@ export const reatomOpentelemetry = (
 
   const flushNow = () => {
     if (disposed || !pageDocument) return
-    if (options().endpoint === null) return
+    if (!hasExportDestination()) return
     tracing.closePendingSpans()
     if (isOffline()) return
     const tracesLease = queue.takeForUnload()
     const logsLease = logsQueue.takeForUnload()
     if (!tracesLease && !logsLease) return
-    if (input.useBeacon !== true) {
+    if (
+      input.useBeacon !== true ||
+      options().endpoint === null ||
+      (options().transports?.length ?? 0) > 0
+    ) {
       if (tracesLease) worker.send(tracesLease, true)
       if (logsLease) logsWorker.send(logsLease, true)
       return
@@ -1822,9 +1884,17 @@ export const reatomOpentelemetry = (
       invalidParent,
     })
   }
+  const connectorCleanups = new Set<() => void>()
+  const connectorKeys = new Map<string, () => void>()
   const dispose = () => {
     if (disposed) return
     disposed = true
+    for (const cleanup of connectorCleanups) {
+      try {
+        cleanup()
+      } catch {}
+    }
+    connectorCleanups.clear()
     onlineTarget?.removeEventListener('online', resumeExport)
     unregisterInstance(entry)
     routeMachine?.dispose()
@@ -1846,7 +1916,7 @@ export const reatomOpentelemetry = (
   entry.dispose = dispose
   registerInstance(entry)
 
-  const instance: ReatomOpentelemetry = {
+  instance = {
     name,
     options,
     withOTel: tracing.withOTel,
@@ -1874,6 +1944,126 @@ export const reatomOpentelemetry = (
     },
     dispose,
   }
+  function allowedMetadata(attributes: Record<string, OtlpAttrValue>) {
+    const next = { ...attributes }
+    if (!browserMetadataOf(instance)['session.id']) delete next['session.id']
+    return next
+  }
+  installBrowserCapture(instance, {
+    capture: (key, value) =>
+      observe(() => {
+        const config = liveCapture()
+        return config === false
+          ? undefined
+          : createValueCapture(config.redact).capture(key, value)
+      }),
+    isTransportUrl: isTelemetryUrl,
+    attach(cleanup, key) {
+      let active = true
+      const stop = () => {
+        if (!active) return
+        active = false
+        connectorCleanups.delete(stop)
+        if (key && connectorKeys.get(key) === stop) connectorKeys.delete(key)
+        cleanup()
+      }
+      if (disposed) {
+        stop()
+        return stop
+      }
+      if (key) {
+        connectorKeys.get(key)?.()
+        connectorKeys.set(key, stop)
+      }
+      connectorCleanups.add(stop)
+      return stop
+    },
+    enabled: (signal) =>
+      !disposed &&
+      observe(() => tracerSignalEnabled(options(), signal)) === true,
+    snapshot: () =>
+      observe(() => ({
+        context: (currentTrace() ?? fallbackTrace()) as SpanContext,
+        attributes: { ...browserMetadataOf(instance) },
+      })) ?? { context: createChildContext(), attributes: {} },
+    log: (input) =>
+      observe(() => {
+        if (disposed || !tracerSignalEnabled(options(), 'logs')) return
+        const snapshot = input.snapshot ?? {
+          context: (currentTrace() ?? fallbackTrace()) as SpanContext,
+          attributes: browserMetadataOf(instance),
+        }
+        commitLogRecord(
+          buildLogRecord({
+            ...input,
+            ...snapshot.context,
+            attributes: {
+              ...allowedMetadata(snapshot.attributes),
+              ...input.attributes,
+            },
+          }),
+          'tracer',
+        )
+      }),
+    span: (input) =>
+      observe<ReturnType<BrowserCapture['span']>>(() => {
+        if (disposed || !tracerSignalEnabled(options(), 'traces')) return
+        const snapshot = input.snapshot ?? {
+          context: (currentTrace() ?? fallbackTrace()) as SpanContext,
+          attributes: browserMetadataOf(instance),
+        }
+        const context = createChildContext(snapshot.context)
+        const reservation = reserveSpan({})
+        if (!reservation) return
+        let finished = false
+        try {
+          return {
+            context,
+            cancel: () => {
+              if (finished) return
+              finished = true
+              reservation.release()
+            },
+            traceparent: formatTraceparent(
+              context,
+              sampler.of(context.traceId).sampled,
+            ),
+            finish: (end) =>
+              observe(() => {
+                if (finished) return
+                finished = true
+                try {
+                  if (disposed || !tracerSignalEnabled(options(), 'traces')) {
+                    reservation.cancel('observation')
+                    return
+                  }
+                  reservation.commit({
+                    ...context,
+                    parentSpanId: snapshot.context.spanId,
+                    name: end.name ?? input.name,
+                    kind: input.kind,
+                    startTimeMs: input.startTimeMs,
+                    endTimeMs: end.endTimeMs,
+                    attributes: {
+                      ...allowedMetadata(snapshot.attributes),
+                      ...input.attributes,
+                      ...end.attributes,
+                    },
+                    status: end.error ? { code: 'error' } : undefined,
+                  })
+                } catch {
+                  reservation.cancel('observation')
+                } finally {
+                  reservation.release()
+                }
+              }),
+          }
+        } catch {
+          reservation.release()
+          return
+        }
+      }),
+  })
   internalsByInstance.set(instance, {
     recordedExceptions: tracing.recordedExceptions,
     rateLimitDrops,

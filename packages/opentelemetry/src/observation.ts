@@ -1,15 +1,17 @@
 import { peek, STACK } from '@reatom/core'
 
-let depth = 0
-export const isObserving = () => depth !== 0
+const key = Symbol.for('@reatom/opentelemetry/observation')
+const host = globalThis as typeof globalThis & { [key]?: { depth: number } }
+const observation = (host[key] ??= { depth: 0 })
+export const isObserving = () => observation.depth !== 0
 
 /** Suppress synchronous tracing without changing application dependencies. */
 export const suppressTracing = <T>(callback: () => T): T => {
-  depth++
+  observation.depth++
   try {
     return callback()
   } finally {
-    depth--
+    observation.depth--
   }
 }
 

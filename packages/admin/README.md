@@ -118,6 +118,27 @@ const { admin, unmount } = createAdminApp(target, {
 
 ### Analytics view
 
+**Sessions** opens first for local development and replay investigations. Search
+all captured sessions, sort by start, captured duration, page views or errors,
+and open a chronological journey containing logs, spans, exceptions and
+measurements. The list and journey display up to 100 rows per page. Select a
+record to use the existing inspector, or open the whole captured session in
+Timeline. Filters, selection and scroll position survive navigation back.
+
+An explicit `session.id` in attributes or resource identifies a recorded session.
+Records without an explicit identity appear as **Diagnostic capture**, grouped
+conservatively by source and resource, including service and instance. A trace
+joins a recorded session only when it has one unambiguous owner within that
+boundary. No visitor, browser identity, timestamps or consent is inferred.
+Captured duration spans the earliest through latest recorded timestamp; it is
+not a claimed complete session lifetime. Remote results remain partial (latest
+500 records per signal). Page counts use actual `app.page_view` logs; error
+counts use captured error records, without expanding suppression counts.
+Measurements are logs with `eventName: 'measurement'`, a string
+`measurement.type`, and a numeric `measurement.values` map.
+
+**Overview** retains consented web analytics aggregates:
+
 - visitors, sessions, page views, engagement, bounce, and errors
 - trend of session starts
 - pages, entry pages, exit pages, and sources

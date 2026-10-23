@@ -375,3 +375,11 @@ record state to manufacture inspector behavior.
 The live-copy journey selects actual JSON text, ingests unrelated live telemetry,
 and verifies unchanged Inspector/text-node identity before native Meta and copy.
 It requires a trusted, non-prevented copy event and keeps the selection intact.
+
+Session investigation journeys live in `src/stories/otlp/analytics.stories.ts`.
+They cover local diagnostics without analytics consent, mixed recorded signals,
+Overview regression, 100-row pagination and wide/narrow inspector composition.
+The named `session-journey-wide` and `session-journey-narrow` baselines use
+`matchElementScreenshot` on the Admin root after accessible assertions. Native
+select options inside the shadow root use Storybook `userEvent.selectOptions`
+after an actor lookup: Kahraman's `selectOption` looks for options globally.

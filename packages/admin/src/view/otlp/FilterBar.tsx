@@ -104,7 +104,8 @@ export const OtlpFilterBar = ({ admin }: { admin: OtlpAdmin }) => {
       />
       {() => {
         const scope = admin.analytics.scope()
-        if (scope === null) return null
+        const exact = admin.investigation.scopeIds()
+        if (scope === null && exact === null) return null
         return (
           <span
             data-testid="analytics-scope"
@@ -114,11 +115,17 @@ export const OtlpFilterBar = ({ admin }: { admin: OtlpAdmin }) => {
               gap: var(--admin-space-4);
             `}
           >
-            <span>{scope.label}</span>
+            <span>
+              {scope?.label ??
+                `Captured session: ${admin.investigation.selected()?.label ?? 'records'}`}
+            </span>
             <Button
               variant="ghost"
               label="Remove session scope"
-              onClick={() => admin.analytics.scope.clearScope()}
+              onClick={() => {
+                admin.analytics.scope.clearScope()
+                admin.investigation.scopeSessionId.set(null)
+              }}
             >
               Remove session scope
             </Button>
@@ -126,7 +133,8 @@ export const OtlpFilterBar = ({ admin }: { admin: OtlpAdmin }) => {
         )
       }}
       {() =>
-        admin.view() === 'analytics' ||
+        (admin.view() === 'analytics' &&
+          admin.investigation.tab() === 'overview') ||
         (admin.view() === 'timeline' && admin.timelineUnit() === 'paths') ? (
           <span
             css={`

@@ -62,6 +62,7 @@ import {
 } from './ingest.ts'
 import type { AdminMcpFilter } from '../mcp/types.ts'
 import type { FilterMode } from '../types.ts'
+import { reatomInvestigationSessions } from './sessionsModel.ts'
 import type { AnalyticsSession } from './analytics.ts'
 import {
   reatomOtlpAnalytics,
@@ -198,6 +199,11 @@ function reatomOtlpAdminModel(options: OtlpAdminOptions) {
     { records: store.records, matchedRecords, filter },
     `${PREFIX}.analytics`,
   )
+  const investigation = reatomInvestigationSessions(
+    store.records,
+    `${PREFIX}.investigation`,
+    store.contentChanges,
+  )
   const timelineUnit = atom<OtlpTimelineUnit>(
     'records',
     `${PREFIX}.timelineUnit`,
@@ -210,6 +216,7 @@ function reatomOtlpAdminModel(options: OtlpAdminOptions) {
     filterReatomKind.set(undefined)
     filterKind.set(undefined)
     filterMode.set('show')
+    investigation.scopeSessionId.set(null)
     analytics.scope.clearScope()
     analytics.segmentMode.set('include')
   }, `${PREFIX}.filter.reset`)
@@ -289,6 +296,9 @@ function reatomOtlpAdminModel(options: OtlpAdminOptions) {
       matchedRecords(),
       current,
     )
+    const exactIds = investigation.scopeIds()
+    if (exactIds !== null)
+      return filtered.filter((record) => exactIds.has(record.id))
     const inScope = analytics.recordInScope()
     if (inScope === null) return filtered
     return filtered.filter(inScope)
@@ -472,7 +482,11 @@ function reatomOtlpAdminModel(options: OtlpAdminOptions) {
     `${PREFIX}.showAbortAndSuspense`,
   )
   const abortSuspenseCount = computed(() => {
-    if (!hasActiveFilter(filter()) && !analytics.recordInScope())
+    if (
+      !hasActiveFilter(filter()) &&
+      !analytics.recordInScope() &&
+      !investigation.scopeIds()
+    )
       return recordCounts().abort
     let count = 0
     for (const record of visibleRecords()) {
@@ -489,7 +503,11 @@ function reatomOtlpAdminModel(options: OtlpAdminOptions) {
     return mountLogIds(store.records())
   }, `${PREFIX}.mountLogIds`)
   const mountLogCount = computed(() => {
-    if (!hasActiveFilter(filter()) && !analytics.recordInScope())
+    if (
+      !hasActiveFilter(filter()) &&
+      !analytics.recordInScope() &&
+      !investigation.scopeIds()
+    )
       return recordCounts().mount
     const ids = mountLogIdSet()
     let count = 0
@@ -688,10 +706,13 @@ function reatomOtlpAdminModel(options: OtlpAdminOptions) {
   }, `${PREFIX}.causalPredicate`)
   const causalScope = computed(() => {
     const trace = filter().traceId,
-      inScope = analytics.recordInScope()
-    return trace || inScope
+      inScope = analytics.recordInScope(),
+      ids = investigation.scopeIds()
+    return trace || inScope || ids
       ? (record: AdminRecord) =>
-          (!trace || record.traceId === trace) && (!inScope || inScope(record))
+          (!trace || record.traceId === trace) &&
+          (!inScope || inScope(record)) &&
+          (!ids || ids.has(record.id))
       : null
   }, `${PREFIX}.causalScope`)
   const causal = reatomCausalTimeline({
@@ -734,11 +755,13 @@ function reatomOtlpAdminModel(options: OtlpAdminOptions) {
   }, `${PREFIX}.spanCountByTrace`)
   const view = atom<OtlpAdminView>('timeline', `${PREFIX}.view`)
   const showPaths = action((align?: string) => {
+    investigation.scopeSessionId.set(null)
     view.set('timeline')
     timelineUnit.set('paths')
     analytics.alignAt(align)
   }, `${PREFIX}.showPaths`)
   const openPaths = action(() => {
+    investigation.scopeSessionId.set(null)
     view.set('timeline')
     timelineUnit.set('paths')
     if (analytics.paths.expanded().size === 0) analytics.expandTypicalPath()
@@ -749,6 +772,7 @@ function reatomOtlpAdminModel(options: OtlpAdminOptions) {
       sessionIds: ReadonlySet<string>,
       focus?: AnalyticsScopeFocus,
     ) => {
+      investigation.scopeSessionId.set(null)
       analytics.scope.scopeTo(label, sessionIds, focus)
       view.set('timeline')
       timelineUnit.set('records')
@@ -931,6 +955,7 @@ function reatomOtlpAdminModel(options: OtlpAdminOptions) {
     resetSelection,
     view,
     analytics,
+    investigation,
     timelineUnit,
     showPaths,
     openPaths,

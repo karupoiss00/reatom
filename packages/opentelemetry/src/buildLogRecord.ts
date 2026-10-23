@@ -18,6 +18,7 @@ const msToNano = (ms: number): string => {
 }
 
 export interface LogRecordInput {
+  severityNumber?: number
   eventName: string
   traceId: TraceId
   spanId: SpanId
@@ -45,7 +46,10 @@ export const buildLogRecord = (input: LogRecordInput): OtlpLogRecord => {
     spanId: input.spanId,
     timeUnixNano: msToNano(input.timeMs),
     severityNumber:
-      input.eventName === EXCEPTION_EVENT_NAME ? SEVERITY_ERROR : SEVERITY_INFO,
+      input.severityNumber ??
+      (input.eventName === EXCEPTION_EVENT_NAME
+        ? SEVERITY_ERROR
+        : SEVERITY_INFO),
     attributes: [
       {
         key: 'event.name',

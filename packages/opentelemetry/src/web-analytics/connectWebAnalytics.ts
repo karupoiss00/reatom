@@ -1,3 +1,4 @@
+import { browserCaptureOf, setBrowserMetadata } from '../browserCapture.ts'
 import {
   abortVar,
   action,
@@ -113,7 +114,6 @@ export interface WebAnalyticsOptions {
    */
   consent?:
     boolean | BooleanReader | AnalyticsConsentCategories | AnalyticsConsentForm
-  webVitals?: unknown
   autoPageViews?: boolean
   errors?: boolean
   persistVisitor?: boolean
@@ -315,6 +315,8 @@ export function connectWebAnalytics(
   const attributionAtom = atom<Attribution>({}, `${prefix}.attribution`)
   const focusAtom = atom(false, `${prefix}.focus`)
   const stops: Array<() => void> = []
+  let analyticsDisposed = false
+  let detachParent: (() => void) | undefined
   let analyticsAbort: AbortController | undefined
   let openedPageViews = 0
   let consentedPageViews = 0
@@ -353,6 +355,21 @@ export function connectWebAnalytics(
     `${prefix}.consent.allowed`,
   )
   const startedWithoutAnalyticsConsent = !consentSource.allowed()
+  stops.push(
+    setBrowserMetadata(otel, () => {
+      if (!consentSource.allowed()) return {}
+      const attrs: Record<string, OtlpAttrValue> = {}
+      const id = sessionAtom().id
+      if (id) attrs['session.id'] = id
+      if (typeof location !== 'undefined') {
+        attrs['url.full'] = location.origin + location.pathname
+        attrs['url.path'] = location.pathname
+        attrs['page.url'] = location.origin + location.pathname
+        attrs['page.path'] = location.pathname
+      }
+      return attrs
+    }),
+  )
 
   const pageKey = () => pageAtom().path ?? ''
 
@@ -704,6 +721,7 @@ export function connectWebAnalytics(
   }
 
   const pageView = action((attributes?: Record<string, OtlpAttrValue>) => {
+    if (analyticsDisposed) return
     const currentPath = readPage().path ?? ''
     if (
       openedPageViews === 0 &&
@@ -727,6 +745,10 @@ export function connectWebAnalytics(
   }, `${prefix}.pageView`)
 
   const dispose = action(() => {
+    if (analyticsDisposed) return
+    analyticsDisposed = true
+    detachParent?.()
+    detachParent = undefined
     analyticsAbort?.abort()
     analyticsAbort = undefined
     while (stops.length) stops.pop()!()
@@ -745,6 +767,9 @@ export function connectWebAnalytics(
     otel,
     dispose,
   }
+
+  detachParent = browserCaptureOf(otel)?.attach(dispose, 'web-analytics')
+  if (analyticsDisposed) return model
 
   if (!hasWindow()) {
     warnAnalyticsNoWindow()

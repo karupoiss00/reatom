@@ -1,3 +1,4 @@
+import { SessionsScreen } from './SessionsScreen'
 import type { OtlpAdmin } from '../../otlp'
 import {
   analyticsPercentText,
@@ -5,6 +6,7 @@ import {
   type AnalyticsDimension,
 } from '../../otlp/analytics'
 import {
+  Tabs,
   Button,
   DataGrid,
   EmptyState,
@@ -29,6 +31,12 @@ const DIMENSIONS: Array<{
 ]
 
 export function analystStatusWords(admin: OtlpAdmin): string {
+  if (
+    admin.view() === 'analytics' &&
+    admin.investigation.tab() === 'sessions'
+  ) {
+    return `${admin.investigation.rows().length} of ${admin.investigation.sessions().length} captured sessions / diagnostics · ${admin.source()}${admin.source() === 'remote' ? ' · latest 500 records per signal' : ''}`
+  }
   const shown = admin.analytics.segment().length
   const total = admin.analytics.sessions().length
   const source =
@@ -50,6 +58,28 @@ const kpi = (id: string, title: string, text: string) => (
 )
 
 export const OtlpAnalyticsScreen = ({ admin }: { admin: OtlpAdmin }) => (
+  <div css="display: flex; flex-direction: column; height: 100%; min-height: 0;">
+    <Tabs
+      value={admin.investigation.tab}
+      ariaLabel="Analytics views"
+      items={[
+        { id: 'sessions', label: 'Sessions' },
+        { id: 'overview', label: 'Overview' },
+      ]}
+    />
+    <div css="flex: 1; min-height: 0;">
+      {() =>
+        admin.investigation.tab() === 'sessions' ? (
+          <SessionsScreen admin={admin} />
+        ) : (
+          <OtlpAnalyticsOverview admin={admin} />
+        )
+      }
+    </div>
+  </div>
+)
+
+const OtlpAnalyticsOverview = ({ admin }: { admin: OtlpAdmin }) => (
   <section
     data-testid="otlp-analytics"
     data-reatom-name="AnalyticsScreen"
@@ -329,13 +359,14 @@ const BreakdownGrid = ({
             if (scope === null || scope.dimension !== dimension) return null
             return scope.key ?? null
           }}
-          onSelect={(row) =>
+          onSelect={(row) => {
+            admin.investigation.scopeSessionId.set(null)
             admin.analytics.scope.scopeTo(
               `${title}: ${row.key}`,
               new Set(row.sessionIds),
               { dimension, key: row.key },
             )
-          }
+          }}
           empty={<span>No rows</span>}
           ariaLabel={title}
         />

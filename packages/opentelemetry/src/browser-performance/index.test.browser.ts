@@ -1,0 +1,127 @@
+import { context } from '@reatom/core'
+import { expect, inject, test, vi } from 'vitest'
+import { reatomOpentelemetry } from '../reatomOpentelemetry.ts'
+
+import { installBrowserCapture } from '../browserCapture.ts'
+import type { BrowserCapture } from '../browserCapture.ts'
+import type { ReatomOpentelemetry } from '../reatomOpentelemetry.ts'
+import { connectBrowserPerformance } from './index.ts'
+
+test('Chromium native observer delivers buffered navigation and actual resource timing, then disconnects', async () => {
+  const otel = {} as ReatomOpentelemetry
+  const log = vi.fn()
+  const snapshot = { context: {}, attributes: { 'page.id': 'native-page' } }
+  installBrowserCapture(otel, {
+    enabled: () => true,
+    snapshot: () => snapshot,
+    log,
+    attach: (cleanup: () => void) => cleanup,
+    isTransportUrl: () => false,
+  } as unknown as BrowserCapture)
+  const collector = connectBrowserPerformance(otel)
+  const path = `/@vite/client?timing-smoke=${Date.now()}`
+  try {
+    await fetch(path)
+    await expect
+      .poll(() =>
+        log.mock.calls.some(
+          ([record]) =>
+            record.attributes['measurement.type'] === 'browser-resource' &&
+            record.attributes['url.full'] === `${location.origin}/@vite/client`,
+        ),
+      )
+      .toBe(true)
+    expect(
+      log.mock.calls.some(
+        ([record]) =>
+          record.attributes['measurement.type'] === 'browser-navigation',
+      ),
+    ).toBe(true)
+    const resource = log.mock.calls.find(
+      ([record]) =>
+        record.attributes['url.full'] === `${location.origin}/@vite/client`,
+    )![0]
+    expect(
+      resource.attributes['measurement.values'].duration,
+    ).toBeGreaterThanOrEqual(0)
+    expect(resource.snapshot).toBe(snapshot)
+    collector.dispose()
+    const count = log.mock.calls.length
+    await fetch(`/@vite/client?after-dispose=${Date.now()}`)
+    // Drain the browser observer delivery task after the actual fetch.
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(log).toHaveBeenCalledTimes(count)
+  } finally {
+    collector.dispose()
+  }
+})
+
+test('Chromium excludes async custom transport resources without the network connector while app resources remain captured', async () => {
+  const customUrl = `${inject('otelCollectorUrl')}/collector/allow/performance-custom/v1/traces?receiver=private`
+  const nativeEntries: string[] = []
+  const observer = new PerformanceObserver((list) => {
+    nativeEntries.push(...list.getEntries().map((entry) => entry.name))
+  })
+  observer.observe({ type: 'resource', buffered: true })
+  const sent = vi.fn()
+  const otel = reatomOpentelemetry({
+    name: 'performance-custom-async-transport',
+    endpoint: null,
+    serviceName: 'performance-test',
+    skipGlobalExtension: true,
+    batchInterval: 100_000,
+    transports: [
+      async (batch) => {
+        await Promise.resolve()
+        const response = await fetch(customUrl, {
+          method: 'POST',
+          body: JSON.stringify(batch.payload),
+        })
+        expect(response.ok).toBe(true)
+        await response.text()
+        sent()
+        return { accepted: batch.itemCount, rejected: 0 }
+      },
+    ],
+  })
+  const ignoreUrl = vi.fn((url: URL) => {
+    if (url.href === customUrl) return true
+    return !url.searchParams.has('performance-app')
+  })
+  const collector = connectBrowserPerformance(otel, {
+    navigation: false,
+    ignoreUrl,
+  })
+  const measurements = () =>
+    otel
+      .records()
+      .filter(
+        (record) =>
+          typeof record === 'object' &&
+          record !== null &&
+          'eventName' in record &&
+          record.eventName === 'measurement',
+      )
+  try {
+    context.start(() => otel.log('custom-transport-seed'))
+    await otel.flush()
+    expect(sent.mock.calls.length).toBeGreaterThan(0)
+    await expect.poll(() => nativeEntries).toContain(customUrl)
+    await expect
+      .poll(() => ignoreUrl.mock.calls.some(([url]) => url.href === customUrl))
+      .toBe(true)
+    expect(measurements()).toHaveLength(0)
+    await fetch(`/@vite/client?performance-app=${Date.now()}`)
+    await expect.poll(() => measurements().length).toBe(1)
+    await otel.flush()
+    const sendsAfterApp = sent.mock.calls.length
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(measurements()).toHaveLength(1)
+    expect(sent).toHaveBeenCalledTimes(sendsAfterApp)
+    expect(otel.stats().queued).toBe(0)
+  } finally {
+    collector.dispose()
+    observer.disconnect()
+    otel.dispose()
+  }
+})

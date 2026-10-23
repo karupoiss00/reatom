@@ -45,7 +45,6 @@ export function createModeAnalyticsOptionsCompile(): WebAnalytics {
     consent: true,
     errorSampling: 1,
     rateLimit: { errorsPerMin: 10, eventsPerMin: 60 },
-    webVitals: undefined,
   }
   const create: WebAnalyticsCreateOptions = {
     name: 'site',
@@ -75,4 +74,11 @@ export function analyticsErrorSamplingIsNotTracerErrors() {
     // @ts-expect-error analytics exception ratio is errorSampling, not sampling.errors
     sampling: { errors: 0.5 },
   })
+}
+
+export function removedWebVitalsOptionIsRejected(
+  otel: import('../src/index.ts').ReatomOpentelemetry,
+) {
+  // @ts-expect-error Web Vitals requires its explicit optional connector.
+  connectWebAnalytics(otel, { webVitals: true })
 }

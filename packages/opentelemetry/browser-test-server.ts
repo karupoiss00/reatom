@@ -54,7 +54,10 @@ export default async function setup(project: TestProject) {
   const allowCors = (response: ServerResponse) => {
     response.setHeader('Access-Control-Allow-Origin', '*')
     response.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-    response.setHeader('Access-Control-Allow-Headers', 'content-type')
+    response.setHeader(
+      'Access-Control-Allow-Headers',
+      'content-type,traceparent,x-test,1',
+    )
     response.setHeader('Access-Control-Max-Age', '0')
     response.setHeader('Cache-Control', 'no-store')
   }
@@ -82,6 +85,19 @@ export default async function setup(project: TestProject) {
       if (collector) state.options++
       response.statusCode = denied ? 403 : 204
       response.end()
+      return
+    }
+    if (control && path.startsWith('/control/echo')) {
+      const chunks: Buffer[] = []
+      for await (const chunk of request) chunks.push(Buffer.from(chunk))
+      response.end(
+        JSON.stringify({
+          method: request.method,
+          traceparent: request.headers.traceparent,
+          test: request.headers['x-test'],
+          body: Buffer.concat(chunks).toString('utf8'),
+        }),
+      )
       return
     }
     if (control) {

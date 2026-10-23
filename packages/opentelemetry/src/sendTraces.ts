@@ -1,3 +1,4 @@
+import { markTelemetryUrl } from './browserCapture.ts'
 import { suppressTracing } from './observation.ts'
 import { readExportResponse } from './parseExportResponse.ts'
 import { signalUrl, type OtlpHttpSignal } from './tracesUrl.ts'
@@ -58,6 +59,7 @@ const postOtlp = async (
     signal: input.signal,
   }
   input.signal?.throwIfAborted()
+  markTelemetryUrl(url)
   return suppressTracing(() => fetchImpl(url, init))
 }
 

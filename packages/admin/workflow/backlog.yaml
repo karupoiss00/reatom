@@ -1,6 +1,6 @@
 version: 1
 product: '@reatom/admin'
-updated_at: '2026-10-16'
+updated_at: '2026-10-23'
 
 # Status values: open | in_progress | blocked | done | cancelled
 # Priority: P0 (infra) | P1 (core journeys) | P2 (secondary) | P3 (polish)
@@ -231,3 +231,30 @@ tasks:
       - step driver comparison against all sessions
     files:
       - packages/admin/src/otlp/analytics.ts
+
+  - id: AD-17
+    title: Session investigation for local diagnostics and recorded user sessions
+    priority: P1
+    role: implementer
+    status: done
+    owner: codex/team
+    blocked_by: [AD-14]
+    tags: ['@smoke', '@visual']
+    notes: >-
+      Accepted after independent review. Admin unit tests (404), Analytics browser
+      journeys (9), and package build pass. Full typecheck matches the existing
+      baseline diagnostics; broader browser failures include reproduced baseline
+      cases and intermittent legacy stories. Wide and narrow baselines inspected.
+    acceptance:
+      - Sessions supports diagnostics without analytics identity and preserves Overview totals
+      - Source and resource boundaries prevent ambiguous session correlation
+      - Search and pagination inspect every captured record with at most 100 mounted rows
+      - Inspector and Timeline navigation preserve session scope, focus and scroll
+      - Late errors update filtered live journeys and replay error counts stay consistent
+      - Wide and narrow session journey screenshots accompany browser assertions
+    files:
+      - packages/admin/src/otlp/sessions.ts
+      - packages/admin/src/otlp/sessionsModel.ts
+      - packages/admin/src/otlp/sessions.test.ts
+      - packages/admin/src/view/otlp/SessionsScreen.tsx
+      - packages/admin/src/stories/otlp/analytics.stories.ts

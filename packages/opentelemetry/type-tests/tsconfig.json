@@ -4,7 +4,9 @@
     "./compatibility.ts",
     "./v2-api.ts",
     "./web-analytics.ts",
-    "./gdpr.ts"
+    "./gdpr.ts",
+    "./faro.ts",
+    "./browser-metrics.ts"
   ],
   "compilerOptions": {
     "noEmit": true

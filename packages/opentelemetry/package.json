@@ -20,6 +20,31 @@
       "types": "./dist/web-analytics/index.d.ts",
       "require": "./dist/web-analytics/index.cjs",
       "default": "./dist/web-analytics/index.js"
+    },
+    "./faro": {
+      "types": "./dist/faro/index.d.ts",
+      "require": "./dist/faro/index.cjs",
+      "default": "./dist/faro/index.js"
+    },
+    "./browser-network": {
+      "types": "./dist/browser-network/index.d.ts",
+      "require": "./dist/browser-network/index.cjs",
+      "default": "./dist/browser-network/index.js"
+    },
+    "./browser-console": {
+      "types": "./dist/browser-console/index.d.ts",
+      "require": "./dist/browser-console/index.cjs",
+      "default": "./dist/browser-console/index.js"
+    },
+    "./web-vitals": {
+      "types": "./dist/web-vitals/index.d.ts",
+      "require": "./dist/web-vitals/index.cjs",
+      "default": "./dist/web-vitals/index.js"
+    },
+    "./browser-performance": {
+      "types": "./dist/browser-performance/index.d.ts",
+      "require": "./dist/browser-performance/index.cjs",
+      "default": "./dist/browser-performance/index.js"
     }
   },
   "main": "dist/index.cjs",
@@ -39,13 +64,19 @@
     "test:e2e:collector": "node e2e/collector/run.mjs",
     "test:e2e:collector:oracle": "node --test e2e/collector/*.test.mjs",
     "test:e2e:clickhouse": "node e2e/collector/run-clickhouse.mjs",
-    "size": "size-limit --config .size-limit.json"
+    "size": "size-limit --config .size-limit.json",
+    "test:bundles": "pnpm run build && node tools/check-browser-bundles.mjs"
   },
   "tsdown": {
     "entry": [
       "src/index.ts",
       "src/gdpr/index.ts",
-      "src/web-analytics/index.ts"
+      "src/web-analytics/index.ts",
+      "src/faro/index.ts",
+      "src/browser-network/index.ts",
+      "src/browser-console/index.ts",
+      "src/web-vitals/index.ts",
+      "src/browser-performance/index.ts"
     ],
     "format": [
       "esm",
@@ -87,7 +118,8 @@
     "reatom"
   ],
   "files": [
-    "/dist"
+    "/dist",
+    "/API.md"
   ],
   "devDependencies": {
     "@size-limit/preset-small-lib": "catalog:",
@@ -97,5 +129,8 @@
     "size-limit": "catalog:",
     "tsdown": "catalog:",
     "vitest": "catalog:"
+  },
+  "dependencies": {
+    "web-vitals": "6.2.3"
   }
 }

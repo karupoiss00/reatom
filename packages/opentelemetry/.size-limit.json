@@ -26,5 +26,12 @@
     "import": "{ connectWebAnalytics }",
     "ignore": ["@reatom/core"],
     "limit": "19 KB"
+  },
+  {
+    "name": "faro (optional receiver bridge)",
+    "path": "dist/faro/index.js",
+    "import": "{ faroTransport, logMeasurement }",
+    "ignore": ["@reatom/core"],
+    "limit": "3 KB"
   }
 ]
