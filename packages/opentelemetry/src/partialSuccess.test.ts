@@ -1,14 +1,17 @@
 import { action, context } from '@reatom/core'
 import { expect, test } from 'vitest'
 
-import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
-import { installDomStubs, withWarnSpy } from './test-helpers.ts'
+import {
+  installDomStubs,
+  reatomTestTelemetry,
+  withWarnSpy,
+} from './test-helpers.ts'
 
 const RECORDS = 5
 
 const setup = (body: string) => {
   const requests: string[] = []
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'partialSuccess',
     endpoint: 'http://collector.invalid',
     serviceName: 'partial-success-test',
@@ -29,7 +32,7 @@ const setup = (body: string) => {
       }
     })
   const assertConservation = () => {
-    const stats = otel.stats()
+    const stats = otel.otlp.stats()
     expect(stats.active).toBe(0)
     expect(stats.queued).toBe(0)
     expect(stats.inFlight).toBe(0)
@@ -55,7 +58,7 @@ test.each([
         await otel.flush()
 
         expect(requests).toHaveLength(1)
-        const stats = otel.stats()
+        const stats = otel.otlp.stats()
         expect(stats).toMatchObject({
           active: 0,
           queued: 0,
@@ -90,7 +93,7 @@ test('zero rejectedSpans with a server warning exports all five and warns', asyn
       await otel.flush()
 
       expect(requests).toHaveLength(1)
-      expect(otel.stats()).toMatchObject({ exported: 5, dropped: 0 })
+      expect(otel.otlp.stats()).toMatchObject({ exported: 5, dropped: 0 })
       expect(warn).toHaveBeenCalledTimes(1)
       expect(String(warn.mock.calls[0]![0])).toContain('collector warning')
       assertConservation()
@@ -117,7 +120,7 @@ test.each([
         await otel.flush()
 
         expect(requests).toHaveLength(1)
-        expect(otel.stats()).toMatchObject({
+        expect(otel.otlp.stats()).toMatchObject({
           exported: 0,
           dropped: 5,
           droppedByReason: { export: 5 },
@@ -143,7 +146,7 @@ test.each([
       await otel.flush()
 
       expect(requests).toHaveLength(1)
-      expect(otel.stats()).toMatchObject({ exported: 5, dropped: 0 })
+      expect(otel.otlp.stats()).toMatchObject({ exported: 5, dropped: 0 })
       assertConservation()
     } finally {
       otel.dispose()
@@ -158,7 +161,7 @@ test.each(['http', 'partial', 'beacon', 'network'] as const)(
     const endpoint =
       'https://user:private-password@collector.invalid?token=private-query#private-fragment'
     await withWarnSpy(async (warn) => {
-      const otel = reatomOpentelemetry({
+      const otel = reatomTestTelemetry({
         name: 'partialSuccess',
         endpoint,
         serviceName: 'diagnostic-privacy',
@@ -183,7 +186,7 @@ test.each(['http', 'partial', 'beacon', 'network'] as const)(
         const diagnostic = warn.mock.calls.flat().map(String).join(' ')
         expect(diagnostic).not.toContain('private-')
         expect(diagnostic).not.toContain('user:')
-        expect(otel.stats()).toMatchObject(
+        expect(otel.otlp.stats()).toMatchObject(
           mode === 'partial'
             ? { exported: 1, dropped: 0 }
             : { exported: 0, droppedByReason: { export: 1 } },
@@ -209,7 +212,7 @@ test.each([0, 1])(
         emit()
         await otel.flush()
         expect(requests).toHaveLength(1)
-        expect(otel.stats()).toMatchObject(
+        expect(otel.otlp.stats()).toMatchObject(
           excess
             ? { exported: 0, dropped: 5, droppedByReason: { export: 5 } }
             : { exported: 5, dropped: 0 },

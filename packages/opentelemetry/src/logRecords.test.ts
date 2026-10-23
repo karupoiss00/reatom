@@ -9,13 +9,13 @@ import {
 } from '@reatom/core'
 import { expect, test } from 'vitest'
 
-import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
 import {
   HEX_SPAN_ID,
   HEX_TRACE_ID,
   installDomStubs,
-  parseSpans,
   type ParsedSpan,
+  parseSpans,
+  reatomTestTelemetry,
 } from './test-helpers.ts'
 
 const UNLOAD_BUDGET = 60 * 1024
@@ -130,10 +130,10 @@ interface ExportCall {
 }
 
 const setup = (
-  overrides: Partial<Parameters<typeof reatomOpentelemetry>[0]> = {},
+  overrides: Partial<Parameters<typeof reatomTestTelemetry>[0]> = {},
 ) => {
   const calls: ExportCall[] = []
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'logRecords',
     endpoint: 'https://collector.invalid',
     serviceName: 'log-records',
@@ -198,7 +198,7 @@ test('LOG outside any action emits reatom.log on the app-session trace, never a 
     const { spans, logs } = exported(calls)
     const reatomLogs = logsNamed(logs, 'reatom.log')
     expect(reatomLogs.length).toBeGreaterThanOrEqual(2)
-    expect(otel.stats().dropped).toBe(0)
+    expect(otel.otlp.stats().dropped).toBe(0)
 
     for (const record of reatomLogs) {
       expect(record.severityNumber).toBe(SEVERITY_INFO)
@@ -343,7 +343,7 @@ test('pending async at pagehide exports outcome=pending inside a 60 KiB unload b
       expect(hung).toBeInstanceOf(Promise)
       expect(hung).not.toBe(never)
     })
-    expect(otel.stats().active).toBeGreaterThan(0)
+    expect(otel.otlp.stats().active).toBeGreaterThan(0)
 
     windowListeners.get('pagehide')!()
     await otel.flush()

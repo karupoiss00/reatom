@@ -2,10 +2,13 @@ import { action, bind, context, wrap } from '@reatom/core'
 import { expect, test, vi } from 'vitest'
 
 import type { ReatomOpentelemetry } from './reatomOpentelemetry.ts'
-import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
 import { resourceAttributesVar } from './resourceAttributesVar.ts'
+import {
+  parsePayload,
+  parseSpans,
+  reatomTestTelemetry,
+} from './test-helpers.ts'
 import type { SpanContext } from './traceContext.ts'
-import { parsePayload, parseSpans } from './test-helpers.ts'
 
 const createRun = () =>
   context.start(() => bind(<T>(callback: () => T) => callback()))
@@ -15,7 +18,7 @@ const setup = (input: {
   captureValues?: false | { redact?: (key: string, value: unknown) => unknown }
 }) => {
   const bodies: string[] = []
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'captureIsolation',
     endpoint: 'https://collector.invalid',
     serviceName: 'capture-no-core',
@@ -69,7 +72,7 @@ test.each(['sync', 'async'] as const)(
         expect(returned).toBe(value)
       }
       expect(bodyCalls).toBe(1)
-      expect(otel.stats()).toMatchObject({
+      expect(otel.otlp.stats()).toMatchObject({
         active: mode === 'sync' ? 0 : 1,
         queued: mode === 'sync' ? 1 : 0,
         inFlight: 0,
@@ -95,7 +98,7 @@ test.each(['sync', 'async'] as const)(
         phase: 'capture-resource-admission',
       })
       expect(attributes.bytes).toEqual({ bytes: 'AQID' })
-      expect(otel.stats()).toMatchObject({
+      expect(otel.otlp.stats()).toMatchObject({
         active: 0,
         queued: 0,
         inFlight: 0,
@@ -122,7 +125,7 @@ test('redacting params may dispose telemetry without changing the body/result or
   let bodyContext: SpanContext | undefined
   let positive: ReturnType<typeof setup> | undefined
   try {
-    otel = reatomOpentelemetry({
+    otel = reatomTestTelemetry({
       name: 'captureIsolation',
       endpoint: 'https://collector.invalid',
       serviceName: 'capture-no-core',
@@ -160,7 +163,7 @@ test('redacting params may dispose telemetry without changing the body/result or
     expect(run(() => otel.traceVar.get())).toBeUndefined()
     await otel.flush()
     expect(bodies).toEqual([])
-    expect(otel.stats()).toMatchObject({
+    expect(otel.otlp.stats()).toMatchObject({
       active: 0,
       queued: 0,
       inFlight: 0,

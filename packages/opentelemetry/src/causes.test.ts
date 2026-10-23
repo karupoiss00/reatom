@@ -4,21 +4,24 @@ import {
   computed,
   context,
   effect,
+  type Frame,
   getCalls,
   notify,
+  top,
   withAsync,
   withAsyncData,
   wrap,
 } from '@reatom/core'
 import { afterEach, expect, test, vi } from 'vitest'
 
-import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
+import { createCauseStore } from './causes.ts'
 import type { ParsedSpan } from './test-helpers.ts'
 import {
   findSpan,
   HEX_SPAN_ID,
   HEX_TRACE_ID,
   parseSpans,
+  reatomTestTelemetry,
 } from './test-helpers.ts'
 
 const cleanups: Array<() => void> = []
@@ -92,7 +95,7 @@ const setup = () => {
     else traces.push(body)
     return new Response('{}', { status: 200 })
   })
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'causes',
     endpoint: 'https://collector.test',
     serviceName: 'causes-svc',
@@ -715,4 +718,52 @@ test('action called from an effect is parented by the last-changed dependency', 
   expect(afterWrites).toBeDefined()
   expect(afterWrites!.parentSpanId).toBe(searchSpan.spanId)
   expect(afterWrites!.traceId).toBe(searchSpan.traceId)
+})
+
+test('cause store clears changed dependencies and traces after batch cleanup, retaining caller ids', () => {
+  context.start(() => {
+    const store = createCauseStore()
+    const root = top().root
+    const makeFrame = (pubs: Frame[] = []): Frame =>
+      ({ root, atom: atom(0), pubs }) as Frame
+    const caller = makeFrame()
+    const dependency = makeFrame()
+    const target = makeFrame([caller, dependency])
+    const callerId = store.assign(caller)
+    const dependencyId = store.assign(dependency)
+    store.markChanged(caller, {
+      traceId: 'caller-trace',
+      spanId: 'caller-span',
+    })
+    store.markChanged(dependency, {
+      traceId: 'dependency-trace',
+      spanId: 'dependency-span',
+    })
+
+    expect(store.causeIds(target)).toEqual([callerId, dependencyId])
+    expect(store.tracedCauses(target).map(({ frameId }) => frameId)).toEqual([
+      callerId,
+      dependencyId,
+    ])
+
+    notify()
+
+    expect(store.causeIds(target)).toEqual([callerId])
+    expect(store.tracedCauses(target)).toEqual([])
+    store.markChanged(dependency, {
+      traceId: 'next-trace',
+      spanId: 'next-span',
+    })
+    expect(store.causeIds(target)).toEqual([callerId, dependencyId])
+    expect(store.tracedCauses(target)).toEqual([
+      {
+        frameId: dependencyId,
+        traceId: 'next-trace',
+        spanId: 'next-span',
+        changedOrder: 3,
+      },
+    ])
+    notify()
+    expect(store.tracedCauses(target)).toEqual([])
+  })
 })

@@ -1,21 +1,24 @@
 import { context, log } from '@reatom/core'
 import { expect, test, vi } from 'vitest'
 
-import { reatomOpentelemetry } from '../reatomOpentelemetry.ts'
-import { installDomStubs, withWarnSpy } from '../test-helpers.ts'
-import { faroTransport, logMeasurement } from './index.ts'
-import { toOtlpAttributes } from '../toOtlpValue.ts'
+import {
+  installDomStubs,
+  reatomTestTelemetry,
+  withWarnSpy,
+} from '../test-helpers.ts'
 import type { OtlpAttrValue } from '../toOtlpValue.ts'
+import { toOtlpAttributes } from '../toOtlpValue.ts'
+import { faroTransport, logMeasurement } from './index.ts'
 
 const setup = (
-  extra: Partial<Parameters<typeof reatomOpentelemetry>[0]> = {},
+  extra: Partial<Parameters<typeof reatomTestTelemetry>[0]> = {},
 ) => {
   const requests: Array<{ body: any; init: RequestInit }> = []
   const fetch = vi.fn(async (_url: unknown, init?: RequestInit) => {
     requests.push({ body: JSON.parse(String(init!.body)), init: init! })
     return new Response('ok', { status: 202 })
   })
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'faro-test',
     endpoint: null,
     serviceName: 'shop',
@@ -399,7 +402,7 @@ test.each([
       const primaryFetch = vi.fn(
         async () => new Response('{}', { status: 200 }),
       )
-      const otel = reatomOpentelemetry({
+      const otel = reatomTestTelemetry({
         name: 'fanout',
         endpoint: 'https://collector.test',
         serviceName: 'shop',
@@ -425,8 +428,8 @@ test.each([
             ),
           ),
         ).toBe(true)
-        expect(otel.stats().exported).toBeGreaterThan(0)
-        expect(otel.stats().droppedByReason.export).toBe(0)
+        expect(otel.otlp.stats().exported).toBeGreaterThan(0)
+        expect(otel.otlp.stats().droppedByReason.export).toBe(0)
       } finally {
         otel.dispose()
       }
@@ -718,7 +721,7 @@ test('user projection ignores resource identity, preserves explicit record bundl
 test('manual captured user.id reaches Faro metadata and event attributes without analytics identity', async () => {
   const { otel, requests } = setup()
   try {
-    expect(otel().endpoint).toBeNull()
+    expect(otel.otlp().endpoint).toBeNull()
     otel.set((current) => ({
       ...current,
       headers: { 'x-test': 'native-config' },

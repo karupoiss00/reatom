@@ -1,3 +1,5 @@
+import { stringifyJson, toJsonValue } from '../serialize'
+
 import {
   ADMIN_MCP_MAX_BYTES,
   type AdminMcpHeader,
@@ -25,7 +27,7 @@ const IDENTITY_KEYS = new Set([
 ])
 
 export function jsonUtf8Bytes(value: unknown): number {
-  return utf8.encode(JSON.stringify(value)).length
+  return utf8.encode(stringifyJson(value)).length
 }
 
 export function decodeCursor(cursor: string | undefined): number {
@@ -46,7 +48,7 @@ export function isDomainAttributeKey(key: string): boolean {
 export function copyAttributes(
   attributes: Record<string, unknown>,
 ): Record<string, unknown> {
-  return { ...attributes }
+  return toJsonValue(attributes) as Record<string, unknown>
 }
 
 function isIdentityKey(key: string | undefined): boolean {

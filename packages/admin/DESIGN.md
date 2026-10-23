@@ -1,6 +1,6 @@
 # Admin design
 
-The admin is a causal timeline debugger for one OTLP record stream. A person capturing or replaying that stream should see system status in words, filter the rows they care about, inspect one record without losing their place, and undo a destructive clear.
+The admin is a causal timeline debugger for a canonical captured-record stream, with OTLP/replay import as an additional input. A person capturing or replaying that stream should see system status in words, filter the rows they care about, inspect one record without losing their place, and undo a destructive clear.
 
 ```mermaid
 flowchart TB
@@ -18,7 +18,7 @@ flowchart TB
 
 The frame card sits beside the main view when the shell is at least 680px wide and in a bottom drawer when it is narrower. That switch uses the shell width (`container: admin-shell`), not the viewport.
 
-Local words: a record is one OTLP span or log row; the frame card is the inspector for the selected record; a chip is an on/off filter control.
+Local words: a record is one captured span or log row (or an imported OTLP/replay row); the frame card is the inspector for the selected record; a chip is an on/off filter control.
 
 ## Required rules
 

@@ -1,12 +1,14 @@
 import { action, bind, context } from '@reatom/core'
 import { expect, test } from 'vitest'
 
-import {
-  reatomOpentelemetry,
-  type ReatomOpentelemetryInput,
-} from './reatomOpentelemetry.ts'
+import { type ReatomOpentelemetryInput } from './reatomOpentelemetry.ts'
 import { resourceAttributesVar } from './resourceAttributesVar.ts'
-import { parseLogRecords, parsePayload, parseSpans } from './test-helpers.ts'
+import {
+  parseLogRecords,
+  parsePayload,
+  parseSpans,
+  reatomTestTelemetry,
+} from './test-helpers.ts'
 
 const bytes = (value: unknown) =>
   new TextEncoder().encode(JSON.stringify(value)).length
@@ -33,7 +35,7 @@ const recordFromWire = (body: string): WireRecord => {
 const setup = (options: Partial<ReatomOpentelemetryInput> = {}) => {
   const bodies: string[] = []
   const run = context.start(() => bind(<T>(callback: () => T) => callback()))
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'captureBudgets',
     endpoint: 'https://collector.invalid',
     serviceName: 'capture-budgets',
@@ -79,7 +81,11 @@ test('params and payload share one capture budget through the real factory', asy
     expect(
       bytes(['params', params]) + bytes(['payload', payload]),
     ).toBeLessThanOrEqual(8_192)
-    expect(otel.stats()).toMatchObject({ exported: 1, dropped: 0, active: 0 })
+    expect(otel.otlp.stats()).toMatchObject({
+      exported: 1,
+      dropped: 0,
+      active: 0,
+    })
 
     expect(run(() => target(...input))).toBe(output)
     expect(calls).toBe(2)
@@ -100,7 +106,7 @@ test('params and payload share one capture budget through the real factory', asy
     expect(
       bytes(['params', secondParams]) + bytes(['payload', secondPayload]),
     ).toBeLessThanOrEqual(8_192)
-    expect(otel.stats()).toMatchObject({
+    expect(otel.otlp.stats()).toMatchObject({
       exported: 2,
       dropped: 0,
       active: 0,
@@ -132,7 +138,7 @@ test.each([false, true])(
       expect(run(target)).toBe(output)
       expect(calls).toBe(1)
       await otel.flush()
-      expect(otel.stats()).toMatchObject({
+      expect(otel.otlp.stats()).toMatchObject({
         active: 0,
         queued: 0,
         inFlight: 0,
@@ -177,7 +183,7 @@ test('UTF-8 oversized target name releases capacity despite a short JS length', 
     )
     expect(run(target)).toBe(output)
     expect(calls).toBe(1)
-    expect(otel.stats()).toMatchObject({
+    expect(otel.otlp.stats()).toMatchObject({
       active: 0,
       queued: 0,
       inFlight: 0,
@@ -195,7 +201,7 @@ test('UTF-8 oversized target name releases capacity despite a short JS length', 
     expect(bodies.flatMap(parseSpans).map((span) => span.name)).toEqual([
       'capture-budgets.after-utf8-drop',
     ])
-    expect(otel.stats()).toMatchObject({
+    expect(otel.otlp.stats()).toMatchObject({
       active: 0,
       queued: 0,
       inFlight: 0,
@@ -315,7 +321,7 @@ test('combined factory resource, ambient snapshot and metadata exceed one record
       output,
     )
     expect(calls).toBe(2)
-    expect(otel.stats()).toMatchObject({
+    expect(otel.otlp.stats()).toMatchObject({
       active: 0,
       queued: 0,
       inFlight: 0,
@@ -343,7 +349,7 @@ test('combined factory resource, ambient snapshot and metadata exceed one record
     expect(ambient.reads()).toBe(0)
     expect(bodies.join('')).not.toContain('factory-mutated-after-construction')
     expect(bodies.join('')).not.toContain('resource-accessor-private')
-    expect(otel.stats()).toMatchObject({
+    expect(otel.otlp.stats()).toMatchObject({
       active: 0,
       queued: 0,
       inFlight: 0,
@@ -429,7 +435,11 @@ test('opt-in long data-property error message and stack are redacted and bounded
     expect(bytes(recordFromWire(tracesBody!))).toBeLessThanOrEqual(16_384)
     expect(bodies.join('')).not.toContain(secret)
     expect(bodies.join('')).not.toContain('exception.escaped')
-    expect(otel.stats()).toMatchObject({ exported: 2, dropped: 0, active: 0 })
+    expect(otel.otlp.stats()).toMatchObject({
+      exported: 2,
+      dropped: 0,
+      active: 0,
+    })
   } finally {
     otel.dispose()
   }
@@ -487,7 +497,11 @@ test.each(['named', 'native'] as const)(
       expect(spans[0]!.status).toBeUndefined()
       expect(bodies[0]).not.toContain(secret)
       expect(bodies[0]).not.toContain('exception.escaped')
-      expect(otel.stats()).toMatchObject({ exported: 1, dropped: 0, active: 0 })
+      expect(otel.otlp.stats()).toMatchObject({
+        exported: 1,
+        dropped: 0,
+        active: 0,
+      })
     } finally {
       otel.dispose()
     }

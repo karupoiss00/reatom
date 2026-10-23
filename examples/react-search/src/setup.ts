@@ -1,5 +1,6 @@
 import { reatomOpentelemetry } from '@reatom/opentelemetry'
 import { withGDPR } from '@reatom/opentelemetry/gdpr'
+import { withOTLP } from '@reatom/opentelemetry/otlp'
 import { withWebAnalytics } from '@reatom/opentelemetry/web-analytics'
 
 const collectorEndpoint = import.meta.env.VITE_OTEL_ENDPOINT || null
@@ -16,18 +17,19 @@ const isTracedAppTarget = (target: { name: string }) => {
   )
 }
 
-export const otel = reatomOpentelemetry({
+const telemetry = reatomOpentelemetry({
   name: 'search',
-  endpoint: collectorEndpoint,
   serviceName: 'github-search-web',
   environment: import.meta.env.MODE,
   skipGlobalExtension: false,
   filter: isTracedAppTarget,
   keepRecords: import.meta.env.DEV,
-}).extend(
-  withGDPR({ name: 'consent', categories: { analytics: false } }),
-  withWebAnalytics(),
-)
+}).extend(withGDPR({ name: 'consent', categories: { analytics: false } }))
+
+if (collectorEndpoint)
+  telemetry.extend(withOTLP({ endpoint: collectorEndpoint }))
+
+export const otel = telemetry.extend(withWebAnalytics())
 
 export const consent = otel.gdpr
 export const analytics = otel.analytics

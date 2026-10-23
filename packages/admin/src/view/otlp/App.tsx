@@ -1,3 +1,5 @@
+import { stringifyJson } from '../../serialize'
+
 import {
   addChangeHook,
   atom,
@@ -395,12 +397,13 @@ export const OtlpApp = ({
         {() => {
           const stats = connection?.stats()
           if (!stats) return null
-          return `queued ${stats.queued} · in flight ${stats.inFlight} · exported ${stats.exported} · dropped ${stats.dropped}`
+          const delivery = connection?.deliveryStats()
+          return `captured ${stats.captured} · retained ${stats.retained} · dropped ${stats.dropped}${delivery ? ` · queued ${delivery.queued} · in flight ${delivery.inFlight} · exported ${delivery.exported} · delivery dropped ${delivery.dropped}` : ''}`
         }}
       </span>
       <span>
         {() =>
-          connection?.stats()?.transportQuarantined
+          connection?.deliveryStats()?.transportQuarantined
             ? 'Transport quarantined'
             : null
         }
@@ -413,12 +416,13 @@ export const OtlpApp = ({
       <Popover triggerLabel="Drop reasons" label="Dropped by reason">
         <span>
           {() => {
-            const reasons = connection?.stats()?.droppedByReason ?? {}
-            const entries = Object.entries(reasons)
-            if (entries.length === 0) return 'No dropped records'
-            return entries
-              .map(([reason, count]) => `${reason}: ${count}`)
-              .join(', ')
+            const capture = Object.entries(
+              connection?.stats()?.droppedByReason ?? {},
+            ).map(([reason, count]) => `capture ${reason}: ${count}`)
+            const delivery = Object.entries(
+              connection?.deliveryStats()?.droppedByReason ?? {},
+            ).map(([reason, count]) => `delivery ${reason}: ${count}`)
+            return [...capture, ...delivery].join(', ') || 'No dropped records'
           }}
         </span>
       </Popover>
@@ -676,7 +680,7 @@ const ImportRecords = ({ admin }: { admin: OtlpAdmin }) => {
 }
 
 function downloadRecords(records: readonly unknown[]) {
-  const blob = new Blob([JSON.stringify(records, null, 2)], {
+  const blob = new Blob([stringifyJson(records, 2)!], {
     type: 'application/json',
   })
   const url = URL.createObjectURL(blob)

@@ -59,7 +59,7 @@ export const createContextLossWarner = (enabled: () => boolean) => {
     ) {
       warnedTargets.add(target)
       console.warn(
-        `[@reatom/opentelemetry] warnContextLoss: "${name}" started a fallback trace from outside a Reatom frame (missing wrap / context loss)`,
+        `[@reatom/opentelemetry] warnContextLoss: "${name}" started fallback trace outside Reatom; check wrap`,
       )
     }
     hadFallbackThisTask = true

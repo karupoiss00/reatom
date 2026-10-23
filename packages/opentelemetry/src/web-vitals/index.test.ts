@@ -1,14 +1,13 @@
 import { context } from '@reatom/core'
-import { onTestFinished, afterEach, expect, test, vi } from 'vitest'
+import { afterEach, expect, onTestFinished, test, vi } from 'vitest'
 import type { Metric } from 'web-vitals'
 
-import { browserCaptureOf, installBrowserCapture } from '../browserCapture.ts'
 import type { BrowserCapture } from '../browserCapture.ts'
-import type { ReatomOpentelemetry } from '../reatomOpentelemetry.ts'
-import { withWebVitals } from './index.ts'
-import { reatomOpentelemetry } from '../reatomOpentelemetry.ts'
-import { installDomStubs } from '../test-helpers.ts'
+import { browserCaptureOf, installBrowserCapture } from '../browserCapture.ts'
 import { faroTransport } from '../faro/index.ts'
+import type { ReatomOpentelemetry } from '../reatomOpentelemetry.ts'
+import { installDomStubs, reatomTestTelemetry } from '../test-helpers.ts'
+import { withWebVitals } from './index.ts'
 
 const callbacks = vi.hoisted(() => [] as Array<(metric: Metric) => void>)
 vi.mock('web-vitals', () =>
@@ -28,7 +27,7 @@ afterEach(() => {
 const setup = () => {
   const dom = installDomStubs()
   onTestFinished(() => dom.restore())
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'web-vitals-observer-spy',
     endpoint: null,
     skipGlobalExtension: true,
@@ -135,7 +134,7 @@ test('real parent honors diagnostics/log switches, explicit disposal, keyed repl
         serviceName: 'metrics',
         skipGlobalExtension: true,
       }
-      const otel = reatomOpentelemetry(options)
+      const otel = reatomTestTelemetry(options)
       try {
         const first = applyVitals(otel)
         callbacks[0]!(metric)
@@ -165,7 +164,7 @@ test('real parent honors diagnostics/log switches, explicit disposal, keyed repl
         callbacks[0]!(metric)
         expect(otel.records()).toHaveLength(1)
         otel.set((value) => ({ ...value, signals: { logs: true } }))
-        const replacement = reatomOpentelemetry(options)
+        const replacement = reatomTestTelemetry(options)
         try {
           callbacks[0]!(metric)
           expect(otel.records()).toHaveLength(0)
@@ -200,7 +199,7 @@ test('real queue and Faro transport preserve native lowercase Web Vitals values 
       context: Record<string, string>
     }>
   }> = []
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'web-vitals-faro-wire',
     endpoint: null,
     serviceName: 'metrics',

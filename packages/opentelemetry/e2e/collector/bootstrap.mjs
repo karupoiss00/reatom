@@ -2,6 +2,7 @@
 
 import { action, bind, wrap } from '@reatom/core'
 import { reatomOpentelemetry } from '@reatom/opentelemetry'
+import { withOTLP } from '@reatom/opentelemetry/otlp'
 
 const params = new URLSearchParams(location.search)
 const traced = params.get('mode') !== 'raw'
@@ -9,20 +10,12 @@ const run = bind((callback) => callback())
 const otel = traced
   ? reatomOpentelemetry({
       name: `collector-${__APP__}`,
-      endpoint:
-        params.get('offline') === 'true'
-          ? 'http://collector:4319'
-          : 'http://collector:4318',
       serviceName: `collector-${__APP__}`,
       resourceAttributes: {
         'test.case_id': params.get('case'),
         'test.run_id': params.get('run'),
       },
-      maxBatchSize: 10000,
-      maxQueueSize: 20000,
-      batchInterval: 60000,
-      retry: { maxRetries: 0 },
-      useBeacon: params.get('beacon') === 'true',
+      recordLimit: 20000,
       filter: (target) => {
         const actionAdmitted =
           __APP__ === 'tree'
@@ -45,7 +38,19 @@ const otel = traced
             },
           }
         : {}),
-    })
+    }).extend(
+      withOTLP({
+        endpoint:
+          params.get('offline') === 'true'
+            ? 'http://collector:4319'
+            : 'http://collector:4318',
+        maxBatchSize: 10000,
+        maxQueueSize: 20000,
+        batchInterval: 60000,
+        retry: { maxRetries: 0 },
+        useBeacon: params.get('beacon') === 'true',
+      }),
+    )
   : undefined
 
 // Import the unchanged entrypoint only after the adapter has been installed.
@@ -68,11 +73,11 @@ const controls = {
   ready: true,
   app: __APP__,
   traced,
-  stats: () => otel?.stats(),
+  stats: () => otel?.otlp.stats(),
   flush: async () => {
     await Promise.allSettled(pending)
     await otel?.flush()
-    return otel?.stats()
+    return otel?.otlp.stats()
   },
   dispose: () => otel?.dispose(),
   snapshot: () =>

@@ -9,8 +9,11 @@ import {
 } from '@reatom/core'
 import { expect, test, vi } from 'vitest'
 
-import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
-import { installDomStubs, parseSpans } from './test-helpers.ts'
+import {
+  installDomStubs,
+  parseSpans,
+  reatomTestTelemetry,
+} from './test-helpers.ts'
 
 test.each(['size', 'timer', 'flush'] as const)(
   'transport can read its bound computed when dispatched by %s',
@@ -35,7 +38,7 @@ test.each(['size', 'timer', 'flush'] as const)(
         return new Response(null)
       }),
     )
-    const otel = reatomOpentelemetry({
+    const otel = reatomTestTelemetry({
       name: 'observationParity',
       endpoint: 'https://collector.invalid',
       serviceName: 'transport-observation',
@@ -56,7 +59,7 @@ test.each(['size', 'timer', 'flush'] as const)(
       await flush
       await otel.flush()
       expect(sent).toEqual([{ token: 'token-7', names: ['transport.target'] }])
-      expect(otel.stats()).toMatchObject({
+      expect(otel.otlp.stats()).toMatchObject({
         exported: 1,
         dropped: 0,
         inFlight: 0,
@@ -77,7 +80,7 @@ test.each(['size', 'timer', 'flush'] as const)(
 
 test('dispose prevents a deferred transport from starting and releases its lease', async () => {
   const fetch = vi.fn(async () => new Response(null))
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'observationParity',
     endpoint: 'https://collector.invalid',
     serviceName: 'transport-dispose',
@@ -90,7 +93,7 @@ test('dispose prevents a deferred transport from starting and releases its lease
     await Promise.resolve()
     await otel.flush()
     expect(fetch).not.toHaveBeenCalled()
-    expect(otel.stats()).toMatchObject({
+    expect(otel.otlp.stats()).toMatchObject({
       inFlight: 0,
       exported: 0,
       droppedByReason: { disposed: 1 },
@@ -115,7 +118,7 @@ test.each(['action', 'async'] as const)(
         return phase
       }, 'capture-late.lazy'),
     )
-    const otel = reatomOpentelemetry({
+    const otel = reatomTestTelemetry({
       name: 'observationParity',
       endpoint: 'https://collector.invalid',
       serviceName: 'capture-late',
@@ -179,7 +182,7 @@ test.each([false, true])(
     })
     let requests = 0
     const otel = traced
-      ? reatomOpentelemetry({
+      ? reatomTestTelemetry({
           name: 'observationParity',
           endpoint: 'https://collector.invalid',
           serviceName: 'capture-parity',
@@ -229,7 +232,7 @@ test('beacon wrappers execute application actions without creating another expor
   let reported = 0
   let report = () => {}
   let requests = 0
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'observationParity',
     endpoint: 'https://collector.invalid',
     serviceName: 'beacon-observation',
@@ -251,7 +254,7 @@ test('beacon wrappers execute application actions without creating another expor
     windowListeners.get('pagehide')!()
     expect(requests).toBe(1)
     expect(reported).toBe(1)
-    expect(otel.stats()).toMatchObject({
+    expect(otel.otlp.stats()).toMatchObject({
       beaconAccepted: 1,
       queued: 0,
       dropped: 0,

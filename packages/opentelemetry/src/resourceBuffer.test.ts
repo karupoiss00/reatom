@@ -3,9 +3,8 @@ import { Buffer } from 'node:buffer'
 import { action, bind, context } from '@reatom/core'
 import { expect, test } from 'vitest'
 
-import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
 import { resourceAttributesVar } from './resourceAttributesVar.ts'
-import { parsePayload } from './test-helpers.ts'
+import { parsePayload, reatomTestTelemetry } from './test-helpers.ts'
 import type { OtlpAttrValue } from './toOtlpValue.ts'
 
 const createRun = () =>
@@ -13,7 +12,7 @@ const createRun = () =>
 
 const setup = (resourceAttributes: Record<string, OtlpAttrValue> = {}) => {
   const bodies: string[] = []
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'resourceBuffer',
     endpoint: 'https://collector.invalid',
     serviceName: 'resource-buffer',

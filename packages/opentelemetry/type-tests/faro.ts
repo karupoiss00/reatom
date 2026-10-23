@@ -1,4 +1,5 @@
-import type { ReatomOpentelemetry, Transport } from '../src/index.ts'
+import type { ReatomOpentelemetry } from '../src/index.ts'
+import type { Transport } from '../src/otlp/index.ts'
 import { faroTransport, logMeasurement } from '../src/faro/index.ts'
 
 declare const otel: ReatomOpentelemetry

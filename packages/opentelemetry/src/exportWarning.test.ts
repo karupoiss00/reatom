@@ -1,8 +1,7 @@
 import { action, context } from '@reatom/core'
 import { afterEach, expect, test, vi } from 'vitest'
 
-import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
-import { withWarnSpy } from './test-helpers.ts'
+import { reatomTestTelemetry, withWarnSpy } from './test-helpers.ts'
 
 const cleanups: Array<() => void> = []
 
@@ -12,12 +11,12 @@ afterEach(() => {
 })
 
 const start = (
-  overrides: Partial<Parameters<typeof reatomOpentelemetry>[0]> = {},
+  overrides: Partial<Parameters<typeof reatomTestTelemetry>[0]> = {},
 ) => {
   const fetchMock = vi.fn<typeof globalThis.fetch>(
     async () => new Response('{}', { status: 200 }),
   )
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: `export-warning-${Math.random().toString(16).slice(2)}`,
     endpoint: 'https://collector.invalid',
     serviceName: 'export-warning',
@@ -59,8 +58,8 @@ test('CORS fetch rejection warns once, drops the batch, and does not throw into 
       expect(fetchMock.mock.calls.length).toBeGreaterThan(1)
       expect(warn).toHaveBeenCalledTimes(1)
       expect(joinedWarn(warn.mock.calls[0])).toContain('OTLP export')
-      expect(otel.stats().dropped).toBeGreaterThan(0)
-      expect(hasDroppedReason(otel.stats().droppedByReason)).toBe(true)
+      expect(otel.otlp.stats().dropped).toBeGreaterThan(0)
+      expect(hasDroppedReason(otel.otlp.stats().droppedByReason)).toBe(true)
       expect(unhandled).toEqual([])
     } finally {
       process.off('unhandledRejection', onUnhandled)
@@ -80,8 +79,8 @@ test('HTTP 401 export warns once with a status reason and increments dropped', a
     expect(warn).toHaveBeenCalledTimes(1)
     expect(joinedWarn(warn.mock.calls[0])).toContain('OTLP export')
     expect(joinedWarn(warn.mock.calls[0])).toMatch(/401/)
-    expect(otel.stats().dropped).toBeGreaterThan(0)
-    expect(hasDroppedReason(otel.stats().droppedByReason)).toBe(true)
+    expect(otel.otlp.stats().dropped).toBeGreaterThan(0)
+    expect(hasDroppedReason(otel.otlp.stats().droppedByReason)).toBe(true)
   })
 })
 
@@ -94,12 +93,12 @@ test('second identical export failure does not warn again; a new kind warns once
     expect(context.start(() => ping())).toBe('ok')
     await context.start(() => otel.flush())
     expect(warn).toHaveBeenCalledTimes(1)
-    const droppedAfterFirst = otel.stats().dropped
+    const droppedAfterFirst = otel.otlp.stats().dropped
 
     expect(context.start(() => ping())).toBe('ok')
     await context.start(() => otel.flush())
     expect(warn).toHaveBeenCalledTimes(1)
-    expect(otel.stats().dropped).toBeGreaterThan(droppedAfterFirst)
+    expect(otel.otlp.stats().dropped).toBeGreaterThan(droppedAfterFirst)
 
     fetchMock.mockResolvedValue(new Response('denied', { status: 401 }))
     expect(context.start(() => ping())).toBe('ok')
@@ -119,8 +118,8 @@ test('production still increments dropped when export fails and does not warn', 
     expect(context.start(() => ping())).toBe('ok')
     await expect(context.start(() => otel.flush())).resolves.toBeUndefined()
 
-    expect(otel.stats().dropped).toBeGreaterThan(0)
-    expect(hasDroppedReason(otel.stats().droppedByReason)).toBe(true)
+    expect(otel.otlp.stats().dropped).toBeGreaterThan(0)
+    expect(hasDroppedReason(otel.otlp.stats().droppedByReason)).toBe(true)
     expect(warn).not.toHaveBeenCalled()
   })
 })

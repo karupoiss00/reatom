@@ -2,39 +2,52 @@
   {
     "name": "opentelemetry",
     "path": "dist/index.js",
-    "import": "{ reatomOpentelemetry, otlpTransport, checkSensitiveNames }",
-    "ignore": ["@reatom/core"],
+    "import": "{ reatomOpentelemetry, checkSensitiveNames }",
+    "ignore": [
+      "@reatom/core"
+    ],
     "limit": "16 KB"
   },
   {
     "name": "gdpr",
     "path": "dist/gdpr/index.js",
     "import": "{ withGDPR, reatomGDPR, DEFAULT_GDPR_CATEGORIES }",
-    "ignore": ["@reatom/core"],
+    "ignore": [
+      "@reatom/core"
+    ],
     "limit": "500 B"
   },
   {
     "name": "web-analytics (optional extension)",
     "path": "dist/web-analytics/index.js",
     "import": "{ withWebAnalytics }",
-    "ignore": ["@reatom/core"],
+    "ignore": [
+      "@reatom/core"
+    ],
     "limit": "4.5 KB"
   },
   {
     "name": "web-analytics (tracer + analytics)",
-    "path": ["dist/index.js", "dist/web-analytics/index.js"],
+    "path": [
+      "dist/index.js",
+      "dist/web-analytics/index.js"
+    ],
     "import": {
-      "./dist/index.js": "{ reatomOpentelemetry, otlpTransport, checkSensitiveNames }",
+      "./dist/index.js": "{ reatomOpentelemetry, checkSensitiveNames }",
       "./dist/web-analytics/index.js": "{ withWebAnalytics }"
     },
-    "ignore": ["@reatom/core"],
+    "ignore": [
+      "@reatom/core"
+    ],
     "limit": "19 KB"
   },
   {
     "name": "faro (optional receiver bridge)",
     "path": "dist/faro/index.js",
     "import": "{ faroTransport, logMeasurement }",
-    "ignore": ["@reatom/core"],
+    "ignore": [
+      "@reatom/core"
+    ],
     "limit": "3 KB"
   }
 ]

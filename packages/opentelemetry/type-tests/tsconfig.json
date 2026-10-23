@@ -7,7 +7,8 @@
     "./gdpr.ts",
     "./faro.ts",
     "./browser-metrics.ts",
-    "./native-extensions.ts"
+    "./native-extensions.ts",
+    "./otlp.ts"
   ],
   "compilerOptions": {
     "noEmit": true

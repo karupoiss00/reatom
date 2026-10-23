@@ -3,8 +3,7 @@ import { expect, test, vi } from 'vitest'
 
 import type { CaptureValuesOptions } from './captureValues.ts'
 import type { ReatomOpentelemetry } from './reatomOpentelemetry.ts'
-import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
-import { parseSpans } from './test-helpers.ts'
+import { parseSpans, reatomTestTelemetry } from './test-helpers.ts'
 
 const ENDPOINT = 'https://otel.test'
 
@@ -19,7 +18,7 @@ const setup = (captureValues?: CaptureValuesOptions) => {
     exported.push(JSON.parse(String(init?.body)))
     return new Response('{}', { status: 200 })
   })
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'lifecycle',
     endpoint: ENDPOINT,
     serviceName: 'guard-test',

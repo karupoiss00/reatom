@@ -3,6 +3,11 @@ import { onTestFinished, vi } from 'vitest'
 
 import type { LogRecordInput } from './buildLogRecord.ts'
 import type { SpanInput } from './buildSpan.ts'
+import { type OTLPInput, withOTLP } from './otlp/index.ts'
+import {
+  reatomOpentelemetry,
+  type ReatomOpentelemetryInput,
+} from './reatomOpentelemetry.ts'
 import { createWithOTel } from './withOTel.ts'
 
 /** Always-admitting sink for middleware unit tests; production uses the queue. */
@@ -295,3 +300,59 @@ export const findSpan = (body: string | unknown, name: string): ParsedSpan => {
 /** Matchers shared by tests. */
 export const HEX_TRACE_ID = /^[0-9a-f]{32}$/
 export const HEX_SPAN_ID = /^[0-9a-f]{16}$/
+
+const testAckTransport: NonNullable<OTLPInput['transports']>[number] = async (
+  batch,
+) => ({
+  accepted: batch.itemCount,
+  rejected: 0,
+})
+
+/** Export integration fixture: capture and OTLP retain their real public APIs. */
+export const reatomTestTelemetry = (
+  input: Omit<ReatomOpentelemetryInput, 'serviceName'> & {
+    serviceName?: string
+  } & OTLPInput,
+) => {
+  const exportKeys = new Set([
+    'endpoint',
+    'headers',
+    'transports',
+    'batchInterval',
+    'maxBatchSize',
+    'maxQueueSize',
+    'exportTimeoutMs',
+    'useBeacon',
+    'retry',
+    'fetch',
+    'sendBeacon',
+  ])
+  // Export-focused fixtures use an explicit destination without network I/O.
+  const needsTestDestination =
+    input.endpoint === null && !input.transports?.length
+  const capture = {} as ReatomOpentelemetryInput
+  const delivery = {} as OTLPInput
+  // Preserve lazy fetch/beacon getters exercised by teardown regression tests.
+  for (const [key, descriptor] of Object.entries(
+    Object.getOwnPropertyDescriptors(input),
+  )) {
+    if (key === 'transports' && needsTestDestination) continue
+    Object.defineProperty(
+      exportKeys.has(key) ? delivery : capture,
+      key,
+      descriptor,
+    )
+  }
+  if (needsTestDestination) delivery.transports = [testAckTransport]
+  capture.serviceName ??= input.name
+  capture.keepRecords ??= input.endpoint === null
+  capture.maxActive ??= input.maxQueueSize
+  capture.recordLimit ??= input.maxQueueSize
+  const instance = reatomOpentelemetry(capture)
+  try {
+    return instance.extend(withOTLP(delivery))
+  } catch (error) {
+    instance.dispose()
+    throw error
+  }
+}

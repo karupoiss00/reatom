@@ -9,7 +9,7 @@ application scenarios. Use one shared `@reatom/core` peer dependency.
 
 `reatomOpentelemetry(input)` returns a genuine `Atom<OtelOptions>` with native
 `.extend`, `.set`, hooks and subscriptions. Read live settings with `otel()` and
-update with `otel.set(current => ({ ...current, headers: nextHeaders }))`.
+update with `otel.set(current => ({ ...current, keepRecords: false }))`.
 There is no `.options` alias. Native `.name` is `otel.<name>`; `.instanceName`
 retains the raw construction name used for registry identity and analytics storage.
 
@@ -18,86 +18,78 @@ Install before application model definitions; earlier targets need explicit
 `wrap(callback)` rules apply. This is not a general OpenTelemetry provider or
 zone patch for other SDKs. The root imports no optional browser collectors.
 
-The factory owns one runtime and shared queues across Reatom roots. Readonly
+The factory owns one local capture runtime across Reatom roots. An optional exporter owns its shared delivery queues. Readonly
 `records` preserves isolated-root views and a default/Admin aggregate view; do
 not treat a context boundary as an independent queue or delivery lifecycle.
 Distinct instances have their own runtimes. Same-name construction disposes the
 previous instance and its installed features.
 
-| Constructor input                               | Default and behavior                                                                                                                                                        |
-| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`                                          | Required nonempty raw registry key, exposed as `instanceName`.                                                                                                              |
-| `endpoint`                                      | Required absolute HTTP(S) base URL or `null`. Appends `/v1/traces` and `/v1/logs`; empty/relative URLs throw. `null` disables native export, not explicit transports.       |
-| `serviceName`                                   | Required construction-time resource `service.name`.                                                                                                                         |
-| `serviceVersion`, `environment`                 | Optional construction-time `service.version`, `deployment.environment.name`.                                                                                                |
-| `resourceAttributes`                            | Extra bounded resource attributes, captured at construction and exposed through readonly `.resource`.                                                                       |
-| `skipGlobalExtension`                           | `false`; observe future actions and atom/computed updates automatically. Explicit `withOTel` works with `true`. Fixed at construction.                                      |
-| `extend(target, withOTel)`                      | Construction hook for future model definitions, e.g. assign client kind to `api.*`. This is distinct from native `otel.extend(...)`.                                        |
-| `serialize(value, key)`                         | Fixed value transform replacing instance `redact`; sensitive-key masking still follows.                                                                                     |
-| `batchInterval`, `maxBatchSize`, `maxQueueSize` | `3000` ms, `100` records/batch, `1000` reservations per signal queue. Queue capacity/scheduling and local `.recordLimit` are fixed.                                         |
-| `exportTimeoutMs`                               | `30000` ms; separate batch and flush-caller deadlines. Fixed at construction.                                                                                               |
-| `retry`                                         | Native endpoint: `{ maxRetries: 3, baseDelayMs: 1000, maxDelayMs: 30000 }`, exponential backoff/full jitter. Up to four attempts; no unload retries. Fixed at construction. |
-| `useBeacon`                                     | `false`; fixed opt-in unload fallback. Cannot carry custom headers; acceptance is not receipt.                                                                              |
-| `version`                                       | Scope version, default `''`, separate from `serviceVersion`. Fixed at construction.                                                                                         |
-| `fetch`, `sendBeacon`                           | Fixed platform injection points, primarily for tests.                                                                                                                       |
-| Live inputs below                               | Set initial live settings; their current values are read from `otel()`.                                                                                                     |
+The root SDK captures locally; it has no endpoint, transport, retry or delivery
+queue configuration. Apply [withOTLP](#delivery-and-transports) to export.
+
+| Constructor input                                     | Default and behavior                                                                                                                               |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`, `serviceName`                                 | Required nonempty registry name and producing-service identity. Native `.name` is `otel.<name>`; `.instanceName` is the raw registry/storage name. |
+| `serviceVersion`, `environment`, `resourceAttributes` | Construction-time resource metadata, exposed as readonly `.resource`.                                                                              |
+| `recordLimit`                                         | `1000` retained canonical records; positive safe integer. Fixed at construction.                                                                   |
+| `maxActive`                                           | `1000` unfinished local operations; positive safe integer. Fixed at construction. Local admission is bounded independently of an export queue.     |
+| `skipGlobalExtension`                                 | `false`; observe future actions/updates automatically. Explicit `withOTel` works with true. Fixed at construction.                                 |
+| `extend(target, withOTel)`                            | Construction hook for future model definitions, distinct from native `otel.extend(...)`.                                                           |
+| `serialize(value, key)`                               | Fixed automatic-value transform replacing instance redact; sensitive-key masking still follows.                                                    |
+| `version`                                             | Scope version, default `''`, separate from serviceVersion. Captured with each record.                                                              |
+| Live settings below                                   | Also accepted as initial constructor settings.                                                                                                     |
 
 A random `service.instance.id`, SDK metadata and available low-entropy browser
-hints are added to the resource; the raw user agent is not collected. Recreate an
-instance to change construction-only inputs. Those fields are absent from the
-public writable `OtelOptions` type; no live `resource` option is provided.
+hints enter the construction resource; no raw user agent is collected. Recreate
+the SDK to change fixed inputs.
 
 ### Live settings
 
-| Setting                             | Default and behavior                                                                                                                                                                                                                                                              |
-| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `endpoint`, `headers`, `transports` | Delivery destinations and headers. Native JSON Content-Type is fixed; browser CORS must allow your origin/headers. Extra `Transport` destinations work even with `endpoint: null`.                                                                                                |
-| `filter(target)`                    | Select automatic targets; future installation only. Existing target middleware is not removed by changing the filter. Explicit `withOTel` still records. Internal `analytics.*`/`otel.*` names are excluded; private targets are normally skipped, with route-related exceptions. |
-| `captureValues`                     | Enabled by default. `false` disables automatic snapshots; `{ redact(key, value) }` transforms before sensitive-key masking. A failing transform can discard a record.                                                                                                             |
-| `keepRecords`                       | `false`; enable local retention alongside native export. `endpoint: null` already retains records.                                                                                                                                                                                |
-| `localValues`                       | `false`, `true` or `'all'`; [raw local references](#local-records-and-values).                                                                                                                                                                                                    |
-| `sampling`                          | `{ ratio: 1, by: 'trace', updates: 1, errors: 'always' }`. Ratios clamp to 0–1. `updates` samples update logs; remote parent flags take precedence. `by: 'session'` shares a tracer-session decision, independent of analytics storage.                                           |
-| `roots`                             | `['route', 'mount', 'action', 'atom']`; `[]` disables automatic root machines, while manual roots and app-session fallback remain. The accepted `mount` flag does not implement mount/render profiling.                                                                           |
-| `route`                             | `'child'` joins top-level actions to the page; `'link'` creates action traces linked to it.                                                                                                                                                                                       |
-| `maxSpansPerTrace`, `maxTraceMs`    | `1000` / `60000` ms; later spans start linked continuation traces. `Infinity` disables a limit.                                                                                                                                                                                   |
-| `warnContextLoss`                   | Enabled in development/test (`NODE_ENV`, or `import.meta.env.DEV` when unset). Warns once per target about some missing `wrap` boundaries; not every context loss is detectable.                                                                                                  |
-| `consent`                           | Category record, absent by default. Explicit `diagnostics: false` holds diagnostic admission/export and automatic values. Prefer first-applied [withGDPR](#consent-form) for submitted choice binding.                                                                            |
-| `signals`                           | `{ traces?, logs? }`, absent means on. A false signal independently blocks it. Public manual logs obey `logs`, while the caller owns category consent.                                                                                                                            |
+Read `otel()` and update through `otel.set(...)`.
 
-`consent` and `signals` are live settings, not constructor inputs. Without a
-bound form, set them through `otel.set`; omitted fields retain prior values.
-With `withGDPR`, the submitted form is the effective category source, so change
-the form rather than trying to grant a different policy through the settings.
-Omitting GDPR leaves diagnostics enabled. Analytics has a separate denied-by-default
-category and [feature switch](#extension-lifecycle).
+| Setting                          | Default and behavior                                                                                                                                                                                             |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `filter(target)`                 | Select future automatic target installation. Existing middleware is not removed by a filter change. Explicit withOTel still records. Internal/private names are normally skipped, with route-related exceptions. |
+| `captureValues`                  | Enabled. False disables automatic bounded snapshots; `{ redact(key, value) }` transforms before sensitive-key masking.                                                                                           |
+| `keepRecords`                    | `true`; false disables local retention, without disabling capture or an attached exporter.                                                                                                                       |
+| `localValues`                    | `false`, `true`, `'all'`; raw debugging references only beside retained records.                                                                                                                                 |
+| `sampling`                       | `{ ratio: 1, by: 'trace', updates: 1, errors: 'always' }`; remote parent flags win. Ratios clamp to 0–1. Sampling controls export selection; locally retained capture can include unsampled records.             |
+| `roots`                          | Route/mount/action/atom flags; `[]` disables automatic roots while manual/app-session context remains. Accepted mount flag does not implement mount/render profiling.                                            |
+| `route`                          | `child` joins page context; `link` creates action traces linked to it.                                                                                                                                           |
+| `maxSpansPerTrace`, `maxTraceMs` | `1000`, `60000` ms; later spans start linked continuations. Infinity disables a limit.                                                                                                                           |
+| `warnContextLoss`                | On in development/test; warns about some missing wrap boundaries, not every context loss.                                                                                                                        |
+| `consent`, `signals`             | Optional initial/live category and trace/log switches. Bound GDPR is the effective category source; signal switches remain app-owned.                                                                            |
+
+Without GDPR, diagnostics remain enabled for local development. Apply GDPR before
+collectors/first capture when category control is required. Analytics' category,
+feature enablement and diagnostic/signal gates are independent.
 
 ## Instance members
 
-| Member                                        | Contract                                                                                                                                                                                                                                                                                         |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `otel()`, `otel.set(...)`, `otel.extend(...)` | Ordinary configuration atom operations. Extensions attach optional members to the same atom.                                                                                                                                                                                                     |
-| `name`, `instanceName`                        | Native instrumentation name (`otel.shop`) and readonly raw name (`shop`).                                                                                                                                                                                                                        |
-| `resource`, `recordLimit`                     | Readonly construction resource snapshot and local record retention capacity.                                                                                                                                                                                                                     |
-| `records`                                     | Genuine readonly computed of serialized records; [local inspection](#local-records-and-values). No `.set` or mutable array append.                                                                                                                                                               |
-| `stats`                                       | Genuine readonly computed of immutable delivery/capacity snapshots; supports reactive reads/subscriptions. Counters: `active`, `queued`, `inFlight`, `exported`, `dropped`, `droppedByReason`, `beaconAccepted`, `flushTimeouts`, `transportQuarantined`. Runtime also includes `invalidParent`. |
-| `disposed`                                    | Readonly computed terminal lifecycle state.                                                                                                                                                                                                                                                      |
-| `withOTel(options?)`                          | Target extension; [options below](#target-options).                                                                                                                                                                                                                                              |
-| `traceVar`                                    | Frame variable `{ traceId, spanId }`. Set manual/parsed parents inside a frame or scope with `.run(context, callback)`.                                                                                                                                                                          |
-| `attributesVar`                               | Frame-scoped explicit domain attributes. `.run(attributes, callback)` supplies a complete owned snapshot for that subtree; [capture timing](#common-attributes).                                                                                                                                 |
-| `createTrace({ name?, attributes? }?)`        | Fresh context with a short root; use `traceVar.set(otel.createTrace(...))` inside an action.                                                                                                                                                                                                     |
-| `traceparent()`                               | W3C header for active context, or `undefined`; propagation is manual unless explicitly configured.                                                                                                                                                                                               |
-| `parseTraceparent(header)`                    | Accepts `string \| null \| undefined`; context or `undefined`. Guard before setting. Malformed headers increment runtime `invalidParent` and warn once in dev; absent headers are silent.                                                                                                        |
-| `pageTrace()`                                 | Route root pair or `undefined`; need not be an analytics page trace.                                                                                                                                                                                                                             |
-| `localValuesOf(record)`                       | Raw values for a retained record, or `undefined`.                                                                                                                                                                                                                                                |
-| `clearRecords()`                              | Native action releasing retained records.                                                                                                                                                                                                                                                        |
-| `log(eventName, attributes?)`                 | Native manual-log action; obeys the logs signal. Explicit attributes are not auto-masked; caller owns category/privacy policy.                                                                                                                                                                   |
-| `transport(batch)`                            | Native action delivering one batch and fanning out to configured transports.                                                                                                                                                                                                                     |
-| `flush()`                                     | Native async action attempting finished records present at invocation, bounded by timeout. Does not await unfinished app actions or guarantee receipt.                                                                                                                                           |
-| `dispose()`                                   | Native terminal action stopping observation/features/queues and requesting export abort. Clears local records. Attempt flush first when shutdown delivery matters.                                                                                                                               |
+| Member                                        | Contract                                                                                                                                                                                                                                   |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `otel()`, `otel.set(...)`, `otel.extend(...)` | Ordinary configuration atom operations. Extensions attach optional members to the same atom.                                                                                                                                               |
+| `name`, `instanceName`                        | Native instrumentation name (`otel.shop`) and readonly raw name (`shop`).                                                                                                                                                                  |
+| `resource`, `recordLimit`                     | Readonly construction resource snapshot and local record retention capacity.                                                                                                                                                               |
+| `records`                                     | Genuine readonly computed of canonical safe records; [local inspection](#local-records-and-values). No `.set` or mutable array append.                                                                                                     |
+| `stats`                                       | Readonly `CaptureStats`: `active`, `captured`, `retained`, `dropped`, `droppedByReason`, `invalidParent`. These describe local capture, not delivery.                                                                                      |
+| `disposed`                                    | Readonly computed terminal lifecycle state.                                                                                                                                                                                                |
+| `withOTel(options?)`                          | Target extension; [options below](#target-options).                                                                                                                                                                                        |
+| `traceVar`                                    | Frame variable `{ traceId, spanId }`. Set manual/parsed parents inside a frame or scope with `.run(context, callback)`.                                                                                                                    |
+| `attributesVar`                               | Frame-scoped explicit domain attributes. `.run(attributes, callback)` supplies a complete owned snapshot for that subtree; [capture timing](#common-attributes).                                                                           |
+| `createTrace({ name?, attributes? }?)`        | Fresh context with a short root; use `traceVar.set(otel.createTrace(...))` inside an action.                                                                                                                                               |
+| `traceparent()`                               | W3C header for active context, or `undefined`; propagation is manual unless explicitly configured.                                                                                                                                         |
+| `parseTraceparent(header)`                    | Accepts `string \| null \| undefined`; context or `undefined`. Guard before setting. Malformed headers increment runtime `invalidParent` and warn once in dev; absent headers are silent.                                                  |
+| `pageTrace()`                                 | Route root pair or `undefined`; need not be an analytics page trace.                                                                                                                                                                       |
+| `localValuesOf(record)`                       | Raw values for a retained record, or `undefined`.                                                                                                                                                                                          |
+| `clearRecords()`                              | Native action releasing retained records.                                                                                                                                                                                                  |
+| `log(eventName, attributes?)`                 | Native manual-log action; obeys the logs signal. Explicit attributes are not auto-masked; caller owns category/privacy policy.                                                                                                             |
+| `flush()`                                     | Native async action forwarding to an optional exporter; resolves without export when none is attached. With OTLP, waits for finished records present at invocation up to its timeout, not unfinished app operations or guaranteed receipt. |
+| `dispose()`                                   | Native terminal action stopping observation/features and an attached exporter and requesting export abort. Clears local records. Attempt flush first when shutdown delivery matters.                                                       |
 
-Drop reasons are `capacity`, `oversized`, `disposed`, `export`, `timeout`,
-`observation`, `consent`, and optional analytics `rateLimit`. Production export
-failures stay out of the application error path; monitor counters and the receiver.
+Capture drops identify admission/observation/consent/rate limits. Delivery losses
+(export/timeout/wire size/queue pressure) belong to `.otlp.stats()`. Inspect both
+when export is attached; local retention is not a delivery acknowledgement.
 
 Actions become spans; updates become `reatom.atom.update` /
 `reatom.computed.update` logs; core `log` becomes `reatom.log`. Cross-trace computed
@@ -124,7 +116,7 @@ merge defined fields with the existing settings.
 | `importance`            | `'low' \| 'normal'` adds `reatom.importance`; it is metadata, not a delivery guarantee.                                                                                                                                     |
 
 Automatic snapshots bound depth to 5, entries to 100, strings to 2048 characters
-and captured bytes to 8192. Complete records have a 16 KiB export limit. Capture
+and captured bytes to 8192. The optional OTLP exporter separately enforces a 16 KiB encoded-record limit. Capture
 handles cycles without invoking getters, masks sensitive keys/names, and scrubs
 recognized contact/credential text. This does not sanitize arbitrary URLs,
 manual log attributes, `attributesVar` or custom domain attributes.
@@ -132,19 +124,32 @@ manual log attributes, `attributesVar` or custom domain attributes.
 
 ### Local records and values
 
-`endpoint: null` keeps records locally even when extra transports export them.
-`keepRecords: true` enables the same inspection with a native endpoint.
-`records()` holds serialized OTLP records and may include samples held back from
-export. `clearRecords()` releases retained records. See
-[Reatom admin](../admin/README.md) for an in-page inspection workflow.
+Local retention defaults on, independently of export. `.records` is a readonly
+computed of `readonly CapturedRecord[]`; clear with `clearRecords()`, or turn
+retention off through `keepRecords: false`. It preserves root-local views and the
+default/Admin aggregate view. Record eviction is bounded by `recordLimit`.
 
-`localValues: true` stores `{ params?, payload?, state?, error? }` beside locally
-retained records; `otel.localValuesOf(record)` reads it. These are **raw live
-references**, never copied, masked, truncated or exported. Instance capture,
-redaction and consent do not control this side channel. `true` honors per-target
-`captureValues: false`; `'all'` retains those values too. No local record means
-no retained raw value. Enable deliberately for local debugging and account for
-retained application objects.
+`CapturedRecord` is a discriminated union:
+
+- `CapturedSpan`: `type: 'span'`, name, string `kind`, numeric `startTimeMs`/`endTimeMs`, flags, optional parent/status/events/links.
+- `CapturedLog`: `type: 'log'`, eventName, numeric `timeMs`, severityNumber, optional body.
+- Both carry trace/span ids, plain `attributes` and `resourceAttributes` maps, scope metadata and optional automatic `values` (`params`, `payload`, `exceptionMessage`). Links/events also use plain attribute maps.
+
+These are safe owned canonical snapshots, not OTLP AnyValue envelopes or
+nanosecond strings. Automatic values retain typed snapshots; only OTLP formats
+wire text and protocol enums. Local snapshot/admission budgets and the exporter's
+16 KiB encoded-record budget are separate. A record retained locally does not
+prove wire admission or remote receipt. [Admin](../admin/README.md) consumes these
+records directly and retains OTLP file/replay import separately. Its JSON
+export serializes bigint as decimal strings and bytes as numeric arrays without
+changing the captured values.
+
+`localValues: true` stores raw `{ params?, payload?, state?, error? }` references
+beside retained records; read with `localValuesOf(record)`. They are never copied,
+masked, truncated or exported and ignore instance capture/redaction/consent.
+True honors per-target captureValues false; `'all'` includes those targets too.
+Without retention, no raw side channel is retained. Enable deliberately for local
+debugging and account for object retention.
 
 ## Common attributes
 
@@ -167,7 +172,6 @@ const source = computed(() => {
 }, 'auth.telemetry')
 const otel = reatomOpentelemetry({
   name: 'shop.attributes',
-  endpoint: null,
   serviceName: 'shop-web',
 }).extend(withAttributes(source))
 const load = action(async () => {
@@ -199,8 +203,8 @@ across feature toggles; resources snapshot at observer delivery. See
 Import `withWebAnalytics(options?)` from `@reatom/opentelemetry/web-analytics` and
 apply through `otel.extend(...)`. It adds `.analytics`, a native requested-enable
 boolean atom with readonly `.visitor`, `.session`, `.page`, `.attribution`, `.focus`
-children and a `.pageView(attributes?)` action. The feature uses its parent's
-transport, queues and local record stream. There is no instance-creating overload,
+children and a `.pageView(attributes?)` action. The feature writes to its parent's canonical capture stream; delivery uses an
+optional attached exporter. There is no instance-creating overload,
 separate `.otel` or separate analytics `.dispose`; use `.setFalse()` to disable
 or `otel.dispose()` for terminal teardown. Without `window`, capture is a no-op
 with a development warning. See [extension lifecycle](#extension-lifecycle).
@@ -365,7 +369,9 @@ or use a logger that the console connector does not capture. Console collection
 has no URL exclusion option.
 
 ```ts
-import { reatomOpentelemetry, type Transport } from '@reatom/opentelemetry'
+import { withOTLP } from '@reatom/opentelemetry/otlp'
+import { reatomOpentelemetry } from '@reatom/opentelemetry'
+import { type Transport } from '@reatom/opentelemetry/otlp'
 import { withBrowserNetworkMonkeypatch } from '@reatom/opentelemetry/browser-network'
 import { withBrowserPerformance } from '@reatom/opentelemetry/browser-performance'
 
@@ -387,10 +393,12 @@ const transport: Transport = async (batch) => {
 }
 const otel = reatomOpentelemetry({
   name: 'custom-collector',
-  endpoint: null,
   serviceName: 'shop-web',
-  transports: [transport],
 }).extend(
+  withOTLP({
+    endpoint: null,
+    transports: [transport],
+  }),
   withBrowserNetworkMonkeypatch({ ignoreUrl: ignoreCollector }),
   withBrowserPerformance({ ignoreUrl: ignoreCollector }),
 )
@@ -402,6 +410,45 @@ protocol, authentication, deadline and retry policy.
 
 ## Delivery and transports
 
+Import `withOTLP`, `otlpTransport` and transport types from
+`@reatom/opentelemetry/otlp`. `withOTLP(input)` adds `.otlp`, a native config atom
+with readonly delivery `.stats` and a `.transport(batch)` action. The root has no
+transport member. Factories are inert until applied; parent disposal terminates
+export. Installation does not replay records captured before attachment, so apply
+it before the work you want to export.
+
+```ts
+import { reatomOpentelemetry } from '@reatom/opentelemetry'
+import { withOTLP } from '@reatom/opentelemetry/otlp'
+
+const otel = reatomOpentelemetry({
+  name: 'shop.export',
+  serviceName: 'shop-web',
+}).extend(withOTLP({ endpoint: 'https://collector.example/otel' }))
+
+otel.otlp.set((current) => ({ ...current, headers: { 'x-tenant': 'shop' } }))
+await otel.flush()
+const captured = otel.stats()
+const delivered = otel.otlp.stats()
+```
+
+| OTLP input                                      | Contract                                                                                                                                                                                                                                         |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `endpoint`                                      | Required absolute HTTP(S) base URL, appending /v1/traces and /v1/logs. Null requires nonempty transports. Empty/relative URLs or a destination-less config throw.                                                                                |
+| `headers`, `transports`                         | Optional headers and extra destinations. These and endpoint are live through `otel.otlp.set(...)`. Settings are copied at admission to the config atom, including headers and transport list; mutating the input object does not reconfigure it. |
+| `batchInterval`, `maxBatchSize`, `maxQueueSize` | Fixed construction defaults 3000 ms, 100 records/batch, 1000 reservations per signal queue.                                                                                                                                                      |
+| `exportTimeoutMs`                               | Fixed 30000 ms, separately bounding a batch and each flush caller.                                                                                                                                                                               |
+| `retry`                                         | Fixed native endpoint policy: 3 retries, 1000 ms base, 30000 ms cap, full jitter. Up to four attempts; unload has no retries.                                                                                                                    |
+| `useBeacon`                                     | Fixed opt-in false by default. Beacon cannot carry custom headers and acceptance is not receipt.                                                                                                                                                 |
+| `fetch`, `sendBeacon`                           | Fixed platform injection points.                                                                                                                                                                                                                 |
+
+Delivery `.stats()` reports active, queued, inFlight, exported, dropped,
+droppedByReason, beaconAccepted, flushTimeouts and transportQuarantined. It is
+separate from root `CaptureStats`; a local capture is not a fake export success.
+Wire encoding, OTLP resource/scope grouping, partial-success parsing, worker/retry
+policy, offline holds and unload selection exist only in this optional graph.
+Canonical snapshots can be locally valid yet fail a larger encoded wire budget.
+
 `Transport` is `(batch: TransportBatch) => Promise<TransportResult>`.
 The batch contains `signal: 'traces' | 'logs'`, OTLP `payload`, optional serialized
 `body`, `keepalive`, `abort: AbortSignal`, `itemCount` and optional absolute
@@ -410,7 +457,7 @@ counts totaling `itemCount`, plus optional `errorMessage`.
 
 `otlpTransport({ endpoint, headers?, fetch? })` creates one OTLP/HTTP destination.
 It uses the same suffixes and JSON header rules as the native endpoint, and reads
-OTLP partial-success responses. Unlike the instance's native endpoint worker, this
+OTLP partial-success responses. Unlike the OTLP extension's native endpoint worker, this
 standalone transport does not add retries itself.
 
 The first destination controls queue success/drop accounting. Additional
@@ -423,7 +470,8 @@ records. A successful flush is not a durable offline or end-to-end delivery prom
 
 ### Faro receiver integration
 
-Import `faroTransport` and `logMeasurement` from `@reatom/opentelemetry/faro`.
+Configure Faro with `otel.extend(withOTLP({ endpoint: null, transports: [faroTransport(...)] }))`.
+Import `withOTLP` from `/otlp`, and `faroTransport` and `logMeasurement` from `@reatom/opentelemetry/faro`.
 `faroTransport({ endpoint, headers?, fetch? })` accepts an **exact absolute HTTP(S)
 collection URL**, with no OTLP suffix. It converts captured records and installs
 no instrumentation. JSON Content-Type and captured `x-faro-session-id` are fixed;
@@ -500,7 +548,8 @@ a choice, not a visitor identity; it is not a banner UI or identifier-erasure AP
 - `checkSensitiveNames(otel, { patterns? }?)`: development name warnings for future targets while value capture is enabled. Accepts a RegExp or array; returns a cleanup function. It neither changes capture nor redacts data. Install before model definitions and call the cleanup on teardown.
 - `readServerTimingTraceparent()`: reads `traceparent` from the first navigation entry's Server-Timing description, or `undefined`. Parse and guard before setting a frame parent.
 - `formatServerTimingTraceparent(header)`: produces `traceparent;desc="..."` for a server response. Pass a valid traceparent value. Cross-origin timing visibility needs the server's timing policy.
-- Root exported types: `ReatomOpentelemetry`, `ReatomOpentelemetryInput`, `OtelOptions`, `SpanKind`, `OtlpAttrValue`, `LocalValues`, `LocalValuesMode`, `TelemetryStats`, `CheckSensitiveNamesOptions`, `Transport`, `TransportBatch`, `TransportResult`.
+- Root exported types: `ReatomOpentelemetry`, `ReatomOpentelemetryInput`, `OtelOptions`, `SpanKind`, `OtlpAttrValue`, `LocalValues`, `LocalValuesMode`, `CaptureStats`, `CapturedRecord`, `CapturedSpan`, `CapturedLog`, `CapturedLink`, `CapturedAttributes`, `CapturedValues`, `CheckSensitiveNamesOptions`.
+- `/otlp` exports `OTLP`, `OTLPInput`, `OTLPOptions`, `TelemetryStats`, `Transport`, `TransportBatch`, `TransportResult`.
 - Analytics types: `WebAnalytics`, `WebAnalyticsOptions`, `AnalyticsPage`, `AnalyticsSession`, `Attribution`, `NavigationSource`.
 - `/attributes` exports `TelemetryAttributeSource`. Other optional entries export `BrowserNetworkOptions`, `BrowserConsoleOptions`, `ConsoleLevel`, `BrowserPerformanceOptions`, `FaroTransportOptions`; GDPR exports `DEFAULT_GDPR_CATEGORIES`, `GdprCategories`, `GdprConsentSnapshot`, `ReatomGDPR`, `ReatomGDPROptions`.
 

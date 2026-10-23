@@ -5,7 +5,7 @@ import { reatomOpentelemetry } from '../src/index.ts'
 import { withWebAnalytics } from '../src/web-analytics/index.ts'
 
 const createOtel = () =>
-  reatomOpentelemetry({ name: 'shop', endpoint: null, serviceName: 'shop-web' })
+  reatomOpentelemetry({ name: 'shop', serviceName: 'shop-web' })
 
 export function defaultedAndSharedConsent() {
   const defaulted = createOtel().extend(withGDPR(), withWebAnalytics())

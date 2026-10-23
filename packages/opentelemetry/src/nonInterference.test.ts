@@ -2,8 +2,7 @@ import { action, clearStack, computed, context, STACK } from '@reatom/core'
 import { expect, test, vi } from 'vitest'
 
 import type { SpanInput } from './buildSpan.ts'
-import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
-import { createTestWithOTel } from './test-helpers.ts'
+import { createTestWithOTel, reatomTestTelemetry } from './test-helpers.ts'
 
 test.each([false, true])(
   'export diagnostics run after clearStack (throwing logger: %s)',
@@ -17,7 +16,7 @@ test.each([false, true])(
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {
       if (throwing) throw new Error('diagnostic failure')
     })
-    const otel = reatomOpentelemetry({
+    const otel = reatomTestTelemetry({
       name: 'nonInterference',
       endpoint: 'http://collector.invalid',
       serviceName: 'test',

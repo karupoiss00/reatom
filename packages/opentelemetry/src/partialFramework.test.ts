@@ -1,7 +1,7 @@
 import { action, atom, bind, context, wrap } from '@reatom/core'
 import { afterEach, expect, test, vi } from 'vitest'
 
-import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
+import { reatomTestTelemetry } from './test-helpers.ts'
 import { withWebAnalytics } from './web-analytics/index.ts'
 
 const nativeFetch = globalThis.fetch
@@ -87,24 +87,8 @@ const installHostWindow = () => {
 const isIslandTarget = (target: { name: string }) =>
   target.name.startsWith('island.')
 
-const otlpStringAttrs = (record: object): Record<string, string> => {
-  const raw = 'attributes' in record ? record.attributes : undefined
-  if (!Array.isArray(raw)) return {}
-  const out: Record<string, string> = {}
-  for (const item of raw) {
-    if (!item || typeof item !== 'object') continue
-    const key = 'key' in item ? item.key : undefined
-    const value = 'value' in item ? item.value : undefined
-    const stringValue =
-      value && typeof value === 'object' && 'stringValue' in value
-        ? value.stringValue
-        : undefined
-    if (typeof key === 'string' && typeof stringValue === 'string') {
-      out[key] = stringValue
-    }
-  }
-  return out
-}
+const capturedStringAttrs = (span: object): Record<string, string> =>
+  'attributes' in span ? (span.attributes as Record<string, string>) : {}
 
 const visitRecords = (value: unknown, visit: (record: object) => void) => {
   if (value === null || typeof value !== 'object') return
@@ -125,7 +109,7 @@ const collectNames = (records: readonly unknown[]): string[] => {
     if ('eventName' in record && typeof record.eventName === 'string') {
       names.add(record.eventName)
     }
-    const attrs = otlpStringAttrs(record)
+    const attrs = capturedStringAttrs(record)
     if (attrs['reatom.name']) names.add(attrs['reatom.name'])
     if (attrs['event.name']) names.add(attrs['event.name'])
   })
@@ -140,9 +124,9 @@ const islandActionSpans = (records: readonly unknown[]): object[] => {
   visitRecords(records, (record) => {
     const spanId = 'spanId' in record ? record.spanId : undefined
     const name = 'name' in record ? record.name : undefined
-    const attrs = otlpStringAttrs(record)
+    const attrs = capturedStringAttrs(record)
     if (typeof spanId !== 'string' || typeof name !== 'string') return
-    if (!('startTimeUnixNano' in record)) return
+    if (!('startTimeMs' in record)) return
     if (
       name.startsWith('island.') ||
       attrs['reatom.name']?.startsWith('island.')
@@ -159,7 +143,7 @@ const pageViewRecords = (records: readonly unknown[]): object[] => {
     const eventName =
       'eventName' in record && typeof record.eventName === 'string'
         ? record.eventName
-        : otlpStringAttrs(record)['event.name']
+        : capturedStringAttrs(record)['event.name']
     if (eventName === 'app.page_view') views.push(record)
   })
   return views
@@ -171,14 +155,14 @@ const atomUpdateNames = (records: readonly unknown[]): string[] => {
     const eventName =
       'eventName' in record && typeof record.eventName === 'string'
         ? record.eventName
-        : otlpStringAttrs(record)['event.name']
+        : capturedStringAttrs(record)['event.name']
     if (
       eventName !== 'reatom.atom.update' &&
       eventName !== 'reatom.computed.update'
     ) {
       return
     }
-    const reatomName = otlpStringAttrs(record)['reatom.name']
+    const reatomName = capturedStringAttrs(record)['reatom.name']
     if (reatomName) names.push(reatomName)
   })
   return names
@@ -199,7 +183,7 @@ test('F-14: island action spans appear while filter silences vendor names and fe
   )
 
   const islandOtel = context.start(() => {
-    const otel = reatomOpentelemetry({
+    const otel = reatomTestTelemetry({
       name: 'island',
       endpoint: null,
       serviceName: 'island-web',
@@ -217,7 +201,7 @@ test('F-14: island action spans appear while filter silences vendor names and fe
   })
 
   const analytics = context.start(() => {
-    const model = reatomOpentelemetry({
+    const model = reatomTestTelemetry({
       name: 'site',
       endpoint: null,
       serviceName: 'site-web',
@@ -288,7 +272,7 @@ test('F-14: island action spans appear while filter silences vendor names and fe
   expect(
     islandSpans.some((span) => {
       const name = 'name' in span ? span.name : undefined
-      const attrs = otlpStringAttrs(span)
+      const attrs = capturedStringAttrs(span)
       return (
         name === 'island.search' || attrs['reatom.name'] === 'island.search'
       )

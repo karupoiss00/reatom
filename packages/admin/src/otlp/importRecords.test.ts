@@ -1,6 +1,11 @@
+import { action, notify, sleep, wrap } from '@reatom/core'
+import { reatomOpentelemetry } from '@reatom/opentelemetry'
 import { expect, test } from 'test'
 
 import { ADMIN_FRAME } from '../root'
+import { stringifyJson } from '../serialize'
+import { formatJson } from '../view/format'
+import { reatomOtlpMcp } from '../mcp'
 import { reatomOtlpAdmin } from './chrome'
 import { importRecordFile } from './importRecords'
 
@@ -92,4 +97,62 @@ test('export then import round-trips admin records', async () => {
   expect(record.attributes['note']).toEqual({ stringValue: 'kept' })
   expect(record.links[0]?.reason).toBe('computed.dependency')
   expect(ADMIN_FRAME.run(() => admin.source())).toBe('replay')
+})
+
+test('canonical bigint and bytes export as precise JSON and import for replay without changing capture', async () => {
+  const otel = reatomOpentelemetry({
+    name: 'admin-json-values',
+    serviceName: 'json',
+  })
+  const total = 9007199254740993n
+  try {
+    action(
+      () => ({ total, bytes: new Uint8Array([0, 128, 255]) }),
+      'saveBigint',
+    )()
+    notify()
+    await wrap(sleep(0))
+    const admin = setup()
+    const captured = otel.records()
+    ADMIN_FRAME.run(() => admin.ingestCaptured(captured))
+    const original = ADMIN_FRAME.run(() =>
+      admin
+        .records()
+        .find(
+          (record) => record.name === 'saveBigint' && record.kind === 'span',
+        )!,
+    )
+    expect(
+      (original.attributes['reatom.payload'] as { total: bigint }).total,
+    ).toBe(total)
+    const exported = ADMIN_FRAME.run(() => stringifyJson(admin.records(), 2)!)
+    expect(exported).toContain(total.toString())
+    expect(formatJson(original)).toContain(total.toString())
+    const mcp = reatomOtlpMcp(admin)
+    expect(
+      ADMIN_FRAME.run(() => JSON.stringify(mcp.getRecord({ id: original.id }))),
+    ).toContain(total.toString())
+    await wrap(
+      ADMIN_FRAME.run(() =>
+        importRecordFile(admin, { text: async () => exported }),
+      ),
+    )
+    const replay = ADMIN_FRAME.run(() =>
+      admin
+        .records()
+        .find(
+          (record) => record.name === 'saveBigint' && record.kind === 'span',
+        )!,
+    )
+    expect(replay.attributes['reatom.payload']).toEqual({
+      total: total.toString(),
+      bytes: [0, 128, 255],
+    })
+    expect(
+      (original.attributes['reatom.payload'] as { total: bigint }).total,
+    ).toBe(total)
+    expect(ADMIN_FRAME.run(() => admin.source())).toBe('replay')
+  } finally {
+    otel.dispose()
+  }
 })

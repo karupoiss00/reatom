@@ -1,3 +1,5 @@
+import { utf8Length } from './utf8Length.ts'
+import type { ObservationSnapshot } from './captureSnapshot.ts'
 import type {
   AtomLike,
   Ext,
@@ -22,7 +24,7 @@ import {
 import type { LogRecordInput } from './buildLogRecord.ts'
 import type { LocalValues, LocalValuesMode } from './localValues.ts'
 import type { SpanInput, SpanKind } from './buildSpan.ts'
-import { MAX_RECORD_BYTES, REATOM_NAME_DUP_MAX_UTF8 } from './buildSpan.ts'
+import { MAX_RECORD_BYTES, REATOM_NAME_DUP_MAX_UTF8 } from './captureLimits.ts'
 import {
   type CaptureValuesOptions,
   createValueCapture,
@@ -48,10 +50,7 @@ import {
 } from './roots/route.ts'
 import { createChildContext, type SpanContext } from './traceContext.ts'
 import type { OtlpAttrValue } from './toOtlpValue.ts'
-import { toOtlpBytesValue } from './toOtlpValue.ts'
 import { isUntracedRoot } from './untracedRoots.ts'
-
-const nameEncoder = new TextEncoder()
 
 export type WithOTelCall = {
   params: readonly unknown[]
@@ -102,7 +101,7 @@ const assignDefined = (
   for (const key of Object.keys(source) as (keyof WithOTelOptions)[]) {
     const value = source[key]
     if (value !== undefined) {
-      Object.assign(target, { [key]: value })
+      ;(target as Record<string, unknown>)[key] = value
     }
   }
   return target
@@ -132,6 +131,7 @@ type TracePair = { traceId: string; spanId: string }
 
 export type SpanCommit = SpanInput & {
   links?: OtlpSpanLink[]
+  values?: import('./records.ts').CapturedValues
   /** Stripped before export. The factory stores it beside the local record. */
   local?: LocalValues
 }
@@ -167,12 +167,7 @@ const copyOwnPromiseProperties = (
 const budgetLink = (parent: TracePair): OtlpSpanLink => ({
   traceId: parent.traceId,
   spanId: parent.spanId,
-  attributes: [
-    {
-      key: 'reatom.link.reason',
-      value: { stringValue: TRACE_BUDGET_LINK_REASON },
-    },
-  ],
+  attributes: { 'reatom.link.reason': TRACE_BUDGET_LINK_REASON },
 })
 
 const TRACED_PRIVATE_KINDS = new Set(['route', 'render', 'mount'])
@@ -188,16 +183,10 @@ const isTracedPrivateKind = (target: AtomLike): boolean =>
 const computedDependencyLink = (cause: TracedCause): OtlpSpanLink => ({
   traceId: cause.traceId,
   spanId: cause.spanId,
-  attributes: [
-    {
-      key: 'reatom.link.reason',
-      value: { stringValue: COMPUTED_DEPENDENCY_LINK_REASON },
-    },
-    {
-      key: 'reatom.frame.id',
-      value: { stringValue: cause.frameId },
-    },
-  ],
+  attributes: {
+    'reatom.link.reason': COMPUTED_DEPENDENCY_LINK_REASON,
+    'reatom.frame.id': cause.frameId,
+  },
 })
 
 export interface RouteRootsAdapter {
@@ -238,16 +227,14 @@ export interface CreateWithOTelInput {
   logRevision?: () => number
   /** Admission precedes IDs/capture; rejected invocations still carry context. */
   reserveSpan: (
-    attributes?: Record<string, OtlpAttrValue>,
-    metadata?: Record<string, OtlpAttrValue>,
+    snapshot?: ObservationSnapshot,
   ) => Reservation<SpanCommit> | undefined
   /**
    * Variant-2 atom/computed updates. When omitted, updates are not written —
    * the factory owns the logs queue and must pass this to emit records.
    */
   reserveLog?: (
-    attributes?: Record<string, OtlpAttrValue>,
-    metadata?: Record<string, OtlpAttrValue>,
+    snapshot?: ObservationSnapshot,
   ) => Reservation<LogRecordInput> | undefined
   /**
    * App-session (or other leftover) context when `traceVar` is empty. Orphan
@@ -290,6 +277,7 @@ export interface CreateWithOTelInput {
    */
   autoUpdates?: boolean
   /** Read at the update, before the hook queue, so a variable scope is not lost. */
+  captureSnapshot?: () => ObservationSnapshot
   instanceAttributes?: () => Record<string, OtlpAttrValue>
   instanceMetadata?: () => Record<string, OtlpAttrValue>
   pinInstanceAttributes?: (attributes: Record<string, OtlpAttrValue>) => void
@@ -300,18 +288,6 @@ export interface CreateWithOTelInput {
    */
   localValues?: () => LocalValuesMode
 }
-
-// Only owned, normalized snapshots reach JSON.stringify.
-const stringifyCaptured = (value: OtlpAttrValue): string =>
-  typeof value === 'string'
-    ? value
-    : JSON.stringify(value, (_, item) =>
-        typeof item === 'bigint'
-          ? String(item)
-          : item instanceof Uint8Array
-            ? toOtlpBytesValue(item).bytesValue
-            : item,
-      )
 
 type Outcome = { ok: true; value: unknown } | { ok: false; error: unknown }
 
@@ -358,6 +334,7 @@ export const createWithOTel = ({
   captureBlocked,
   instanceAttributes,
   instanceMetadata,
+  captureSnapshot,
   pinInstanceAttributes,
   logRevision,
   localValues,
@@ -678,7 +655,15 @@ export const createWithOTel = ({
     if (!parent && !links && !root && target) {
       noteContextLoss?.(target, options.name ?? name)
     }
-    const reservation = observe(reserveSpan)
+    const snapshotAtStart = observe(
+      () =>
+        captureSnapshot?.() ?? {
+          attributes: instanceAttributes?.() ?? {},
+          metadata: instanceMetadata?.() ?? {},
+        },
+    )
+    if (!snapshotAtStart) return
+    const reservation = observe(() => reserveSpan(snapshotAtStart))
     if (!reservation) return
     const rawName = options.name ?? name
     const parsed = parseInstanceName(rawName)
@@ -699,7 +684,7 @@ export const createWithOTel = ({
     }
     const attempt = nextAttempt(parent?.spanId, target)
     const span = observe(() => {
-      const instanceAttributesAtStart = instanceAttributes?.() ?? {}
+      const instanceAttributesAtStart = snapshotAtStart.attributes
       pinInstanceAttributes?.(instanceAttributesAtStart)
       const startTimeMs = Date.now()
       const startPerfMs = performance.now()
@@ -710,7 +695,7 @@ export const createWithOTel = ({
         key: string,
         value: unknown,
         entryNames?: readonly string[],
-      ) => stringifyCaptured(capture!.capture(key, value, entryNames))
+      ) => capture!.capture(key, value, entryNames)
       const before: SpanInput['attributes'] = capture
         ? { params: captured('params', params, paramNames) }
         : undefined
@@ -736,6 +721,7 @@ export const createWithOTel = ({
         attributes['reatom.cause.ids'] = causes.causeIds(actionFrame)
         return attributes
       }
+      let exceptionMessage: OtlpAttrValue | undefined
       const queueWith = (
         attributes: SpanInput['attributes'],
         status?: SpanInput['status'],
@@ -766,6 +752,15 @@ export const createWithOTel = ({
             ...extra,
           },
           status,
+          values: {
+            ...(attributes?.params === undefined
+              ? {}
+              : { params: attributes.params }),
+            ...(attributes?.payload === undefined
+              ? {}
+              : { payload: attributes.payload }),
+            ...(exceptionMessage === undefined ? {} : { exceptionMessage }),
+          },
           ...(links ? { links } : {}),
           ...(local ? { local } : {}),
         })
@@ -798,7 +793,7 @@ export const createWithOTel = ({
         local?: LocalValues,
       ) => {
         if (!reserveLog) return
-        const logReservation = reserveLog()
+        const logReservation = reserveLog(snapshotAtStart)
         if (!logReservation) return
         const recordAttributes = { ...attributes }
         if (actionFrame) {
@@ -811,12 +806,17 @@ export const createWithOTel = ({
           spanId: ctx.spanId as LogRecordInput['spanId'],
           timeMs: nowMs(),
           attributes: recordAttributes,
+          ...(attributes['exception.message'] === undefined
+            ? {}
+            : {
+                values: { exceptionMessage: attributes['exception.message'] },
+              }),
           ...(local ? { local } : {}),
         })
       }
       const queueErr = (error: unknown) => {
         const attributes = exceptionAttributes(error)
-        const message = attributes['exception.message']
+        const message = (exceptionMessage = attributes['exception.message'])
         if (typeof error === 'object' && error !== null) {
           recordedExceptions.add(error)
         }
@@ -1018,12 +1018,9 @@ export const createWithOTel = ({
     others: TracedCause[],
     state: unknown,
     prevState: unknown,
-    instanceAttributesAtUpdate: Record<string, OtlpAttrValue>,
-    metadataAtUpdate: Record<string, OtlpAttrValue>,
+    capture: ObservationSnapshot,
   ) => {
-    const reservation = observe(() =>
-      reserveSpan(instanceAttributesAtUpdate, metadataAtUpdate),
-    )
+    const reservation = observe(() => reserveSpan(capture))
     if (!reservation) return
     observe(() => {
       if (!isActive()) {
@@ -1051,7 +1048,7 @@ export const createWithOTel = ({
         startTimeMs: nowMs,
         endTimeMs: nowMs,
         extraAttributes: {
-          ...instanceAttributesAtUpdate,
+          ...capture.attributes,
           ...recordNameAttributes(parsed),
           'reatom.kind': 'computed',
           'reatom.parent.reason': placed.reason,
@@ -1065,19 +1062,31 @@ export const createWithOTel = ({
     })
   }
 
-  const emitUpdate = (
-    target: AtomLike,
-    settings: WithOTelOptions,
-    frame: Frame,
-    state: unknown,
-    pair: TracePair | undefined,
-    cross?: ReturnType<typeof pickCrossTraceCauses>,
-    params: readonly unknown[] = [],
-    instanceAttributesAtUpdate: Record<string, OtlpAttrValue> = {},
-    prevState?: unknown,
-    parentReason?: ParentReason,
-    metadataAtUpdate: Record<string, OtlpAttrValue> = {},
-  ) => {
+  type UpdateSnapshot = {
+    target: AtomLike
+    settings: WithOTelOptions
+    frame: Frame
+    stateAtUpdate: unknown
+    prevState: unknown
+    pair: TracePair | undefined
+    cross?: ReturnType<typeof pickCrossTraceCauses>
+    params: readonly unknown[]
+    parentReason?: ParentReason
+    capture: ObservationSnapshot
+  }
+  const emitUpdate = ({
+    target,
+    settings,
+    frame,
+    stateAtUpdate: state,
+    prevState,
+    pair,
+    cross,
+    params,
+    parentReason,
+    capture,
+  }: UpdateSnapshot) => {
+    const instanceAttributesAtUpdate = capture.attributes
     if (
       isUntracedRoot() ||
       !isActive() ||
@@ -1096,17 +1105,14 @@ export const createWithOTel = ({
         cross.others,
         state,
         prevState,
-        instanceAttributesAtUpdate,
-        metadataAtUpdate,
+        capture,
       )
       return
     }
     if (!reserveLog) return
     const spanContext = pair ?? currentTrace()
     if (!spanContext) return
-    const reservation = observe(() =>
-      reserveLog(instanceAttributesAtUpdate, metadataAtUpdate),
-    )
+    const reservation = observe(() => reserveLog(capture))
     if (!reservation) return
     observe(() => {
       if (!isActive()) {
@@ -1137,7 +1143,8 @@ export const createWithOTel = ({
         ...readCallAttributes(settings, { params, state, prevState }),
       }
       if (
-        nameEncoder.encode(parsed.raw).byteLength > REATOM_NAME_DUP_MAX_UTF8
+        utf8Length(parsed.raw, REATOM_NAME_DUP_MAX_UTF8) >
+        REATOM_NAME_DUP_MAX_UTF8
       ) {
         delete attributes['reatom.name']
       }
@@ -1175,24 +1182,25 @@ export const createWithOTel = ({
               reatomPrimitiveKind(target) === 'computed'
                 ? pickCrossTraceCauses(causes.tracedCauses(frame))
                 : undefined
-            const attributesAtUpdate = instanceAttributes?.() ?? {}
-            const metadataAtUpdate = instanceMetadata?.() ?? {}
+            const capture = captureSnapshot?.() ?? {
+              attributes: instanceAttributes?.() ?? {},
+              metadata: instanceMetadata?.() ?? {},
+            }
             const revision = logRevision?.() ?? 0
             _enqueue(() => {
               if (logRevision && logRevision() !== revision) return
-              emitUpdate(
+              emitUpdate({
                 target,
                 settings,
                 frame,
-                snapshot,
+                stateAtUpdate: snapshot,
                 pair,
                 cross,
                 params,
-                attributesAtUpdate,
+                capture,
                 prevState,
                 parentReason,
-                metadataAtUpdate,
-              )
+              })
             }, 'hook')
             return result
           },

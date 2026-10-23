@@ -1,9 +1,7 @@
-import type { AnalyticsFixtureOptions as WebAnalyticsCreateOptions } from './test-helpers.ts'
-import { createAnalytics, readAnalyticsRecords } from './test-helpers.ts'
 import { atom, context } from '@reatom/core'
 import { afterEach, expect, test, vi } from 'vitest'
 
-import { reatomOpentelemetry } from '../reatomOpentelemetry.ts'
+import { reatomTestTelemetry } from '../test-helpers.ts'
 import {} from './connectWebAnalytics.ts'
 import {
   campaignFingerprint,
@@ -12,9 +10,11 @@ import {
   fingerprintFromAttribution,
   readCampaign,
   sessionStorageKey,
-  visitorStorageKey,
   VISITOR_LIFE_MS,
+  visitorStorageKey,
 } from './identity.ts'
+import type { AnalyticsFixtureOptions as WebAnalyticsCreateOptions } from './test-helpers.ts'
+import { createAnalytics, readAnalyticsRecords } from './test-helpers.ts'
 
 const OPTIONS = {
   name: 'shop',
@@ -228,21 +228,8 @@ const decodeOtlpValue = (value: unknown): unknown => {
   return value
 }
 
-const attrsOf = (record: object): Record<string, unknown> => {
-  const raw = 'attributes' in record ? record.attributes : undefined
-  if (Array.isArray(raw)) {
-    const out: Record<string, unknown> = {}
-    for (const item of raw) {
-      if (!item || typeof item !== 'object') continue
-      const key = 'key' in item ? item.key : undefined
-      const value = 'value' in item ? item.value : undefined
-      if (typeof key === 'string') out[key] = decodeOtlpValue(value)
-    }
-    return out
-  }
-  if (raw && typeof raw === 'object') return raw as Record<string, unknown>
-  return {}
-}
+const attrsOf = (record: object): Record<string, unknown> =>
+  'attributes' in record ? (record.attributes as Record<string, unknown>) : {}
 
 const eventNameOf = (record: object): string | undefined => {
   const fromField =
@@ -672,12 +659,12 @@ test('WA-3 / spec 03.5: createAnalytics(otel) storageKey defaults to instance na
       maxBatchSize: 100,
       maxQueueSize: 100,
     }
-    const hostOtel = reatomOpentelemetry({
+    const hostOtel = reatomTestTelemetry({
       ...tracerInput,
       name: 'host',
       serviceName: 'host-web',
     })
-    const widgetOtel = reatomOpentelemetry({
+    const widgetOtel = reatomTestTelemetry({
       ...tracerInput,
       name: 'widget',
       serviceName: 'widget-web',

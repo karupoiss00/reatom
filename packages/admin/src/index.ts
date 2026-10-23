@@ -69,6 +69,7 @@ export {
 } from './otlp'
 export type {
   AdminConnection,
+  AdminCapturedRecord,
   AdminLocalValues,
   AdminMcpAnalyticsSummaryData,
   AdminMcpAnalyticsSummaryInput,
@@ -81,6 +82,7 @@ export type {
   AdminOtelInstance,
   AdminOtelOptionsSnapshot,
   AdminOtelStats,
+  AdminOtelDeliveryStats,
   AdminRecord,
   AnalyticsBreakdownRow,
   AnalyticsDimension,

@@ -1,8 +1,7 @@
 import { action, context, wrap } from '@reatom/core'
 import { expect, test, vi } from 'vitest'
 
-import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
-import { parseSpans } from './test-helpers.ts'
+import { parseSpans, reatomTestTelemetry } from './test-helpers.ts'
 
 test.each([false, true])(
   'execution duration follows the monotonic clock when wall time reverses (async=%s)',
@@ -14,7 +13,7 @@ test.each([false, true])(
       .spyOn(performance, 'now')
       .mockImplementation(() => monotonic)
     const bodies: string[] = []
-    const otel = reatomOpentelemetry({
+    const otel = reatomTestTelemetry({
       name: 'monotonicTiming',
       endpoint: 'http://collector.invalid',
       serviceName: 'clock-test',
@@ -65,7 +64,7 @@ test.each([false, true])(
       expect(
         BigInt(span.endTimeUnixNano) - BigInt(span.startTimeUnixNano),
       ).toBe(25_000_000n)
-      expect(otel.stats()).toMatchObject({
+      expect(otel.otlp.stats()).toMatchObject({
         active: 0,
         queued: 0,
         inFlight: 0,

@@ -1,9 +1,9 @@
-import type { ReatomOpentelemetry } from './reatomOpentelemetry.ts'
-import { expect, test, inject } from 'vitest'
-import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
-import { withBrowserNetworkMonkeypatch } from './browser-network/index.ts'
+import { expect, inject, test } from 'vitest'
+
 import { withBrowserConsoleMonkeypatch } from './browser-console/index.ts'
-import { attrsOf } from './test-helpers.ts'
+import { withBrowserNetworkMonkeypatch } from './browser-network/index.ts'
+import type { ReatomOpentelemetry } from './reatomOpentelemetry.ts'
+import { reatomTestTelemetry } from './test-helpers.ts'
 
 const applyNetwork = (
   otel: ReatomOpentelemetry,
@@ -15,7 +15,7 @@ const applyConsole = (
 ) => otel.extend(withBrowserConsoleMonkeypatch(options)).browserConsole
 
 test('real fetch and XHR preserve responses and record sanitized CLIENT spans', async () => {
-  const otel = reatomOpentelemetry({ name: 'native-network', endpoint: null })
+  const otel = reatomTestTelemetry({ name: 'native-network', endpoint: null })
   const native = fetch
   const connection = applyNetwork(otel)
   const response = await fetch(
@@ -35,14 +35,15 @@ test('real fetch and XHR preserve responses and record sanitized CLIENT spans', 
   })
   await expect
     .poll(
-      () => otel.records().filter((record: any) => record.kind === 3).length,
+      () =>
+        otel.records().filter((record: any) => record.kind === 'client').length,
     )
     .toBe(2)
   const spans = otel
     .records()
-    .filter((record: any) => record.kind === 3) as any[]
+    .filter((record: any) => record.kind === 'client') as any[]
   expect(spans.length).toBe(2)
-  expect(attrsOf(spans[0]!)['url.full']).not.toContain('token')
+  expect(spans[0]!.attributes['url.full']).not.toContain('token')
   connection.setFalse()
   expect(fetch).toBe(native)
   otel.dispose()
@@ -50,7 +51,7 @@ test('real fetch and XHR preserve responses and record sanitized CLIENT spans', 
 
 test('console duplicate extension preflight delivers once, toggles, scrubs payload, and restores originals', () => {
   const native = console.warn
-  const otel = reatomOpentelemetry({ name: 'native-console', endpoint: null })
+  const otel = reatomTestTelemetry({ name: 'native-console', endpoint: null })
   const control = applyConsole(otel)
   expect(() => applyConsole(otel)).toThrow()
   control.setFalse()
@@ -69,7 +70,7 @@ test('console duplicate extension preflight delivers once, toggles, scrubs paylo
 })
 
 test('fetch Request/init precedence, propagation, body and rejection remain native', async () => {
-  const otel = reatomOpentelemetry({ name: 'network-headers', endpoint: null })
+  const otel = reatomTestTelemetry({ name: 'network-headers', endpoint: null })
   const url = inject('otelCollectorUrl') + '/control/echo'
   const connector = applyNetwork(otel, {
     propagateTraceparent: [new URL(url).origin],
@@ -85,7 +86,7 @@ test('fetch Request/init precedence, propagation, body and rejection remain nati
   expect(result.body).toBe('init-body')
   const spans = otel
     .records()
-    .filter((record: any) => record.kind === 3) as any[]
+    .filter((record: any) => record.kind === 'client') as any[]
   expect(result.traceparent.split('-')[2]).toBe(spans[0].spanId)
   expect(request.headers.get('traceparent')).toBeNull()
   expect(init.headers).toEqual({ 'x-test': 'init' })
@@ -105,8 +106,8 @@ test('fetch Request/init precedence, propagation, body and rejection remain nati
 
 test('multi-instance ownership, signal changes, late wrappers and suppression', async () => {
   const original = console.warn
-  const one = reatomOpentelemetry({ name: 'console-owner-one', endpoint: null })
-  const two = reatomOpentelemetry({
+  const one = reatomTestTelemetry({ name: 'console-owner-one', endpoint: null })
+  const two = reatomTestTelemetry({
     name: 'console-owner-two',
     endpoint: null,
     captureValues: false,
@@ -139,7 +140,7 @@ test('multi-instance ownership, signal changes, late wrappers and suppression', 
 
 test('unsampled propagation, HTTP errors and XHR abort preserve native results', async () => {
   const url = inject('otelCollectorUrl') + '/control/echo'
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'network-unsampled',
     endpoint: null,
     sampling: { ratio: 0 },
@@ -157,11 +158,11 @@ test('unsampled propagation, HTTP errors and XHR abort preserve native results',
     xhr.abort()
   })
   await expect
-    .poll(() => otel.records().filter((r: any) => r.kind === 3).length)
+    .poll(() => otel.records().filter((r: any) => r.kind === 'client').length)
     .toBe(3)
   const errors = otel
     .records()
-    .filter((r: any) => r.kind === 3 && r.status?.code === 2)
+    .filter((r: any) => r.kind === 'client' && r.status?.code === 'error')
   expect(errors.length).toBe(2)
   otel.dispose()
 })
@@ -173,29 +174,29 @@ test('exporter network is suppressed and connector disposal drops in-flight comp
     new Promise<Response>((resolve) => {
       release = resolve
     })) as typeof fetch
-  const otel = reatomOpentelemetry({ name: 'network-inflight', endpoint: null })
+  const otel = reatomTestTelemetry({ name: 'network-inflight', endpoint: null })
   const connector = applyNetwork(otel)
-  const activeBefore = otel.stats().active
+  const activeBefore = otel.otlp.stats().active
   const pending = fetch('https://request.test/path')
-  expect(otel.stats().active).toBe(activeBefore + 1)
+  expect(otel.otlp.stats().active).toBe(activeBefore + 1)
   connector.setFalse()
-  expect(otel.stats().active).toBe(activeBefore)
+  expect(otel.otlp.stats().active).toBe(activeBefore)
   release(new Response('{}'))
   await pending
-  expect(otel.records().filter((r: any) => r.kind === 3)).toEqual([])
+  expect(otel.records().filter((r: any) => r.kind === 'client')).toEqual([])
   connector.setTrue()
   const reconnected = connector
   const recovered = fetch('https://request.test/recovered')
-  expect(otel.stats().active).toBe(activeBefore + 1)
+  expect(otel.otlp.stats().active).toBe(activeBefore + 1)
   release(new Response('{}'))
   await recovered
-  expect(otel.stats().active).toBe(activeBefore)
-  expect(otel.records().filter((r: any) => r.kind === 3).length).toBe(1)
+  expect(otel.otlp.stats().active).toBe(activeBefore)
+  expect(otel.records().filter((r: any) => r.kind === 'client').length).toBe(1)
   reconnected.setFalse()
   globalThis.fetch = native
   otel.dispose()
 
-  const exported = reatomOpentelemetry({
+  const exported = reatomTestTelemetry({
     name: 'network-exporter',
     endpoint: inject('otelCollectorUrl') + '/collector/allow/no-loop',
     batchInterval: 100000,
@@ -204,12 +205,12 @@ test('exporter network is suppressed and connector disposal drops in-flight comp
   applyNetwork(exported)
   exported.log('manual.test')
   await exported.flush()
-  expect(exported.records().filter((r: any) => r.kind === 3)).toEqual([])
+  expect(exported.records().filter((r: any) => r.kind === 'client')).toEqual([])
   exported.dispose()
 })
 
 test('configured automatic console redactor is applied without changing native arguments', () => {
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'console-custom-redact',
     endpoint: null,
     captureValues: {
@@ -232,7 +233,7 @@ test('real analytics session and page metadata reach Faro while HTTP target rema
   const { withWebAnalytics } = await import('./web-analytics/index.ts')
   const { faroTransport } = await import('./faro/index.ts')
   const envelopes: any[] = []
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'browser-faro-meta',
     endpoint: null,
     batchInterval: 100000,
@@ -273,14 +274,14 @@ test('real analytics session and page metadata reach Faro while HTTP target rema
     inject('otelCollectorUrl') + '/control/state',
   )
   expect(JSON.stringify(withNetwork.traces)).not.toContain('secret=hidden')
-  expect(otel.records().filter((r: any) => r.kind === 3).length).toBe(1)
+  expect(otel.records().filter((r: any) => r.kind === 'client').length).toBe(1)
   analytics.setFalse()
   otel.dispose()
 })
 
 test('HTTP client parent is the invoking action context', async () => {
   const { action } = await import('@reatom/core')
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'network-action-parent',
     endpoint: null,
   })
@@ -292,7 +293,7 @@ test('HTTP client parent is the invoking action context', async () => {
   await request()
   const spans = otel.records() as any[]
   const parent = spans.find((span) => span.name === 'browser.request')
-  const child = spans.find((span) => span.kind === 3)
+  const child = spans.find((span) => span.kind === 'client')
   expect(child.parentSpanId).toBe(parent.spanId)
   expect(child.traceId).toBe(parent.traceId)
   otel.dispose()
@@ -301,7 +302,7 @@ test('HTTP client parent is the invoking action context', async () => {
 test('parent disposal and same-name replacement tear down analytics listeners and identity writes', async () => {
   const { withWebAnalytics } = await import('./web-analytics/index.ts')
   const { browserCaptureOf } = await import('./browserCapture.ts')
-  const original = reatomOpentelemetry({
+  const original = reatomTestTelemetry({
     name: 'analytics-parent-lifetime',
     endpoint: null,
   })
@@ -328,7 +329,7 @@ test('parent disposal and same-name replacement tear down analytics listeners an
   expect(JSON.stringify(Object.entries(localStorage))).toBe(before)
   old.setFalse()
 
-  const replaced = reatomOpentelemetry({
+  const replaced = reatomTestTelemetry({
     name: 'analytics-parent-replace',
     endpoint: null,
   })
@@ -338,7 +339,7 @@ test('parent disposal and same-name replacement tear down analytics listeners an
       navigation: 'history',
     }),
   ).analytics
-  const next = reatomOpentelemetry({
+  const next = reatomTestTelemetry({
     name: 'analytics-parent-replace',
     endpoint: null,
   })
@@ -354,7 +355,7 @@ test('general async action preserves capture-time page but removes revoked analy
   const { action, atom, wrap } = await import('@reatom/core')
   const { withWebAnalytics } = await import('./web-analytics/index.ts')
   const consent = atom(true, 'browser.analytics-consent')
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'general-identity-revoke',
     endpoint: null,
   })
@@ -384,8 +385,8 @@ test('general async action preserves capture-time page but removes revoked analy
     .records()
     .find((record: any) => record.name === 'browser.general-pending') as any
   expect(span).toBeTruthy()
-  expect(attrsOf(span)['session.id']).toBeUndefined()
-  expect(attrsOf(span)['page.url']).toBe(location.origin + location.pathname)
+  expect(span.attributes['session.id']).toBeUndefined()
+  expect(span.attributes['page.url']).toBe(location.origin + location.pathname)
   analytics.setFalse()
   otel.dispose()
 })
@@ -400,7 +401,7 @@ test('cross-realm Request uses its real target and preserves header precedence',
     calls.push({ input, init })
     return new Response('{}')
   }) as typeof fetch
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'cross-realm-network',
     endpoint: null,
   })
@@ -415,7 +416,9 @@ test('cross-realm Request uses its real target and preserves header precedence',
     await fetch(foreign)
     expect((calls[0]!.input as Request).headers.has('traceparent')).toBe(false)
     expect(
-      attrsOf(otel.records().find((r: any) => r.kind === 3) as any)['url.full'],
+      (otel.records().find((r: any) => r.kind === 'client') as any).attributes[
+        'url.full'
+      ],
     ).toBe('https://unlisted.example.test/path')
     const existing = '00-11111111111111111111111111111111-2222222222222222-01'
     const allowed = new ForeignRequest(location.origin + '/allowed', {
@@ -439,7 +442,7 @@ test('cross-realm Request uses its real target and preserves header precedence',
 })
 
 test('reusing XHR from onload records two independent successful requests', async () => {
-  const otel = reatomOpentelemetry({ name: 'xhr-reuse', endpoint: null })
+  const otel = reatomTestTelemetry({ name: 'xhr-reuse', endpoint: null })
   applyNetwork(otel)
   const statuses: number[] = []
   await new Promise<void>((resolve, reject) => {
@@ -452,33 +455,28 @@ test('reusing XHR from onload records two independent successful requests', asyn
         xhr.send()
         const existing = otel
           .records()
-          .filter((r: any) => r.kind === 3) as any[]
+          .filter((r: any) => r.kind === 'client') as any[]
         expect(existing.length).toBe(1)
-        expect(otel.stats().active).toBe(1)
+        expect(otel.otlp.stats().active).toBe(1)
       } else resolve()
     }
     xhr.open('GET', inject('otelCollectorUrl') + '/control/state')
     xhr.send()
   })
   expect(statuses).toEqual([200, 200])
-  const spans = otel.records().filter((r: any) => r.kind === 3) as any[]
+  const spans = otel.records().filter((r: any) => r.kind === 'client') as any[]
   expect(spans.length).toBe(2)
   for (const span of spans) {
-    expect(span.status?.code).not.toBe(2)
-    const status = span.attributes.find(
-      (attribute: any) => attribute.key === 'http.response.status_code',
-    )
-    expect(Number(status.value.intValue)).toBe(200)
-    expect(BigInt(span.endTimeUnixNano)).toBeGreaterThanOrEqual(
-      BigInt(span.startTimeUnixNano),
-    )
+    expect(span.status?.code).not.toBe('error')
+    expect(span.attributes['http.response.status_code']).toBe(200)
+    expect(span.endTimeMs).toBeGreaterThanOrEqual(span.startTimeMs)
   }
-  expect(otel.stats().active).toBe(0)
+  expect(otel.otlp.stats().active).toBe(0)
   otel.dispose()
 })
 
 test('propagation preserves inherited and non-enumerable RequestInit dictionary fields and getter receivers', async () => {
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'dictionary-network',
     endpoint: null,
   })
@@ -522,9 +520,9 @@ test('propagation preserves inherited and non-enumerable RequestInit dictionary 
 })
 
 test('successful XHR reopen cancels the superseded request reservation without disposing connector', async () => {
-  const otel = reatomOpentelemetry({ name: 'xhr-superseded', endpoint: null })
+  const otel = reatomTestTelemetry({ name: 'xhr-superseded', endpoint: null })
   applyNetwork(otel)
-  const baseline = otel.stats().active
+  const baseline = otel.otlp.stats().active
   const xhr = new XMLHttpRequest()
   const nativeEvents: string[] = []
   xhr.onabort = () => nativeEvents.push('abort')
@@ -538,20 +536,20 @@ test('successful XHR reopen cancels the superseded request reservation without d
   })
   xhr.open('GET', inject('otelCollectorUrl') + '/control/state')
   xhr.send()
-  expect(otel.stats().active).toBe(baseline + 1)
+  expect(otel.otlp.stats().active).toBe(baseline + 1)
   xhr.open('GET', inject('otelCollectorUrl') + '/control/state?replacement=1')
-  expect(otel.stats().active).toBe(baseline)
+  expect(otel.otlp.stats().active).toBe(baseline)
   xhr.send()
-  expect(otel.stats().active).toBe(baseline + 1)
+  expect(otel.otlp.stats().active).toBe(baseline + 1)
   await finished
-  expect(otel.stats().active).toBe(baseline)
+  expect(otel.otlp.stats().active).toBe(baseline)
   expect(nativeEvents.filter((event) => event === 'load')).toHaveLength(1)
-  expect(otel.records().filter((r: any) => r.kind === 3)).toHaveLength(1)
+  expect(otel.records().filter((r: any) => r.kind === 'client')).toHaveLength(1)
   otel.dispose()
 })
 
 test('propagation predicate sees full actual query while recorded URL remains sanitized', async () => {
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'network-query-policy',
     endpoint: null,
   })
@@ -568,9 +566,9 @@ test('propagation predicate sees full actual query while recorded URL remains sa
   expect(seen[0]).toBe(target + '?token=private')
   const allowed = await (await fetch(target + '?safe=yes')).json()
   expect(allowed.traceparent).toBeTruthy()
-  const spans = otel.records().filter((r: any) => r.kind === 3) as any[]
+  const spans = otel.records().filter((r: any) => r.kind === 'client') as any[]
   expect(spans).toHaveLength(2)
-  expect(spans.map((span) => attrsOf(span)['url.full'])).toEqual([
+  expect(spans.map((span) => span.attributes['url.full'])).toEqual([
     target,
     target,
   ])
@@ -579,7 +577,7 @@ test('propagation predicate sees full actual query while recorded URL remains sa
 })
 
 test('data fetch remains native and never records inline body or propagates', async () => {
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'network-data-scheme',
     endpoint: null,
   })
@@ -593,7 +591,7 @@ test('data fetch remains native and never records inline body or propagates', as
   const response = await fetch('data:text/plain,private-body-marker')
   expect(await response.text()).toBe('private-body-marker')
   expect(policyCalls).toBe(0)
-  expect(otel.records().filter((r: any) => r.kind === 3)).toEqual([])
+  expect(otel.records().filter((r: any) => r.kind === 'client')).toEqual([])
   expect(JSON.stringify(otel.records())).not.toContain('private-body-marker')
   otel.dispose()
 })
@@ -616,7 +614,7 @@ test('fetch reads method dictionary getter once with its original receiver', asy
   const baseline = await (await native(target, makeInit())).json()
   expect(reads).toBe(1)
   reads = 0
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'network-method-getter',
     endpoint: null,
   })
@@ -627,9 +625,9 @@ test('fetch reads method dictionary getter once with its original receiver', asy
   expect(reads).toBe(1)
   expect(captured.method).toBe(baseline.method)
   expect(captured.body).toBe(baseline.body)
-  const span = otel.records().find((r: any) => r.kind === 3) as any
+  const span = otel.records().find((r: any) => r.kind === 'client') as any
   expect(span.name).toBe('POST')
-  expect(attrsOf(span)['http.request.method']).toBe('POST')
+  expect(span.attributes['http.request.method']).toBe('POST')
   otel.dispose()
 })
 
@@ -637,7 +635,7 @@ test('relative fetch and XHR propagation use document baseURI origin', async () 
   const base = document.createElement('base')
   base.href = inject('otelCollectorUrl') + '/'
   document.head.prepend(base)
-  const otel = reatomOpentelemetry({ name: 'network-base-uri', endpoint: null })
+  const otel = reatomTestTelemetry({ name: 'network-base-uri', endpoint: null })
   applyNetwork(otel, { propagateTraceparent: [location.origin] })
   try {
     const response = await (await fetch('control/echo-base-relative')).json()
@@ -652,9 +650,11 @@ test('relative fetch and XHR propagation use document baseURI origin', async () 
       xhr.onerror = reject
       xhr.send()
     })
-    const spans = otel.records().filter((r: any) => r.kind === 3) as any[]
+    const spans = otel
+      .records()
+      .filter((r: any) => r.kind === 'client') as any[]
     expect(spans).toHaveLength(2)
-    expect(spans.map((span) => attrsOf(span)['url.full'])).toEqual([
+    expect(spans.map((span) => span.attributes['url.full'])).toEqual([
       inject('otelCollectorUrl') + '/control/echo-base-relative',
       inject('otelCollectorUrl') + '/control/echo-base-relative-xhr',
     ])
@@ -665,7 +665,7 @@ test('relative fetch and XHR propagation use document baseURI origin', async () 
 })
 
 test('URL-like inputs are coerced once and policy matches the actual fetch and XHR destination', async () => {
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'network-url-coercion',
     endpoint: null,
   })
@@ -731,8 +731,8 @@ test('URL-like inputs are coerced once and policy matches the actual fetch and X
   expect([xhrReads, methodReads, headerNameReads, headerValueReads]).toEqual([
     1, 1, 1, 1,
   ])
-  const spans = otel.records().filter((r: any) => r.kind === 3) as any[]
-  expect(spans.map((span) => attrsOf(span)['url.full'])).toEqual([
+  const spans = otel.records().filter((r: any) => r.kind === 'client') as any[]
+  expect(spans.map((span) => span.attributes['url.full'])).toEqual([
     denied,
     denied,
   ])
@@ -740,7 +740,7 @@ test('URL-like inputs are coerced once and policy matches the actual fetch and X
 })
 
 test('fetch missing arguments and coercion errors retain native rejected-promise semantics', async () => {
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'network-coercion-errors',
     endpoint: null,
   })
@@ -769,7 +769,7 @@ test('fetch missing arguments and coercion errors retain native rejected-promise
 test('null headers retain native rejection and absent dictionaries ignore Object.prototype fields', async () => {
   const native = fetch
   const url = inject('otelCollectorUrl') + '/control/echo-null-init'
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'network-null-init',
     endpoint: null,
   })
@@ -801,7 +801,7 @@ test('null headers retain native rejection and absent dictionaries ignore Object
 
 test('XHR OPENED reentrancy uses the new request state and locks the open-time base URL', async () => {
   const origin = inject('otelCollectorUrl')
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'xhr-opened-transaction',
     endpoint: null,
   })
@@ -847,9 +847,11 @@ test('XHR OPENED reentrancy uses the new request state and locks the open-time b
     base.href = origin + '/control/echo-opened/'
     xhr.send()
     await finished
-    expect(otel.stats().active).toBe(0)
-    const spans = otel.records().filter((r: any) => r.kind === 3) as any[]
-    expect(spans.map((span) => attrsOf(span)['url.full'])).toEqual([
+    expect(otel.otlp.stats().active).toBe(0)
+    const spans = otel
+      .records()
+      .filter((r: any) => r.kind === 'client') as any[]
+    expect(spans.map((span) => span.attributes['url.full'])).toEqual([
       origin + '/control/echo-opened/allowed',
       origin + '/control/echo-opened/denied',
       origin + '/control/echo-opened/denied/allowed',
@@ -862,7 +864,7 @@ test('XHR OPENED reentrancy uses the new request state and locks the open-time b
 
 test('nested XHR opens keep newest state and failed opens preserve pending ownership', async () => {
   const origin = inject('otelCollectorUrl')
-  const otel = reatomOpentelemetry({ name: 'xhr-nested-open', endpoint: null })
+  const otel = reatomTestTelemetry({ name: 'xhr-nested-open', endpoint: null })
   applyNetwork(otel, {
     propagateTraceparent: (url) => url.pathname.endsWith('/allowed'),
   })
@@ -895,11 +897,11 @@ test('nested XHR opens keep newest state and failed opens preserve pending owner
     expect(() =>
       xhr.open('TRACE', origin + '/control/echo-failed-open/denied'),
     ).toThrow()
-    expect(otel.stats().active).toBe(1)
+    expect(otel.otlp.stats().active).toBe(1)
   })
-  expect(otel.stats().active).toBe(0)
-  const spans = otel.records().filter((r: any) => r.kind === 3) as any[]
-  expect(spans.map((span) => attrsOf(span)['url.full'])).toEqual([
+  expect(otel.otlp.stats().active).toBe(0)
+  const spans = otel.records().filter((r: any) => r.kind === 'client') as any[]
+  expect(spans.map((span) => span.attributes['url.full'])).toEqual([
     origin + '/control/echo-nested/denied',
     origin + '/control/echo-failed-open/allowed',
   ])
@@ -917,7 +919,7 @@ test('custom primary and secondary transports suppress synchronous network captu
     })
     return { accepted: batch.itemCount, rejected: 0 }
   }
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'custom-transports-no-loop',
     endpoint: null,
     batchInterval: 100000,
@@ -928,8 +930,8 @@ test('custom primary and secondary transports suppress synchronous network captu
   await otel.flush()
   expect(deliveries).toBeGreaterThan(0)
   expect(deliveries).toBeLessThanOrEqual(4)
-  expect(otel.records().filter((r: any) => r.kind === 3)).toEqual([])
-  expect(otel.stats().queued).toBe(0)
+  expect(otel.records().filter((r: any) => r.kind === 'client')).toEqual([])
+  expect(otel.otlp.stats().queued).toBe(0)
   otel.dispose()
 })
 
@@ -937,7 +939,7 @@ test('async custom transport uses explicit URL exclusion without suppressing unr
   const origin = inject('otelCollectorUrl')
   const target = origin + '/control/echo-async-transport'
   const seen: string[] = []
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'async-custom-transport-no-loop',
     endpoint: null,
     batchInterval: 100000,
@@ -957,17 +959,17 @@ test('async custom transport uses explicit URL exclusion without suppressing unr
   })
   otel.log('manual.async.transport')
   await otel.flush()
-  expect(otel.records().filter((r: any) => r.kind === 3)).toEqual([])
+  expect(otel.records().filter((r: any) => r.kind === 'client')).toEqual([])
   expect(seen).toContain(target + '?token=transport')
   await fetch(origin + '/control/state')
-  expect(otel.records().filter((r: any) => r.kind === 3)).toHaveLength(1)
+  expect(otel.records().filter((r: any) => r.kind === 'client')).toHaveLength(1)
   await otel.flush()
-  expect(otel.stats().queued).toBe(0)
+  expect(otel.otlp.stats().queued).toBe(0)
   otel.dispose()
 })
 
 test('failed repeated XHR send preserves cancellation ownership through reopen', async () => {
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'xhr-repeat-send-owner',
     endpoint: null,
   })
@@ -977,9 +979,9 @@ test('failed repeated XHR send preserves cancellation ownership through reopen',
   xhr.open('GET', target)
   xhr.send()
   expect(() => xhr.send()).toThrow()
-  expect(otel.stats().active).toBe(1)
+  expect(otel.otlp.stats().active).toBe(1)
   xhr.open('GET', target + '?replacement=1')
-  expect(otel.stats().active).toBe(0)
+  expect(otel.otlp.stats().active).toBe(0)
   const done = new Promise<void>((resolve, reject) => {
     xhr.onload = () => {
       expect(xhr.status).toBe(200)
@@ -989,7 +991,7 @@ test('failed repeated XHR send preserves cancellation ownership through reopen',
   })
   xhr.send()
   await done
-  expect(otel.stats().active).toBe(0)
+  expect(otel.otlp.stats().active).toBe(0)
   otel.dispose()
 })
 
@@ -997,7 +999,7 @@ test('native Request conversion resolves URL after late method and signal getter
   const origin = inject('otelCollectorUrl')
   const base = document.createElement('base')
   document.head.prepend(base)
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'native-request-late-base',
     endpoint: null,
   })
@@ -1019,8 +1021,10 @@ test('native Request conversion resolves URL after late method and signal getter
       expect(response.traceparent).toBeUndefined()
       expect(reads).toBe(1)
     }
-    const spans = otel.records().filter((r: any) => r.kind === 3) as any[]
-    expect(spans.map((span) => attrsOf(span)['url.full'])).toEqual([
+    const spans = otel
+      .records()
+      .filter((r: any) => r.kind === 'client') as any[]
+    expect(spans.map((span) => span.attributes['url.full'])).toEqual([
       origin + '/control/echo-denied/target-method',
       origin + '/control/echo-denied/target-signal',
     ])
@@ -1032,7 +1036,7 @@ test('native Request conversion resolves URL after late method and signal getter
 
 test('native Request delegation preserves request body use, abort reason identity and invalid receiver', async () => {
   const native = fetch
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'native-request-semantics',
     endpoint: null,
   })
@@ -1074,7 +1078,7 @@ test('XHR completes username and password conversions before freezing URL and pr
   const origin = inject('otelCollectorUrl')
   const base = document.createElement('base')
   document.head.prepend(base)
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'xhr-all-argument-conversions',
     endpoint: null,
   })
@@ -1116,8 +1120,8 @@ test('XHR completes username and password conversions before freezing URL and pr
       xhr.send()
     })
     expect(calls).toEqual(['username', 'password'])
-    const span = otel.records().find((r: any) => r.kind === 3) as any
-    expect(attrsOf(span)['url.full']).toBe(
+    const span = otel.records().find((r: any) => r.kind === 'client') as any
+    expect(span.attributes['url.full']).toBe(
       origin + '/control/echo-denied/target',
     )
     const error = new Error('username-conversion')
@@ -1167,7 +1171,7 @@ test('native Request streaming duplex and locked body behavior match native fetc
     }),
     (error) => ({ error: error.name }),
   )
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'native-stream-duplex',
     endpoint: null,
   })
@@ -1192,7 +1196,7 @@ test('native Request streaming duplex and locked body behavior match native fetc
 
 test('XHR omitted async remains asynchronous while explicit undefined preserves native synchronous mode', async () => {
   const target = inject('otelCollectorUrl') + '/control/echo-xhr-async-presence'
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'xhr-async-presence',
     endpoint: null,
   })
@@ -1218,17 +1222,17 @@ test('XHR omitted async remains asynchronous while explicit undefined preserves 
   xhr.send()
   expect(synchronousLoaded).toBe(true)
   expect(xhr.status).toBe(200)
-  expect(otel.stats().active).toBe(0)
+  expect(otel.otlp.stats().active).toBe(0)
   otel.dispose()
 })
 
 test('network policy callbacks can synchronously disable or toggle without leaks or propagation', async () => {
   const origin = inject('otelCollectorUrl')
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'network-callback-disable',
     endpoint: null,
   })
-  const baseline = otel.stats().active
+  const baseline = otel.otlp.stats().active
   let mode: 'ignore' | 'propagate' | 'toggle' | 'normal' = 'ignore'
   let control: ReturnType<typeof applyNetwork>
   let ignoreCalls = 0
@@ -1251,23 +1255,31 @@ test('network policy callbacks can synchronously disable or toggle without leaks
   try {
     expect((await fetch(origin + '/control/echo-ignore-dispose')).ok).toBe(true)
     expect(ignoreCalls).toBe(1)
-    expect(otel.stats().active).toBe(baseline)
-    expect(otel.records().filter((r: any) => r.kind === 3)).toHaveLength(0)
+    expect(otel.otlp.stats().active).toBe(baseline)
+    expect(otel.records().filter((r: any) => r.kind === 'client')).toHaveLength(
+      0,
+    )
     mode = 'propagate'
     control.setTrue()
     const response = await (
       await fetch(origin + '/control/echo-propagate-dispose')
     ).json()
     expect(response.traceparent).toBeUndefined()
-    expect(otel.stats().active).toBe(baseline)
-    expect(otel.records().filter((r: any) => r.kind === 3)).toHaveLength(0)
+    expect(otel.otlp.stats().active).toBe(baseline)
+    expect(otel.records().filter((r: any) => r.kind === 'client')).toHaveLength(
+      0,
+    )
     mode = 'toggle'
     control.setTrue()
     await fetch(origin + '/control/echo-callback-replacement')
-    expect(otel.stats().active).toBe(baseline)
-    expect(otel.records().filter((r: any) => r.kind === 3)).toHaveLength(0)
+    expect(otel.otlp.stats().active).toBe(baseline)
+    expect(otel.records().filter((r: any) => r.kind === 'client')).toHaveLength(
+      0,
+    )
     await fetch(origin + '/control/echo-callback-replacement-next')
-    expect(otel.records().filter((r: any) => r.kind === 3)).toHaveLength(1)
+    expect(otel.records().filter((r: any) => r.kind === 'client')).toHaveLength(
+      1,
+    )
     control.setFalse()
   } finally {
     otel.dispose()
@@ -1283,7 +1295,7 @@ test('console redactors can synchronously disable or toggle without recording st
   }
   let control: ReturnType<typeof applyConsole>
   let mode: 'disable' | 'toggle' | 'normal' = 'disable'
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'console-redactor-lifetime',
     endpoint: null,
     captureValues: {
@@ -1332,7 +1344,7 @@ test('throwing analytics consent readers cannot leak pending network or general 
     if (broken) throw new Error('consent reader failed')
     return true
   }
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'throwing-metadata-reader',
     endpoint: null,
     maxQueueSize: 4,
@@ -1348,17 +1360,17 @@ test('throwing analytics consent readers cannot leak pending network or general 
   const session = analytics.session().id
   expect(session).toBeTruthy()
   const connector = applyNetwork(otel)
-  const baseline = otel.stats().active
+  const baseline = otel.otlp.stats().active
   const pending = fetch(
     inject('otelCollectorUrl') + '/control/echo-throwing-consent',
   )
-  expect(otel.stats().active).toBe(baseline + 1)
+  expect(otel.otlp.stats().active).toBe(baseline + 1)
   broken = true
   const response = await pending
   expect(response.status).toBe(200)
-  expect(otel.stats().active).toBe(baseline)
-  const client = otel.records().find((r: any) => r.kind === 3) as any
-  expect(attrsOf(client)['session.id']).toBeUndefined()
+  expect(otel.otlp.stats().active).toBe(baseline)
+  const client = otel.records().find((r: any) => r.kind === 'client') as any
+  expect(client.attributes['session.id']).toBeUndefined()
   let release!: () => void
   const gate = new Promise<void>((resolve) => {
     release = resolve
@@ -1368,16 +1380,16 @@ test('throwing analytics consent readers cannot leak pending network or general 
     return 'native-result'
   }, 'browser.throwing-reader-action').extend(otel.withOTel())
   const actionPending = operation()
-  expect(otel.stats().active).toBe(baseline + 1)
+  expect(otel.otlp.stats().active).toBe(baseline + 1)
   release()
   expect(await actionPending).toBe('native-result')
-  expect(otel.stats().active).toBe(baseline)
+  expect(otel.otlp.stats().active).toBe(baseline)
   const actionSpan = otel
     .records()
     .find((r: any) => r.name === 'browser.throwing-reader-action') as any
-  expect(attrsOf(actionSpan)['session.id']).toBeUndefined()
+  expect(actionSpan.attributes['session.id']).toBeUndefined()
   connector.setFalse()
-  expect(otel.stats().active).toBe(baseline)
+  expect(otel.otlp.stats().active).toBe(baseline)
   broken = false
   connector.setTrue()
   const recovered = connector
@@ -1388,7 +1400,7 @@ test('throwing analytics consent readers cannot leak pending network or general 
       )
     ).status,
   ).toBe(200)
-  expect(otel.stats().active).toBe(baseline)
+  expect(otel.otlp.stats().active).toBe(baseline)
   recovered.setFalse()
   analytics.setFalse()
   otel.dispose()

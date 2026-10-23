@@ -182,14 +182,18 @@ Mounts the product shell into a specific DOM element.
 
 ### `connectAdmin(otel, options?)`
 
-Feeds an in-page `@reatom/opentelemetry` instance into the OTLP admin. Call it
+Feeds an in-page `@reatom/opentelemetry` capture instance directly into Admin. Call it
 in the app frame and mount the view with `mountAdminView`.
 
 The SDK is a native settings atom. `connectAdmin` observes its readonly
 `records` and `stats` children; use `otel()`/`otel.set(...)` for live
 settings and `.resource` for construction-time producing-service metadata.
-One SDK owns shared queues across Reatom roots. Isolated-root record views and
-the aggregate Admin stream do not create separate delivery runtimes. Optional
+Canonical safe records enter Admin directly, without an OTLP encode/decode round
+trip. Local capture works with no endpoint or exporter. Root stats describe
+capture; optional `otel.otlp.stats()` describes delivery. Isolated-root views and
+the aggregate Admin stream do not create separate exporter queues. OTLP file and
+replay import remain supported. JSON export writes bigint as decimal strings and
+bytes as numeric arrays, without mutating typed captured values. Optional
 telemetry features are applied through native `.extend(with...)` and collect
 eagerly without an Admin subscriber. See the
 [telemetry setup](../opentelemetry/README.md) for composition and consent ordering.
@@ -198,7 +202,7 @@ eagerly without an Admin subscriber. See the
   connected and restored on `dispose()`. Admin records then carry the live
   params, payload, state and errors (`recordValues(record)`). The Activity
   preview, Overview, History, the State tree and search use them. The record
-  JSON tab, the records download, JSON exports and MCP stay on the masked OTLP
+  JSON tab, the records download, JSON exports and MCP stay on the safe captured
   attributes.
 - `connection.localValues` is a writable atom (`boolean | 'all'`) for a
   settings switch. Register a boolean atom created in `ADMIN_FRAME` with

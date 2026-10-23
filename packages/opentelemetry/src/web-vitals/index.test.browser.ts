@@ -1,16 +1,16 @@
-import { reatomOpentelemetry } from '../reatomOpentelemetry.ts'
 import { expect, test, vi } from 'vitest'
 
-import { browserCaptureOf, installBrowserCapture } from '../browserCapture.ts'
 import type { BrowserCapture } from '../browserCapture.ts'
+import { browserCaptureOf, installBrowserCapture } from '../browserCapture.ts'
 import type { ReatomOpentelemetry } from '../reatomOpentelemetry.ts'
+import { reatomTestTelemetry } from '../test-helpers.ts'
 import { withWebVitals } from './index.ts'
 
 const applyVitals = (otel: ReatomOpentelemetry) =>
   otel.extend(withWebVitals()).webVitals
 
 test('Chromium official web-vitals reports real buffered document TTFB without attribution payloads', async () => {
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'web-vitals-observer-spy',
     endpoint: null,
     skipGlobalExtension: true,

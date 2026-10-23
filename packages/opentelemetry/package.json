@@ -50,6 +50,11 @@
       "types": "./dist/attributes/index.d.ts",
       "require": "./dist/attributes/index.cjs",
       "default": "./dist/attributes/index.js"
+    },
+    "./otlp": {
+      "types": "./dist/otlp/index.d.ts",
+      "require": "./dist/otlp/index.cjs",
+      "default": "./dist/otlp/index.js"
     }
   },
   "main": "dist/index.cjs",
@@ -82,7 +87,8 @@
       "src/browser-console/index.ts",
       "src/web-vitals/index.ts",
       "src/browser-performance/index.ts",
-      "src/attributes/index.ts"
+      "src/attributes/index.ts",
+      "src/otlp/index.ts"
     ],
     "format": [
       "esm",

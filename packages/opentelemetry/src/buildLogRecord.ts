@@ -19,6 +19,7 @@ const msToNano = (ms: number): string => {
 
 export interface LogRecordInput {
   severityNumber?: number
+  values?: import('./records.ts').CapturedValues
   eventName: string
   traceId: TraceId
   spanId: SpanId

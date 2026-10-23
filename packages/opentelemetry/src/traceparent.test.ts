@@ -1,8 +1,11 @@
 import { action, bind, context, wrap } from '@reatom/core'
 import { expect, test } from 'vitest'
 
-import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
-import { HEX_SPAN_ID, HEX_TRACE_ID } from './test-helpers.ts'
+import {
+  HEX_SPAN_ID,
+  HEX_TRACE_ID,
+  reatomTestTelemetry,
+} from './test-helpers.ts'
 
 const W3C_TRACEPARENT = /^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$/
 const SAMPLED_PARENT = '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01'
@@ -10,7 +13,7 @@ const nativeFetch = globalThis.fetch
 
 type TraceContext = { traceId: string; spanId: string }
 
-type V2Otel = ReturnType<typeof reatomOpentelemetry> & {
+type V2Otel = ReturnType<typeof reatomTestTelemetry> & {
   traceVar: { set: (context: TraceContext) => void }
   createTrace: (options?: { name?: string }) => TraceContext
   traceparent: () => string | undefined
@@ -19,7 +22,7 @@ type V2Otel = ReturnType<typeof reatomOpentelemetry> & {
   ) => TraceContext | undefined
 }
 
-type FactoryInput = Parameters<typeof reatomOpentelemetry>[0] & {
+type FactoryInput = Parameters<typeof reatomTestTelemetry>[0] & {
   name?: string
   endpoint?: string | null
 }
@@ -31,7 +34,7 @@ const partsOf = (header: string) => {
 
 const start = (extra: Partial<FactoryInput> = {}) => {
   const run = context.start(() => bind(<T>(callback: () => T) => callback()))
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 't018-traceparent',
     endpoint: null,
     serviceName: 't018-traceparent',
@@ -42,7 +45,7 @@ const start = (extra: Partial<FactoryInput> = {}) => {
     retry: { maxRetries: 0 },
     batchInterval: 100_000,
     ...extra,
-  } as Parameters<typeof reatomOpentelemetry>[0]) as V2Otel
+  } as Parameters<typeof reatomTestTelemetry>[0]) as V2Otel
   return { run, otel }
 }
 

@@ -28,14 +28,8 @@ const CIRCULAR: OtlpAnyValue = { stringValue: '[Circular]' }
 const INT64_MAX = (1n << 63n) - 1n //  9_223_372_036_854_775_807n
 const INT64_MIN = -(1n << 63n) //     -9_223_372_036_854_775_808n
 
-/** Protobuf JSON spelling shared by capture and doubleValue encoding. */
-export const nonFiniteString = (
-  value: number,
-): 'NaN' | 'Infinity' | '-Infinity' | undefined => {
-  if (Number.isFinite(value)) return undefined
-  if (Number.isNaN(value)) return 'NaN'
-  return value > 0 ? 'Infinity' : '-Infinity'
-}
+export { nonFiniteString } from './nonFiniteString.ts'
+import { nonFiniteString } from './nonFiniteString.ts'
 
 // bytes_value uses standard protobuf JSON base64. OTLP hex is only for ids.
 // https://opentelemetry.io/docs/specs/otlp/#json-protobuf-encoding

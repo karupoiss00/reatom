@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+
 import { expect, test } from 'vitest'
 
 type SizeLimitEntry = {
@@ -41,8 +42,7 @@ test('F-17 / WA-8: combined tracer+analytics measurement has no ignored tracer c
     'dist/web-analytics/index.js',
   ])
   expect(combined!.import).toEqual({
-    './dist/index.js':
-      '{ reatomOpentelemetry, otlpTransport, checkSensitiveNames }',
+    './dist/index.js': '{ reatomOpentelemetry, checkSensitiveNames }',
     './dist/web-analytics/index.js': '{ withWebAnalytics }',
   })
 })

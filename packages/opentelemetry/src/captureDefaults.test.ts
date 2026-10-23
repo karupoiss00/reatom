@@ -1,16 +1,19 @@
 import { action, bind, context } from '@reatom/core'
 import { expect, test } from 'vitest'
 
-import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
 import { resourceAttributesVar } from './resourceAttributesVar.ts'
-import { parseLogRecords, parseSpans } from './test-helpers.ts'
+import {
+  parseLogRecords,
+  parseSpans,
+  reatomTestTelemetry,
+} from './test-helpers.ts'
 import type { OtlpAnyValue, OtlpAttrValue } from './toOtlpValue.ts'
 
 const setup = (traced: boolean, captureValues?: false) => {
   const bodies: string[] = []
   const run = context.start(() => bind(<T>(callback: () => T) => callback()))
   const otel = traced
-    ? reatomOpentelemetry({
+    ? reatomTestTelemetry({
         name: 'captureDefaults',
         endpoint: 'https://collector.invalid',
         serviceName: 'capture-defaults',
@@ -225,7 +228,7 @@ for (const source of ['factory', 'ambient'] as const) {
       const run = context.start(() =>
         bind(<T>(callback: () => T) => callback()),
       )
-      const otel = reatomOpentelemetry({
+      const otel = reatomTestTelemetry({
         name: 'captureDefaults',
         endpoint: 'https://collector.invalid',
         serviceName: 'resource-snapshot',
@@ -250,7 +253,7 @@ for (const source of ['factory', 'ambient'] as const) {
         ).toBe(7)
         if (source === 'ambient') mutate()
         expect(bodies).toHaveLength(0)
-        expect(otel.stats().queued).toBe(1)
+        expect(otel.otlp.stats().queued).toBe(1)
         await otel.flush()
         expect(bodies.flatMap(parseSpans).map((span) => span.name)).toEqual([
           'capture-default.resource',

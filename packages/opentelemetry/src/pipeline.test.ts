@@ -1,8 +1,9 @@
 import { action, context, EXTENSIONS } from '@reatom/core'
 import { expect, test, vi } from 'vitest'
 
-import type { ReatomOpentelemetry } from './reatomOpentelemetry.ts'
+import { withOTLP } from './otlp/index.ts'
 import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
+import { reatomTestTelemetry } from './test-helpers.ts'
 import { installDomStubs, parseSpans } from './test-helpers.ts'
 
 test('capacity includes in-flight records and export is single-flight', async () => {
@@ -10,7 +11,7 @@ test('capacity includes in-flight records and export is single-flight', async ()
   const fetch = vi.fn(
     () => new Promise<Response>((resolve) => pending.push(resolve)),
   )
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'pipeline',
     endpoint: 'http://collector.invalid',
     serviceName: 'test',
@@ -23,7 +24,7 @@ test('capacity includes in-flight records and export is single-flight', async ()
     context.start(() => {
       for (let i = 0; i < 12; i++) expect(work()).toBe(42)
     })
-    expect(otel.stats()).toMatchObject({
+    expect(otel.otlp.stats()).toMatchObject({
       inFlight: 1,
       queued: 1,
       droppedByReason: { capacity: 10 },
@@ -37,25 +38,46 @@ test('capacity includes in-flight records and export is single-flight', async ()
   }
 })
 
-// The full validation matrix lives in queueOptions.test.ts; here one
-// representative case proves invalid options reject BEFORE the global
-// extension is installed.
-test('invalid queue options are rejected before installing instrumentation', () => {
+// Validate the extension against an already constructed capture instance.
+test('invalid OTLP options leave capture usable and allow a valid exporter attachment', async () => {
   const before = [...EXTENSIONS]
-  let otel: ReatomOpentelemetry | undefined
+  const otel = reatomOpentelemetry({
+    name: 'pipeline-validation',
+    serviceName: 'pipeline',
+    skipGlobalExtension: true,
+  })
   try {
-    expect(() => {
-      otel = reatomOpentelemetry({
-        name: 'pipeline',
-        endpoint: 'http://collector.invalid',
-        serviceName: 'test',
-        maxQueueSize: 0,
-      })
-    }).toThrow(RangeError)
+    expect(() =>
+      otel.extend(
+        withOTLP({ endpoint: 'https://collector.invalid', maxQueueSize: 0 }),
+      ),
+    ).toThrow(RangeError)
     expect(EXTENSIONS).toEqual(before)
+    expect('otlp' in otel).toBe(false)
+    otel.log('capture.after-invalid-exporter')
+    expect(
+      otel
+        .records()
+        .some(
+          (record) =>
+            record.type === 'log' &&
+            record.eventName === 'capture.after-invalid-exporter',
+        ),
+    ).toBe(true)
+    const ready = otel.extend(
+      withOTLP({
+        endpoint: null,
+        transports: [
+          async (batch) => ({ accepted: batch.itemCount, rejected: 0 }),
+        ],
+      }),
+    )
+    await ready.flush()
+    expect(ready.otlp.stats().active).toBe(0)
   } finally {
-    otel?.dispose()
+    otel.dispose()
   }
+  expect(EXTENSIONS).toEqual(before)
 })
 
 const deferred = <T>() => {
@@ -92,7 +114,7 @@ test('flush wait deadlines are independent of each other and each batch deadline
   const requests: Array<
     ReturnType<typeof deferred<Response>> & { signal: AbortSignal }
   > = []
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'pipeline',
     ...base,
     fetch: async (_url, init) => {
@@ -126,7 +148,7 @@ test('flush wait deadlines are independent of each other and each batch deadline
     expect(aDone).toBe(true)
     expect(bDone).toBe(false)
     expect(requests[1]!.signal.aborted).toBe(false)
-    expect(otel.stats()).toMatchObject({
+    expect(otel.otlp.stats()).toMatchObject({
       exported: 1,
       inFlight: 1,
       dropped: 0,
@@ -137,7 +159,7 @@ test('flush wait deadlines are independent of each other and each batch deadline
     await vi.advanceTimersByTimeAsync(1)
     await b
     expect(requests[1]!.signal.aborted).toBe(true)
-    expect(otel.stats()).toMatchObject({
+    expect(otel.otlp.stats()).toMatchObject({
       inFlight: 0,
       exported: 1,
       dropped: 1,
@@ -155,7 +177,7 @@ test('background exports have a batch deadline without a flush caller', async ()
   vi.useFakeTimers()
   const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
   let signal!: AbortSignal
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'pipeline',
     ...base,
     maxBatchSize: 10,
@@ -177,7 +199,7 @@ test('background exports have a batch deadline without a flush caller', async ()
     expect(signal.aborted).toBe(false)
     await vi.advanceTimersByTimeAsync(1)
     expect(signal.aborted).toBe(true)
-    expect(otel.stats()).toMatchObject({
+    expect(otel.otlp.stats()).toMatchObject({
       inFlight: 0,
       droppedByReason: { timeout: 1 },
       flushTimeouts: 0,
@@ -210,7 +232,7 @@ test.each([400, 503])(
         events.push('next-fetch')
         return new Response(null)
       })
-    const otel = reatomOpentelemetry({
+    const otel = reatomTestTelemetry({
       name: 'pipeline',
       ...base,
       fetch,
@@ -226,7 +248,7 @@ test.each([400, 503])(
       expect(events).toEqual(['cancel-start'])
       expect(fetch).toHaveBeenCalledTimes(1)
       expect(done).toBe(false)
-      expect(otel.stats()).toMatchObject({
+      expect(otel.otlp.stats()).toMatchObject({
         inFlight: 1,
         exported: 0,
         dropped: 0,
@@ -239,7 +261,7 @@ test.each([400, 503])(
           ? ['cancel-start', 'cancel-settled', 'next-fetch']
           : ['cancel-start', 'cancel-settled'],
       )
-      expect(otel.stats()).toMatchObject({
+      expect(otel.otlp.stats()).toMatchObject({
         inFlight: 0,
         exported: status === 503 ? 1 : 0,
         dropped: status === 400 ? 1 : 0,
@@ -263,7 +285,7 @@ test('a hanging success body is not treated as empty success after timeout', asy
     },
   })
   const fetch = vi.fn(async () => new Response(stream))
-  const otel = reatomOpentelemetry({ ...base, fetch })
+  const otel = reatomTestTelemetry({ ...base, fetch })
   try {
     emit()
     const flush = otel.flush()
@@ -271,7 +293,7 @@ test('a hanging success body is not treated as empty success after timeout', asy
     await flush
     emit()
     expect(fetch).toHaveBeenCalledTimes(1)
-    expect(otel.stats()).toMatchObject({
+    expect(otel.otlp.stats()).toMatchObject({
       inFlight: 1,
       queued: 1,
       exported: 0,
@@ -279,14 +301,14 @@ test('a hanging success body is not treated as empty success after timeout', asy
       transportQuarantined: true,
     })
     otel.dispose()
-    expect(otel.stats()).toMatchObject({
+    expect(otel.otlp.stats()).toMatchObject({
       inFlight: 1,
       queued: 0,
       droppedByReason: { disposed: 1 },
     })
     body.close()
     await vi.advanceTimersByTimeAsync(0)
-    expect(otel.stats()).toMatchObject({
+    expect(otel.otlp.stats()).toMatchObject({
       inFlight: 0,
       exported: 0,
       droppedByReason: { timeout: 1, disposed: 1 },
@@ -306,7 +328,7 @@ test('cleanup ignoring abort holds the lease until late settlement', async () =>
   const cleanup = deferred<void>()
   const body = new ReadableStream({ cancel: () => cleanup.promise })
   const fetch = vi.fn(async () => new Response(body, { status: 503 }))
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'pipeline',
     ...base,
     fetch,
@@ -318,7 +340,7 @@ test('cleanup ignoring abort holds the lease until late settlement', async () =>
     await vi.advanceTimersByTimeAsync(30_001)
     await flush
     expect(fetch).toHaveBeenCalledTimes(1)
-    expect(otel.stats()).toMatchObject({
+    expect(otel.otlp.stats()).toMatchObject({
       inFlight: 1,
       dropped: 0,
       transportQuarantined: true,
@@ -326,7 +348,7 @@ test('cleanup ignoring abort holds the lease until late settlement', async () =>
     cleanup.resolve()
     await vi.advanceTimersByTimeAsync(0)
     expect(fetch).toHaveBeenCalledTimes(1)
-    expect(otel.stats()).toMatchObject({
+    expect(otel.otlp.stats()).toMatchObject({
       inFlight: 0,
       exported: 0,
       droppedByReason: { timeout: 1 },
@@ -349,7 +371,7 @@ test('Retry-After beyond the batch budget drops as timeout without early retry',
         headers: { 'Retry-After': '60' },
       }),
   )
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'pipeline',
     ...base,
     fetch,
@@ -359,7 +381,7 @@ test('Retry-After beyond the batch budget drops as timeout without early retry',
     emit()
     await otel.flush()
     expect(fetch).toHaveBeenCalledTimes(1)
-    expect(otel.stats()).toMatchObject({
+    expect(otel.otlp.stats()).toMatchObject({
       inFlight: 0,
       exported: 0,
       droppedByReason: { timeout: 1 },
@@ -372,11 +394,12 @@ test('Retry-After beyond the batch budget drops as timeout without early retry',
 
 test('admission precedes traversal and long application promises hold bounded capacity', async () => {
   const payloads: unknown[] = []
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'pipeline',
     ...base,
     captureValues: {},
     maxQueueSize: 1,
+    maxActive: 2,
     fetch: async (_url, init) => {
       payloads.push(JSON.parse(init!.body as string))
       return new Response(null)
@@ -408,7 +431,8 @@ test('admission precedes traversal and long application promises hold bounded ca
       expect(read()).toBe(value)
     })
     expect(traversals).toBe(0)
-    expect(otel.stats()).toMatchObject({
+    expect(otel.stats().droppedByReason.capacity ?? 0).toBe(0)
+    expect(otel.otlp.stats()).toMatchObject({
       active: 1,
       queued: 0,
       inFlight: 0,
@@ -419,7 +443,7 @@ test('admission precedes traversal and long application promises hold bounded ca
     otel.dispose()
     pending.resolve(7)
     expect(await pending.promise).toBe(7)
-    expect(otel.stats()).toMatchObject({
+    expect(otel.otlp.stats()).toMatchObject({
       active: 0,
       droppedByReason: { disposed: 1, capacity: 1 },
     })
@@ -430,7 +454,7 @@ test('admission precedes traversal and long application promises hold bounded ca
 })
 
 test('failed observation releases its reservation and subsequent work still exports', async () => {
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'pipeline',
     ...base,
     maxQueueSize: 1,
@@ -441,7 +465,7 @@ test('failed observation releases its reservation and subsequent work still expo
   const bad = action(() => proxy, 'bad')
   try {
     context.start(() => expect(bad() === proxy).toBe(true))
-    expect(otel.stats()).toMatchObject({
+    expect(otel.otlp.stats()).toMatchObject({
       active: 0,
       queued: 0,
       inFlight: 0,
@@ -449,7 +473,7 @@ test('failed observation releases its reservation and subsequent work still expo
     })
     emit()
     await otel.flush()
-    expect(otel.stats()).toMatchObject({ exported: 1, dropped: 1 })
+    expect(otel.otlp.stats()).toMatchObject({ exported: 1, dropped: 1 })
   } finally {
     otel.dispose()
   }
@@ -465,7 +489,7 @@ test.each(['accepted', 'refused', 'throw'] as const)(
       return outcome === 'accepted'
     })
     const fetch = vi.fn(async () => new Response(null))
-    const otel = reatomOpentelemetry({
+    const otel = reatomTestTelemetry({
       name: 'pipeline',
       ...base,
       maxBatchSize: 10,
@@ -491,7 +515,7 @@ test.each(['accepted', 'refused', 'throw'] as const)(
       expect(blob.size).toBeLessThanOrEqual(60 * 1024)
       const spans = parseSpans(await blob.text())
       expect(spans.map((span) => span.name)).toEqual(names.slice(1))
-      expect(otel.stats()).toMatchObject({
+      expect(otel.otlp.stats()).toMatchObject({
         queued: 0,
         inFlight: 0,
         exported: 0,
@@ -521,7 +545,7 @@ test('unload does not steal a normal export slot or count unsent records as lost
     .mockReturnValueOnce(pending.promise)
     .mockResolvedValue(new Response(null))
   const sendBeacon = vi.fn(() => true)
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'pipeline',
     ...base,
     fetch,
@@ -532,12 +556,16 @@ test('unload does not steal a normal export slot or count unsent records as lost
     emit(2)
     windowListeners.get('pagehide')!()
     expect(sendBeacon).not.toHaveBeenCalled()
-    expect(otel.stats()).toMatchObject({ queued: 1, inFlight: 1, dropped: 0 })
+    expect(otel.otlp.stats()).toMatchObject({
+      queued: 1,
+      inFlight: 1,
+      dropped: 0,
+    })
     const flush = otel.flush()
     pending.resolve(new Response(null))
     await flush
     expect(fetch).toHaveBeenCalledTimes(2)
-    expect(otel.stats()).toMatchObject({ exported: 2, dropped: 0 })
+    expect(otel.otlp.stats()).toMatchObject({ exported: 2, dropped: 0 })
   } finally {
     pending.resolve(new Response(null))
     otel.dispose()
@@ -546,7 +574,7 @@ test('unload does not steal a normal export slot or count unsent records as lost
 })
 
 test('an ID-generation failure releases admission before the application continues', async () => {
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'pipeline',
     ...base,
     maxQueueSize: 1,
@@ -558,7 +586,7 @@ test('an ID-generation failure releases admission before the application continu
   })
   try {
     context.start(() => expect(work()).toBe(42))
-    expect(otel.stats()).toMatchObject({
+    expect(otel.otlp.stats()).toMatchObject({
       active: 0,
       queued: 0,
       inFlight: 0,
@@ -567,7 +595,7 @@ test('an ID-generation failure releases admission before the application continu
     random.mockRestore()
     context.start(() => expect(work()).toBe(42))
     await otel.flush()
-    expect(otel.stats()).toMatchObject({ exported: 1, dropped: 1 })
+    expect(otel.otlp.stats()).toMatchObject({ exported: 1, dropped: 1 })
   } finally {
     random.mockRestore()
     otel.dispose()

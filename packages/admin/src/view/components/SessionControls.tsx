@@ -1,3 +1,5 @@
+import { stringifyJson } from '../../serialize'
+
 import { atom } from '@reatom/core'
 
 import type { Admin } from '../../index'
@@ -38,7 +40,7 @@ const menuControlButton = `
 `
 
 function downloadJson(filename: string, data: unknown): void {
-  const serialized = JSON.stringify(data, null, 2)
+  const serialized = stringifyJson(data, 2)!
   const blob = new Blob([serialized], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')

@@ -217,12 +217,7 @@ test('includes links when provided', () => {
       {
         traceId: TRACE_ID,
         spanId: PARENT_SPAN_ID,
-        attributes: [
-          {
-            key: 'reatom.link.reason',
-            value: { stringValue: 'computed.dependency' },
-          },
-        ],
+        attributes: { 'reatom.link.reason': 'computed.dependency' },
       },
     ],
   })

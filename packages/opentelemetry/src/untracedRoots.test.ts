@@ -1,27 +1,17 @@
 import { action, atom, computed, context, log, top } from '@reatom/core'
 import { expect, test } from 'vitest'
 
-import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
+import { reatomTestTelemetry } from './test-helpers.ts'
 import { UNTRACED_ROOTS } from './untracedRoots.ts'
 
 const settleHooks = () => Promise.resolve()
 
 const stringAttr = (record: object, key: string): string | undefined => {
-  if (!('attributes' in record) || !Array.isArray(record.attributes)) return
-  for (const entry of record.attributes) {
-    if (!entry || typeof entry !== 'object' || !('key' in entry)) continue
-    if (entry.key !== key) continue
-    const value = 'value' in entry ? entry.value : undefined
-    if (
-      value &&
-      typeof value === 'object' &&
-      'stringValue' in value &&
-      typeof value.stringValue === 'string'
-    ) {
-      return value.stringValue
-    }
-  }
-  return
+  const value =
+    'attributes' in record
+      ? (record.attributes as Record<string, unknown>)[key]
+      : undefined
+  return typeof value === 'string' ? value : undefined
 }
 
 const spanNames = (records: readonly unknown[]): string[] => {
@@ -88,7 +78,7 @@ test('UNTRACED_ROOTS is the global registration symbol', () => {
 })
 
 test('an untraced root records nothing and a normal root still records', async () => {
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: `untraced-${Math.random().toString(16).slice(2)}`,
     endpoint: null,
     serviceName: 'untraced',
@@ -124,7 +114,7 @@ test('an untraced root records nothing and a normal root still records', async (
     await settleHooks()
 
     expect(otel.records()).toEqual([])
-    expect(otel.stats()).toMatchObject({
+    expect(otel.otlp.stats()).toMatchObject({
       queued: 0,
       exported: 0,
       dropped: 0,

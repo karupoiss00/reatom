@@ -1,8 +1,7 @@
 import { action, context } from '@reatom/core'
 import { expect, test, vi } from 'vitest'
 
-import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
-import { parseSpans } from './test-helpers.ts'
+import { parseSpans, reatomTestTelemetry } from './test-helpers.ts'
 import { availableUnloadBytes, reserveUnloadBytes } from './unloadBudget.ts'
 
 const LIMIT = 60 * 1024
@@ -74,7 +73,7 @@ test('keepalive selection includes the UTF-8 envelope and preserves mixed partia
     }
     return new Response('{}')
   })
-  const otel = reatomOpentelemetry({ ...base, fetch })
+  const otel = reatomTestTelemetry({ ...base, fetch })
   try {
     emit('older', 2, 4900)
     const kept = emit('newer', 8, 2000)
@@ -84,7 +83,7 @@ test('keepalive selection includes the UTF-8 envelope and preserves mixed partia
     expect(requests[0]?.keepalive).toBe(true)
     expect(bytes(bodies[0]!)).toBeLessThanOrEqual(LIMIT)
     expect(parseSpans(bodies[0]!).map((span) => span.name)).toEqual(kept)
-    expect(otel.stats()).toMatchObject({
+    expect(otel.otlp.stats()).toMatchObject({
       active: 0,
       queued: 0,
       inFlight: 0,
@@ -98,7 +97,7 @@ test('keepalive selection includes the UTF-8 envelope and preserves mixed partia
     expect(fetch).toHaveBeenCalledTimes(2)
     expect(requests[1]?.keepalive).toBe(false)
     expect(parseSpans(bodies[1]!).map((span) => span.name)).toEqual(ordinary)
-    expect(otel.stats()).toMatchObject({
+    expect(otel.otlp.stats()).toMatchObject({
       active: 0,
       queued: 0,
       inFlight: 0,
@@ -123,24 +122,24 @@ test('flush() stays pending until an unload-triggered keepalive fetch settles', 
         resolveFetch = resolve
       }),
   )
-  const otel = reatomOpentelemetry({ ...base, fetch })
+  const otel = reatomTestTelemetry({ ...base, fetch })
   try {
     emit('await', 1, 100)
     page.hide()
     await vi.waitFor(() => expect(fetch).toHaveBeenCalled())
-    expect(otel.stats().inFlight).toBe(1)
+    expect(otel.otlp.stats().inFlight).toBe(1)
 
     let flushSettled = false
     const flushPromise = otel.flush().then(() => {
       flushSettled = true
     })
-    await vi.waitFor(() => expect(otel.stats().queued).toBe(0))
+    await vi.waitFor(() => expect(otel.otlp.stats().queued).toBe(0))
     expect(flushSettled).toBe(false)
 
     resolveFetch(new Response('{}'))
     await flushPromise
     expect(flushSettled).toBe(true)
-    expect(otel.stats()).toMatchObject({ inFlight: 0, exported: 1 })
+    expect(otel.otlp.stats()).toMatchObject({ inFlight: 0, exported: 1 })
   } finally {
     otel.dispose()
     warn.mockRestore()
@@ -183,14 +182,14 @@ test.each(['HTTP 503', 'oversized response'] as const)(
       secondBodies.push(String(init?.body))
       return new Response('{}')
     })
-    const a = reatomOpentelemetry({
+    const a = reatomTestTelemetry({
       ...base,
       name: 'unloadBudget-a-retry',
       filter: (target) => target.name.startsWith('a.'),
       retry: { maxRetries: 1, baseDelayMs: 1, maxDelayMs: 1 },
       fetch: fetchA,
     })
-    const b = reatomOpentelemetry({
+    const b = reatomTestTelemetry({
       ...base,
       name: 'unloadBudget-b-retry',
       filter: (target) => target.name.startsWith('b.'),
@@ -207,7 +206,7 @@ test.each(['HTTP 503', 'oversized response'] as const)(
       expect(fetchA.mock.calls[0]?.[1]?.keepalive).toBe(true)
       expect(fetchA).toHaveBeenCalledTimes(1)
       expect(parseSpans(firstBodies[0]!).map((span) => span.name)).toEqual(kept)
-      expect(a.stats()).toMatchObject({
+      expect(a.otlp.stats()).toMatchObject({
         active: 0,
         queued: 0,
         inFlight: 10,
@@ -219,7 +218,7 @@ test.each(['HTTP 503', 'oversized response'] as const)(
       page.hide()
       await b.flush()
       expect(fetchB).not.toHaveBeenCalled()
-      expect(b.stats()).toMatchObject({
+      expect(b.otlp.stats()).toMatchObject({
         active: 0,
         queued: 0,
         inFlight: 0,
@@ -230,7 +229,7 @@ test.each(['HTTP 503', 'oversized response'] as const)(
       settleCancel()
       await a.flush()
       expect(fetchA).toHaveBeenCalledTimes(1)
-      expect(a.stats()).toMatchObject({
+      expect(a.otlp.stats()).toMatchObject({
         active: 0,
         queued: 0,
         inFlight: 0,
@@ -248,7 +247,7 @@ test.each(['HTTP 503', 'oversized response'] as const)(
         after,
       )
       expect(bytes(secondBodies[0]!)).toBeLessThanOrEqual(LIMIT)
-      expect(b.stats()).toMatchObject({
+      expect(b.otlp.stats()).toMatchObject({
         active: 0,
         queued: 0,
         inFlight: 0,
@@ -298,13 +297,13 @@ test.each([false, true])(
       beacons.push(body as Blob)
       return true
     })
-    const a = reatomOpentelemetry({
+    const a = reatomTestTelemetry({
       ...base,
       name: 'unloadBudget-a-beacon',
       filter: (t) => t.name.startsWith('a.'),
       fetch: fetchA,
     })
-    const b = reatomOpentelemetry({
+    const b = reatomTestTelemetry({
       ...base,
       name: 'unloadBudget-b-beacon',
       filter: (t) => t.name.startsWith('b.'),
@@ -317,13 +316,13 @@ test.each([false, true])(
       page.hide()
       await Promise.resolve()
       expect(fetchA).toHaveBeenCalledTimes(1)
-      expect(a.stats().inFlight).toBe(4)
+      expect(a.otlp.stats().inFlight).toBe(4)
       emit('b', 2)
       page.hide()
       await b.flush()
       expect(fetchB).not.toHaveBeenCalled()
       expect(sendBeacon).not.toHaveBeenCalled()
-      expect(b.stats()).toMatchObject({
+      expect(b.otlp.stats()).toMatchObject({
         dropped: 2,
         droppedByReason: { oversized: 2 },
       })
@@ -335,7 +334,7 @@ test.each([false, true])(
       const second = useBeacon ? await beacons[0]!.text() : bodies[1]!
       expect(parseSpans(second).map((s) => s.name)).toEqual(next)
       expect(bytes(second)).toBeLessThanOrEqual(LIMIT)
-      expect(b.stats()).toMatchObject({
+      expect(b.otlp.stats()).toMatchObject({
         exported: useBeacon ? 0 : 2,
         beaconAccepted: useBeacon ? 2 : 0,
         dropped: 2,
@@ -359,7 +358,7 @@ test('accepted beacon bytes survive repeated lifecycle events and adapter recrea
     return true
   })
   const fetch = vi.fn(async () => new Response(null))
-  let otel = reatomOpentelemetry({
+  let otel = reatomTestTelemetry({
     name: 'unloadBudget',
     ...base,
     useBeacon: true,
@@ -369,13 +368,13 @@ test('accepted beacon bytes survive repeated lifecycle events and adapter recrea
   try {
     emit('first', 4)
     page.hide()
-    expect(otel.stats().beaconAccepted).toBe(4)
+    expect(otel.otlp.stats().beaconAccepted).toBe(4)
     emit('second', 1)
     page.hide()
     expect(sendBeacon).toHaveBeenCalledTimes(1)
-    expect(otel.stats().droppedByReason.oversized).toBe(1)
+    expect(otel.otlp.stats().droppedByReason.oversized).toBe(1)
     otel.dispose()
-    otel = reatomOpentelemetry({ ...base, useBeacon: true, sendBeacon, fetch })
+    otel = reatomTestTelemetry({ ...base, useBeacon: true, sendBeacon, fetch })
     emit('recreated', 1)
     page.hide()
     expect(sendBeacon).toHaveBeenCalledTimes(1)
@@ -385,7 +384,7 @@ test('accepted beacon bytes survive repeated lifecycle events and adapter recrea
     expect(sent.reduce((sum, blob) => sum + blob.size, 0)).toBeLessThanOrEqual(
       LIMIT,
     )
-    expect(otel.stats()).toMatchObject({
+    expect(otel.otlp.stats()).toMatchObject({
       beaconAccepted: 1,
       exported: 0,
       dropped: 1,
@@ -405,7 +404,7 @@ test.each(['fetch', 'beacon'] as const)(
     const send = vi.fn(() =>
       transport === 'fetch' ? Promise.resolve(new Response(null)) : true,
     )
-    let otel: ReturnType<typeof reatomOpentelemetry>
+    let otel: ReturnType<typeof reatomTestTelemetry>
     const input = {
       ...base,
       useBeacon: transport === 'beacon',
@@ -420,13 +419,13 @@ test.each(['fetch', 'beacon'] as const)(
         },
       },
     )
-    otel = reatomOpentelemetry(input)
+    otel = reatomTestTelemetry(input)
     try {
       emit('dispose', 1, 1)
       page.hide()
       for (let i = 0; i < 8; i++) await Promise.resolve()
       expect(send).not.toHaveBeenCalled()
-      expect(otel.stats()).toMatchObject({
+      expect(otel.otlp.stats()).toMatchObject({
         inFlight: 0,
         exported: 0,
         beaconAccepted: 0,
@@ -444,12 +443,16 @@ test('a window without document does not start an unload transport', () => {
   vi.stubGlobal('window', view)
   vi.stubGlobal('document', undefined)
   const fetch = vi.fn(async () => new Response(null))
-  const otel = reatomOpentelemetry({ ...base, fetch })
+  const otel = reatomTestTelemetry({ ...base, fetch })
   try {
     emit('no-document', 1, 1)
     view.dispatchEvent(new Event('pagehide'))
     expect(fetch).not.toHaveBeenCalled()
-    expect(otel.stats()).toMatchObject({ queued: 1, inFlight: 0, dropped: 0 })
+    expect(otel.otlp.stats()).toMatchObject({
+      queued: 1,
+      inFlight: 0,
+      dropped: 0,
+    })
   } finally {
     otel.dispose()
     vi.unstubAllGlobals()
@@ -481,14 +484,14 @@ test.each(['export', 'timeout', 'disposed'] as const)(
       )
     })
     const fetchB = vi.fn(async () => new Response(null))
-    const a = reatomOpentelemetry({
+    const a = reatomTestTelemetry({
       ...base,
       name: 'unloadBudget-a-timeout',
       exportTimeoutMs: 30,
       filter: (t) => t.name.startsWith('a.'),
       fetch: fetchA,
     })
-    const b = reatomOpentelemetry({
+    const b = reatomTestTelemetry({
       ...base,
       name: 'unloadBudget-b-timeout',
       filter: (t) => t.name.startsWith('b.'),
@@ -502,16 +505,20 @@ test.each(['export', 'timeout', 'disposed'] as const)(
       if (reason === 'timeout') await vi.advanceTimersByTimeAsync(31)
       if (reason === 'disposed') a.dispose()
       expect(signal.aborted).toBe(reason !== 'export')
-      expect(a.stats()).toMatchObject({ inFlight: 10, dropped: 0, exported: 0 })
+      expect(a.otlp.stats()).toMatchObject({
+        inFlight: 10,
+        dropped: 0,
+        exported: 0,
+      })
       emit('b.pending', 1)
       page.hide()
       await b.flush()
       expect(fetchB).not.toHaveBeenCalled()
-      expect(b.stats().droppedByReason.oversized).toBe(1)
+      expect(b.otlp.stats().droppedByReason.oversized).toBe(1)
       finishBody(reason === 'export' ? new Error('body failed') : undefined)
       await vi.advanceTimersByTimeAsync(0)
-      expect(a.stats().inFlight).toBe(0)
-      expect(a.stats()).toMatchObject({
+      expect(a.otlp.stats().inFlight).toBe(0)
+      expect(a.otlp.stats()).toMatchObject({
         exported: 0,
         dropped: 10,
         droppedByReason: { oversized: 2, [reason]: 8 },
@@ -520,7 +527,7 @@ test.each(['export', 'timeout', 'disposed'] as const)(
       page.hide()
       await b.flush()
       expect(fetchB).toHaveBeenCalledTimes(1)
-      expect(b.stats()).toMatchObject({ exported: 1, dropped: 1 })
+      expect(b.otlp.stats()).toMatchObject({ exported: 1, dropped: 1 })
     } finally {
       a.dispose()
       b.dispose()
@@ -545,15 +552,15 @@ test.each(['false', 'throw'])(
       if (outcome === 'throw') throw new Error('beacon refused')
       return false
     })
-    const otel = reatomOpentelemetry({ ...base, useBeacon: true, sendBeacon })
+    const otel = reatomTestTelemetry({ ...base, useBeacon: true, sendBeacon })
     try {
       emit('refused', 4)
       page.hide()
-      expect(otel.stats()).toMatchObject({ dropped: 4, beaconAccepted: 0 })
+      expect(otel.otlp.stats()).toMatchObject({ dropped: 4, beaconAccepted: 0 })
       emit('accepted', 4)
       page.hide()
       expect(sendBeacon).toHaveBeenCalledTimes(2)
-      expect(otel.stats()).toMatchObject({
+      expect(otel.otlp.stats()).toMatchObject({
         dropped: 4,
         beaconAccepted: 4,
         inFlight: 0,

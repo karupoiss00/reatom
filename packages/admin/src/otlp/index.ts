@@ -72,6 +72,7 @@ export type {
   AdminOtelInstance,
   AdminOtelOptionsSnapshot,
   AdminOtelStats,
+  AdminOtelDeliveryStats,
   ConnectAdminOptions,
 } from './connect.ts'
 export { IN_PROGRESS_NAME, isInProgressRecord } from './inProgress.ts'
@@ -114,6 +115,7 @@ export type {
   OtlpTimelineUnit,
 } from './analyticsModel.ts'
 export type {
+  AdminCapturedRecord,
   AdminLocalValues,
   AdminRecord,
   AdminRecordError,

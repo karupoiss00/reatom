@@ -4,7 +4,6 @@ import type * as core from '@reatom/core'
 import { action, context } from '@reatom/core'
 import { afterEach, expect, test, vi } from 'vitest'
 
-import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
 import { resourceAttributesVar } from './resourceAttributesVar.ts'
 import {
   attrsOf,
@@ -13,6 +12,7 @@ import {
   installDomStubs,
   parsePayload,
   parseSpans,
+  reatomTestTelemetry,
 } from './test-helpers.ts'
 import type { OtlpAttrValue } from './toOtlpValue.ts'
 
@@ -22,13 +22,13 @@ afterEach(() => {
 })
 
 const setup = (
-  overrides: Partial<Parameters<typeof reatomOpentelemetry>[0]> = {},
+  overrides: Partial<Parameters<typeof reatomTestTelemetry>[0]> = {},
 ) => {
   const fetchMock = vi.fn<typeof globalThis.fetch>(
     async () => new Response('{}', { status: 200 }),
   )
-  const otel = reatomOpentelemetry({
-    name: 'reatomOpentelemetry',
+  const otel = reatomTestTelemetry({
+    name: 'reatomTestTelemetry',
     endpoint: 'https://traces.example.com',
     serviceName: 'test-svc',
     batchInterval: 50,
@@ -164,7 +164,7 @@ test('invalid resourceAttributes drops each span as observation without leaking 
 
   await otel.flush()
   expect(fetchMock).not.toHaveBeenCalled()
-  expect(otel.stats()).toMatchObject({
+  expect(otel.otlp.stats()).toMatchObject({
     active: 0,
     queued: 0,
     dropped: 2,
@@ -172,7 +172,7 @@ test('invalid resourceAttributes drops each span as observation without leaking 
   })
 })
 
-test('actions created before reatomOpentelemetry are NOT auto-instrumented', async () => {
+test('actions created before reatomTestTelemetry are NOT auto-instrumented', async () => {
   const orphan = action(() => 'orphan-result', 'orphan')
 
   const { otel, fetchMock } = setup()
@@ -301,7 +301,7 @@ test('flush() waits for its queued and in-flight snapshot through serial exports
     a()
     b()
   })
-  expect(otel.stats()).toMatchObject({ queued: 1, inFlight: 1 })
+  expect(otel.otlp.stats()).toMatchObject({ queued: 1, inFlight: 1 })
   await Promise.resolve()
   expect(fetchMock).toHaveBeenCalledTimes(1)
   let flushSettled = false
@@ -314,7 +314,11 @@ test('flush() waits for its queued and in-flight snapshot through serial exports
   expect(fetchMock).toHaveBeenCalledTimes(2)
   deferreds[1]!(new Response('{}'))
   await flush
-  expect(otel.stats()).toMatchObject({ queued: 0, inFlight: 0, exported: 2 })
+  expect(otel.otlp.stats()).toMatchObject({
+    queued: 0,
+    inFlight: 0,
+    exported: 2,
+  })
 })
 
 // iOS Safari fires `pagehide` without flipping `visibilityState` to 'hidden'
@@ -418,8 +422,8 @@ test('dispose() cancels an in-flight retry sleep, no further fetch attempts', as
   const fetchMock = vi.fn<typeof globalThis.fetch>(
     async () => new Response('boom', { status: 503 }),
   )
-  const otel = reatomOpentelemetry({
-    name: 'reatomOpentelemetry',
+  const otel = reatomTestTelemetry({
+    name: 'reatomTestTelemetry',
     endpoint: 'https://traces.example.com',
     serviceName: 'test-svc',
     batchInterval: 50,
@@ -455,8 +459,8 @@ test('dispose() does not log abort warnings', async () => {
     const fetchMock = vi.fn<typeof globalThis.fetch>(
       async () => new Response('boom', { status: 503 }),
     )
-    const otel = reatomOpentelemetry({
-      name: 'reatomOpentelemetry',
+    const otel = reatomTestTelemetry({
+      name: 'reatomTestTelemetry',
       endpoint: 'https://traces.example.com',
       serviceName: 'test-svc',
       batchInterval: 50,
@@ -494,8 +498,8 @@ test('default unload transport is keepalive fetch — sendBeacon is NOT called w
     const fetchMock = vi.fn<typeof globalThis.fetch>(
       async () => new Response('{}', { status: 200 }),
     )
-    const otel = reatomOpentelemetry({
-      name: 'reatomOpentelemetry',
+    const otel = reatomTestTelemetry({
+      name: 'reatomTestTelemetry',
       endpoint: 'https://traces.example.com',
       serviceName: 'test-svc',
       batchInterval: 50,
@@ -534,8 +538,8 @@ test('beacon delivery failure surfaces an export warning', async () => {
     const sendBeacon = vi.fn<(url: string, data: BodyInit) => boolean>(
       () => false,
     )
-    const otel = reatomOpentelemetry({
-      name: 'reatomOpentelemetry',
+    const otel = reatomTestTelemetry({
+      name: 'reatomTestTelemetry',
       endpoint: 'https://traces.example.com',
       serviceName: 'test-svc',
       batchInterval: 50,
@@ -668,8 +672,8 @@ test('cyclic resourceAttributesVar value does not hang flush (cycle sanitized by
 test('actions from another core entrypoint remain callable when installation is incompatible', async () => {
   const foreign = createRequire(import.meta.url)('@reatom/core') as typeof core
   const bodies: string[] = []
-  const otel = reatomOpentelemetry({
-    name: 'reatomOpentelemetry',
+  const otel = reatomTestTelemetry({
+    name: 'reatomTestTelemetry',
     endpoint: 'https://collector.invalid',
     serviceName: 'mixed-core',
     fetch: async (_url, init) => {
@@ -687,7 +691,7 @@ test('actions from another core entrypoint remain callable when installation is 
     expect(bodies.flatMap(parseSpans).map((span) => span.name)).toEqual([
       'mixed.local',
     ])
-    expect(otel.stats()).toMatchObject({ exported: 1, dropped: 0 })
+    expect(otel.otlp.stats()).toMatchObject({ exported: 1, dropped: 0 })
   } finally {
     otel.dispose()
   }

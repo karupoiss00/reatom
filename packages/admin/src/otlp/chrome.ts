@@ -869,19 +869,28 @@ function reatomOtlpAdminModel(options: OtlpAdminOptions) {
     selectedTraceId.set(span.traceId)
     gantt.select(span)
   }
-  const ingest = action((incoming: readonly unknown[]) => {
+  const ingestBatch = (accept: () => void) => {
     if (causalEnabled()) {
-      store.ingest(incoming)
+      accept()
       return
     }
     const selected = selectedRecord()
     const expandedInProgress = inProgress().filter((record) =>
       gantt.isExpanded(record),
     )
-    store.ingest(incoming)
+    accept()
     syncInProgress()
     adoptArrivedSpans(selected, expandedInProgress)
-  }, `${PREFIX}.ingestBatch`)
+  }
+  const ingest = action(
+    (incoming: readonly unknown[]) => ingestBatch(() => store.ingest(incoming)),
+    `${PREFIX}.ingestBatch`,
+  )
+  const ingestCaptured = action(
+    (incoming: Parameters<typeof store.ingestCaptured>[0]) =>
+      ingestBatch(() => store.ingestCaptured(incoming)),
+    `${PREFIX}.ingestCaptured`,
+  )
   const stopInProgress = effect(() => {
     if (causalEnabled()) return
     quickFiltered()
@@ -939,6 +948,7 @@ function reatomOtlpAdminModel(options: OtlpAdminOptions) {
   return {
     store,
     ingest,
+    ingestCaptured,
     replace: store.replace,
     records: store.records,
     byTrace: store.byTrace,

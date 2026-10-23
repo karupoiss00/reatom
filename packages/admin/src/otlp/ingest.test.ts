@@ -2,11 +2,13 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { action, notify, sleep, wrap } from '@reatom/core'
+import { reatomOpentelemetry } from '@reatom/opentelemetry'
 import { expect, test } from 'test'
 
 import { ADMIN_FRAME } from '../root'
 import { LOCAL_VALUES, localValuesOf, reatomOtlpStore } from './ingest.ts'
-import type { AdminRecord } from './ingest.ts'
+import type { AdminCapturedRecord, AdminRecord } from './ingest.ts'
 import { recordValues } from './values.ts'
 
 const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), 'fixtures')
@@ -658,4 +660,158 @@ test('live error and payload stay on the symbol and out of record.error', () => 
   expect(exported).not.toContain('full boom')
   expect(exported).not.toContain('secretFrame')
   expect(exported).not.toContain('visible failure')
+})
+
+test('canonical capture preserves safe values, millisecond precision, causes and separate live identity', () => {
+  const safe = { stringValue: 'this is user data, not OTLP AnyValue' }
+  const raw = { secret: true }
+  const canonical: AdminCapturedRecord = {
+    type: 'span',
+    traceId: 'trace',
+    spanId: 'span',
+    parentSpanId: 'parent',
+    scope: { name: '@reatom/opentelemetry' },
+    name: 'save',
+    startTimeMs: 1234.5678,
+    endTimeMs: 1235.6789,
+    resourceAttributes: {
+      'service.name': 'captured-service',
+      'user.id': 'captured-user',
+    },
+    attributes: {
+      'reatom.kind': 'action',
+      'reatom.name': 'save',
+      'reatom.frame.id': 'frame',
+      'reatom.cause.ids': ['cause'],
+      'reatom.payload': safe,
+    },
+    links: [
+      {
+        traceId: 'cause-trace',
+        spanId: 'cause-span',
+        attributes: {
+          'reatom.link.reason': 'computed.dependency',
+          'reatom.frame.id': 'cause',
+        },
+      },
+    ],
+    status: { code: 'error', message: 'failed' },
+  }
+  const store = reatomOtlpStore({
+    sourceId: 'live',
+    resource: {},
+    localValues: (item) => (item === canonical ? { payload: raw } : undefined),
+  })
+  store.ingestCaptured([canonical])
+  const record = store.records()[0]!
+  expect(record.start).toBe(1234.5678)
+  expect(record.end).toBe(1235.6789)
+  expect(record.attributes['reatom.payload']).toBe(safe)
+  expect(record.resource['user.id']).toBe('captured-user')
+  expect(record.causeIds).toEqual(['cause'])
+  expect(record.links).toEqual([
+    {
+      traceId: 'cause-trace',
+      spanId: 'cause-span',
+      reason: 'computed.dependency',
+      frameId: 'cause',
+    },
+  ])
+  expect(record.outcome).toBe('error')
+  expect(record.error?.message).toBe('failed')
+  expect(localValuesOf(record)?.payload).toBe(raw)
+  expect(JSON.stringify(record)).not.toContain('secret')
+  store.clear()
+  store.restoreRecords([record])
+  expect(localValuesOf(store.records()[0]!)?.payload).toBe(raw)
+})
+
+test('canonical logs keep safe body and exception reconciliation without decoding', () => {
+  const store = reatomOtlpStore({ sourceId: 'live', resource: {} })
+  const common = {
+    traceId: 'trace',
+    spanId: 'span',
+    scope: { name: 'test' },
+    resourceAttributes: {},
+  }
+  const body = { stringValue: 'ordinary object' }
+  store.ingestCaptured([
+    {
+      ...common,
+      type: 'span',
+      name: 'work',
+      startTimeMs: 1.25,
+      endTimeMs: 2.5,
+      attributes: {},
+    },
+    {
+      ...common,
+      type: 'log',
+      eventName: 'exception',
+      timeMs: 2.25,
+      body,
+      attributes: { 'exception.message': 'broken' },
+    },
+  ])
+  expect(store.records()[1]!.body).toBe(body)
+  expect(store.records()[1]!.start).toBe(2.25)
+  expect(store.records()[0]!.error?.message).toBe('broken')
+})
+
+test('automatic thrown safe values retain readable exception and joined span messages', async () => {
+  const otel = reatomOpentelemetry({
+    name: 'admin-structured-errors',
+    serviceName: 'errors',
+  })
+  try {
+    const failures = [
+      { kind: 'example', message: 'plain object message' },
+      42,
+      false,
+      new Uint8Array([1, 2, 255]),
+    ]
+    for (const [index, failure] of failures.entries()) {
+      const fail = action(() => {
+        throw failure
+      }, `fail${index}`)
+      try {
+        fail()
+      } catch {}
+    }
+    notify()
+    await wrap(sleep(0))
+    const store = reatomOtlpStore({ sourceId: 'errors', resource: {} })
+    store.ingestCaptured(otel.records())
+    for (const [index, expected] of [
+      'plain object message',
+      '42',
+      'false',
+      '[1,2,255]',
+    ].entries()) {
+      const span = store
+        .records()
+        .find(
+          (record) => record.kind === 'span' && record.name === `fail${index}`,
+        )!
+      const exception = store
+        .records()
+        .find(
+          (record) =>
+            record.eventName === 'exception' && record.spanId === span.spanId,
+        )!
+      expect(exception.error?.message).toContain(expected)
+      expect(span.error?.message).toContain(expected)
+      expect(span.outcome).toBe('error')
+    }
+    const objectLog = store
+      .records()
+      .find(
+        (record) =>
+          record.eventName === 'exception' &&
+          typeof record.attributes['exception.message'] === 'object',
+      )!
+    expect(objectLog.attributes['exception.message']).toEqual(failures[0])
+  } finally {
+    otel.dispose()
+  }
 })

@@ -1,8 +1,7 @@
 import { action, computed, context } from '@reatom/core'
 import { expect, test, vi } from 'vitest'
 
-import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
-import { parseSpans } from './test-helpers.ts'
+import { parseSpans, reatomTestTelemetry } from './test-helpers.ts'
 
 const base = {
   name: 'completionReservation',
@@ -19,7 +18,7 @@ test('suspension frees capacity; a throwing redact keeps its span and fills the 
   )
   let failingCaptures = 0
   let liveCaptures = 0
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'completionReservation',
     ...base,
     fetch: fetchMock,
@@ -52,7 +51,7 @@ test('suspension frees capacity; a throwing redact keeps its span and fills the 
       expect(suspendingCalls).toBe(1)
     })
     expect(fetchMock).not.toHaveBeenCalled()
-    expect(otel.stats()).toMatchObject({
+    expect(otel.otlp.stats()).toMatchObject({
       active: 0,
       queued: 0,
       inFlight: 0,
@@ -78,7 +77,7 @@ test('suspension frees capacity; a throwing redact keeps its span and fills the 
     })
     expect(failingCaptures).toBe(1)
     expect(liveCaptures).toBe(0)
-    expect(otel.stats().droppedByReason.observation).toBe(0)
+    expect(otel.otlp.stats().droppedByReason.observation).toBe(0)
 
     const ordinary = action(() => 'ok', 'ordinary')
     context.start(() => {
@@ -86,7 +85,7 @@ test('suspension frees capacity; a throwing redact keeps its span and fills the 
     })
     expect(liveCaptures).toBe(0)
     expect(failingCaptures).toBe(1)
-    expect(otel.stats().droppedByReason.capacity).toBeGreaterThan(0)
+    expect(otel.otlp.stats().droppedByReason.capacity).toBeGreaterThan(0)
     await otel.flush()
     const spans = fetchMock.mock.calls.flatMap((call) =>
       parseSpans(String(call[1]?.body)),
@@ -117,7 +116,7 @@ test('a 200 body whose stream errors before the deadline drops as export, with n
     responses.push(response)
     return response
   })
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'completionReservation',
     endpoint: 'http://collector.invalid',
     serviceName: 'test',
@@ -143,7 +142,7 @@ test('a 200 body whose stream errors before the deadline drops as export, with n
     bodyController.error(new Error('stream failed'))
     await flush
 
-    const stats = otel.stats()
+    const stats = otel.otlp.stats()
     expect(stats.exported).toBe(0)
     expect(stats.droppedByReason.export).toBe(1)
     expect(stats.inFlight).toBe(0)

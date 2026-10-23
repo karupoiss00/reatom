@@ -1,9 +1,8 @@
 import { action, atom, bind, context } from '@reatom/core'
 import { expect, test } from 'vitest'
 
-import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
 import { resolveSampling, TraceSampler } from './sampling.ts'
-import { parseSpans } from './test-helpers.ts'
+import { parseSpans, reatomTestTelemetry } from './test-helpers.ts'
 
 const SAMPLED_PARENT = '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01'
 const SAMPLED_RANDOM_PARENT =
@@ -14,7 +13,7 @@ const INCOMING_TRACE_ID = '4bf92f3577b34da6a3ce929d0e0e4736'
 
 type TraceContext = { traceId: string; spanId: string }
 
-type V2Otel = ReturnType<typeof reatomOpentelemetry> & {
+type V2Otel = ReturnType<typeof reatomTestTelemetry> & {
   traceVar: { set: (context: TraceContext) => void }
   traceparent: () => string | undefined
   parseTraceparent: (
@@ -22,7 +21,7 @@ type V2Otel = ReturnType<typeof reatomOpentelemetry> & {
   ) => TraceContext | undefined
 }
 
-type FactoryInput = Parameters<typeof reatomOpentelemetry>[0] & {
+type FactoryInput = Parameters<typeof reatomTestTelemetry>[0] & {
   name?: string
   sampling?: {
     ratio?: number
@@ -35,7 +34,7 @@ type FactoryInput = Parameters<typeof reatomOpentelemetry>[0] & {
 const start = (extra: Partial<FactoryInput> = {}) => {
   const bodies: string[] = []
   const run = context.start(() => bind(<T>(callback: () => T) => callback()))
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 't018-sampling',
     endpoint: 'https://collector.invalid',
     serviceName: 't018-sampling',
@@ -47,7 +46,7 @@ const start = (extra: Partial<FactoryInput> = {}) => {
       return new Response(null)
     },
     ...extra,
-  } as Parameters<typeof reatomOpentelemetry>[0]) as V2Otel
+  } as Parameters<typeof reatomTestTelemetry>[0]) as V2Otel
   const spans = () => bodies.flatMap(parseSpans)
   return { run, otel, spans, bodies }
 }
@@ -108,7 +107,7 @@ test('an unsampled parent does not independently keep children even when the hea
     expect(outgoing?.slice(3, 35)).toBe(INCOMING_TRACE_ID)
     await otel.flush()
     expect(spans().map((span) => span.name)).toEqual([])
-    expect(otel.stats().active).toBe(0)
+    expect(otel.otlp.stats().active).toBe(0)
   } finally {
     otel.dispose()
   }
@@ -142,7 +141,7 @@ test('a remote parent with flags 03 is sampled (flags & 0x01) and outgoing flags
     expect(new Set(spans().map((span) => span.traceId))).toEqual(
       new Set([INCOMING_TRACE_ID]),
     )
-    expect(otel.stats().active).toBe(0)
+    expect(otel.otlp.stats().active).toBe(0)
   } finally {
     otel.dispose()
   }
@@ -160,7 +159,7 @@ test('default sampler is parent-based: ratio 1 is not a bare TraceIdRatioBased t
     expect(run(parent)).toBe('child')
     await otel.flush()
     expect(spans()).toEqual([])
-    expect(otel.stats().active).toBe(0)
+    expect(otel.otlp.stats().active).toBe(0)
   } finally {
     otel.dispose()
   }

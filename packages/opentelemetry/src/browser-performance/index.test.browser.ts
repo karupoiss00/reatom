@@ -1,10 +1,10 @@
 import { context } from '@reatom/core'
 import { expect, inject, test, vi } from 'vitest'
-import { reatomOpentelemetry } from '../reatomOpentelemetry.ts'
 
-import { browserCaptureOf, installBrowserCapture } from '../browserCapture.ts'
 import type { BrowserCapture } from '../browserCapture.ts'
+import { browserCaptureOf, installBrowserCapture } from '../browserCapture.ts'
 import type { ReatomOpentelemetry } from '../reatomOpentelemetry.ts'
+import { reatomTestTelemetry } from '../test-helpers.ts'
 import { withBrowserPerformance } from './index.ts'
 
 const applyPerformance = (
@@ -13,7 +13,7 @@ const applyPerformance = (
 ) => otel.extend(withBrowserPerformance(options)).browserPerformance
 
 test('Chromium native observer delivers buffered navigation and actual resource timing, then disconnects', async () => {
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'browser-performance-observer-spy',
     endpoint: null,
     skipGlobalExtension: true,
@@ -74,7 +74,7 @@ test('Chromium excludes async custom transport resources without the network con
   })
   observer.observe({ type: 'resource', buffered: true })
   const sent = vi.fn()
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'performance-custom-async-transport',
     endpoint: null,
     serviceName: 'performance-test',
@@ -128,7 +128,7 @@ test('Chromium excludes async custom transport resources without the network con
     await new Promise((resolve) => setTimeout(resolve, 100))
     expect(measurements()).toHaveLength(1)
     expect(sent).toHaveBeenCalledTimes(sendsAfterApp)
-    expect(otel.stats().queued).toBe(0)
+    expect(otel.otlp.stats().queued).toBe(0)
   } finally {
     collector.setFalse()
     observer.disconnect()

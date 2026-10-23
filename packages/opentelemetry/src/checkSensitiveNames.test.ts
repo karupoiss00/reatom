@@ -3,8 +3,7 @@ import { afterEach, expect, test, vi } from 'vitest'
 
 import { checkSensitiveNames } from './checkSensitiveNames.ts'
 import * as pkg from './index.ts'
-import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
-import { withWarnSpy } from './test-helpers.ts'
+import { reatomTestTelemetry, withWarnSpy } from './test-helpers.ts'
 
 const cleanups: Array<() => void> = []
 
@@ -14,9 +13,9 @@ afterEach(() => {
 })
 
 const start = (
-  overrides: Partial<Parameters<typeof reatomOpentelemetry>[0]> = {},
+  overrides: Partial<Parameters<typeof reatomTestTelemetry>[0]> = {},
 ) => {
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: `sensitive-${Math.random().toString(16).slice(2)}`,
     endpoint: null,
     serviceName: 'sensitive-names',

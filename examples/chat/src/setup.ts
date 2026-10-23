@@ -7,20 +7,22 @@ import {
   type ReatomOpentelemetry,
 } from '@reatom/opentelemetry'
 import { withGDPR } from '@reatom/opentelemetry/gdpr'
+import { withOTLP } from '@reatom/opentelemetry/otlp'
 import { withWebAnalytics } from '@reatom/opentelemetry/web-analytics'
 
 const collectorEndpoint = import.meta.env.VITE_OTEL_ENDPOINT || null
 
-export const otel = reatomOpentelemetry({
+const telemetry = reatomOpentelemetry({
   name: 'chat',
-  endpoint: collectorEndpoint,
   serviceName: 'chat',
   environment: import.meta.env.MODE,
   keepRecords: import.meta.env.DEV,
-}).extend(
-  withGDPR({ name: 'consent', categories: { analytics: false } }),
-  withWebAnalytics(),
-)
+}).extend(withGDPR({ name: 'consent', categories: { analytics: false } }))
+
+if (collectorEndpoint)
+  telemetry.extend(withOTLP({ endpoint: collectorEndpoint }))
+
+export const otel = telemetry.extend(withWebAnalytics())
 
 export const consent = otel.gdpr
 export const analytics = otel.analytics

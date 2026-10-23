@@ -1,7 +1,7 @@
 # @reatom/opentelemetry
 
-Connect Reatom actions, state updates and application logs to an OpenTelemetry
-backend. Traces follow Reatom's existing async context through `wrap`; cause ids
+Capture Reatom actions, state updates and application logs locally, then add
+OpenTelemetry export when you need a backend. Traces follow Reatom's existing async context through `wrap`; cause ids
 connect the exported activity to local inspection in [Reatom admin](../admin/README.md).
 Add consented page/session analytics or browser diagnostics through explicit,
 independent imports.
@@ -27,7 +27,6 @@ import { reatomOpentelemetry } from '@reatom/opentelemetry'
 
 export const otel = reatomOpentelemetry({
   name: 'shop',
-  endpoint: null,
   serviceName: 'shop-web',
   serviceVersion: '1.0.0',
   environment: 'production',
@@ -48,17 +47,41 @@ become `reatom.log`. Use `await wrap(promise)` inside async Reatom work and
 `wrap(callback)` for platform callbacks. For a larger application, initialize the
 instance, then `await wrap(import('./app.ts'))` so imported models are observed.
 
-The first example keeps records locally for immediate Admin/debugging use. To
-export, set `endpoint` to your receiver, e.g. `https://shop.example/otel`.
+The root SDK is **local-only by default**. Only `name` and `serviceName` are
+required; no endpoint or delivery worker is installed. `records()` exposes safe
+canonical records for Admin/debugging, with plain attribute maps, millisecond
+timestamps and string span kinds/statuses. Automatic bounded value snapshots
+remain typed; OTLP wire formatting happens only in the exporter.
 
-`name`, `endpoint` and `serviceName` are required. The endpoint must be absolute
-HTTP(S); native export appends `/v1/traces` and `/v1/logs`. Configure receiver CORS
-for your origin. `endpoint: null` enables local inspection; explicit custom
-transports can still export. `keepRecords: true` keeps local records beside an
-endpoint. Distinct instance names have separate runtimes and trace variables; the same
-name replaces and disposes its previous instance, including extensions. One
-instance owns shared queues across Reatom roots. Isolated roots have local record
-views, while the default/Admin view aggregates the captured records.
+Add an exporter explicitly when needed:
+
+```ts
+import { reatomOpentelemetry } from '@reatom/opentelemetry'
+import { withOTLP } from '@reatom/opentelemetry/otlp'
+
+const otel = reatomOpentelemetry({
+  name: 'shop.export',
+  serviceName: 'shop-web',
+}).extend(withOTLP({ endpoint: 'https://shop.example/otel' }))
+
+otel.otlp.set((current) => ({ ...current, headers: { 'x-tenant': 'shop' } }))
+const capture = otel.stats()
+const delivery = otel.otlp.stats()
+```
+
+`withOTLP` owns destinations, batching, retry, wire encoding and unload delivery.
+The endpoint must be absolute HTTP(S); it appends `/v1/traces` and `/v1/logs`.
+Configure receiver CORS for your origin. `endpoint: null` is valid only with a
+nonempty custom transport list; it does not select a fake successful exporter.
+Local retention defaults on (`keepRecords: true`), independent of export.
+`recordLimit` bounds retained records and `maxActive` bounds unfinished capture
+operations, both 1000 by default. `otel.stats()` reports capture; use
+`otel.otlp.stats()` for delivery. See the [reference](./API.md#delivery-and-transports).
+
+Distinct instance names have separate capture runtimes and trace variables; the
+same name replaces/disposes the previous instance. One optional exporter owns
+shared delivery queues across that instance's Reatom roots. Isolated roots have
+local record views; the default/Admin view aggregates records.
 
 ## Choose the data you need
 
@@ -68,6 +91,7 @@ features you use; the root never imports these optional entries.
 
 | Import suffix          | Extension and added member                                                                                         |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `/otlp`                | `withOTLP(input)` → `otel.otlp`: optional export settings, delivery stats and transport action                     |
 | `/web-analytics`       | `withWebAnalytics(options?)` → `otel.analytics`: page views, sessions, engagement, attribution and window errors   |
 | `/gdpr`                | `withGDPR(optionsOrForm?)` → `otel.gdpr`: submitted consent form; standalone `reatomGDPR` is also exported         |
 | `/attributes`          | `withAttributes(source)` → readonly `otel.attributes`: common user/tenant/domain attributes from app state         |
@@ -78,6 +102,7 @@ features you use; the root never imports these optional entries.
 | `/faro`                | `faroTransport`, `logMeasurement`: receiver transport and log-derived measurements                                 |
 
 ```ts
+import { withOTLP } from '@reatom/opentelemetry/otlp'
 import { reatomOpentelemetry } from '@reatom/opentelemetry'
 import { withBrowserConsoleMonkeypatch } from '@reatom/opentelemetry/browser-console'
 import { withBrowserNetworkMonkeypatch } from '@reatom/opentelemetry/browser-network'
@@ -88,10 +113,12 @@ import { withWebVitals } from '@reatom/opentelemetry/web-vitals'
 
 const otel = reatomOpentelemetry({
   name: 'shop.browser',
-  endpoint: 'https://shop.example/otel',
   serviceName: 'shop-web',
 }).extend(
   withGDPR({ categories: { analytics: false } }),
+  withOTLP({
+    endpoint: 'https://shop.example/otel',
+  }),
   withWebAnalytics(),
   withBrowserNetworkMonkeypatch({
     propagateTraceparent: ['https://api.shop.example'],
@@ -137,15 +164,21 @@ requires an effective analytics grant. Apply `withGDPR` **first**, before other
 collectors or the first capture, when you need category control from startup:
 
 ```ts
+import { withOTLP } from '@reatom/opentelemetry/otlp'
 import { reatomOpentelemetry } from '@reatom/opentelemetry'
 import { withGDPR } from '@reatom/opentelemetry/gdpr'
 import { withWebAnalytics } from '@reatom/opentelemetry/web-analytics'
 
 const otel = reatomOpentelemetry({
   name: 'shop.consent',
-  endpoint: 'https://shop.example/otel',
   serviceName: 'shop-web',
-}).extend(withGDPR(), withWebAnalytics())
+}).extend(
+  withGDPR(),
+  withOTLP({
+    endpoint: 'https://shop.example/otel',
+  }),
+  withWebAnalytics(),
+)
 
 const consent = otel.gdpr
 // Render consent.fields.* and call consent.submit() when the choice is saved.
@@ -179,7 +212,6 @@ const userAttributes = computed(() => {
 }, 'auth.telemetryAttributes')
 const otel = reatomOpentelemetry({
   name: 'shop.identity',
-  endpoint: null,
   serviceName: 'shop-web',
 }).extend(withAttributes(userAttributes))
 ```
@@ -204,6 +236,7 @@ Use a receiver that speaks the Faro JSON protocol alongside an OTLP backend or
 as your only export destination:
 
 ```ts
+import { withOTLP } from '@reatom/opentelemetry/otlp'
 import { reatomOpentelemetry } from '@reatom/opentelemetry'
 import { faroTransport, logMeasurement } from '@reatom/opentelemetry/faro'
 
@@ -212,9 +245,12 @@ const otel = reatomOpentelemetry({
   serviceName: 'shop-web',
   serviceVersion: '1.0.0',
   environment: 'development',
-  endpoint: null,
-  transports: [faroTransport({ endpoint: 'http://localhost:12347/collect' })],
-})
+}).extend(
+  withOTLP({
+    endpoint: null,
+    transports: [faroTransport({ endpoint: 'http://localhost:12347/collect' })],
+  }),
+)
 
 // Invoke only when your measurement's category policy allows it.
 logMeasurement(otel, {
@@ -226,7 +262,7 @@ logMeasurement(otel, {
 
 The endpoint is an exact absolute collection URL; no suffix is appended.
 Measurements are logs with finite numeric values, not OTLP metrics or Prometheus
-instruments. The bridge groups captured app/session/page metadata and maps events,
+instruments. The bridge groups captured app/user/session/page metadata and maps events,
 logs, measurements, exceptions and traces. HTTP 202 is required; invalid session
 responses require application-owned rotation. The
 [protocol and delivery reference](./API.md#faro-receiver-integration) covers
@@ -266,7 +302,7 @@ and has not been validated against a running receiver here. Managed Grafana Clou
 Frontend Observability is unverified; this bridge does not implement its session
 lifecycle. Custom measurement schemas may need custom panels.
 
-Other OTLP backends use `endpoint`, `otlpTransport`, or a custom `Transport`. With
+Other backends use `withOTLP`, the `/otlp` entry's `otlpTransport`, or a custom `Transport`. With
 multiple destinations, the first controls queue accounting; additional
 transports are best effort without independent retries. Native endpoint exports
 retry up to three times. Queues are in memory, including offline holds; unload
@@ -274,30 +310,28 @@ and beacon are best effort. See [delivery](./API.md#delivery-and-transports).
 
 ## Bundle cost
 
-Measured on **2026-10-24**, using esbuild minified ES2022 built package entries,
-with only `@reatom/core` external. These compressed byte counts exclude the core
-peer dependency and application code. Optional entry rows are standalone entry
-bundles, **not increments over root**; shared code changes combined costs.
-They measure download size, not runtime speed.
+Measured **2026-10-24**, built package entries, esbuild minified ES2022 and
+Node gzip/Brotli defaults, with only `@reatom/core` external:
 
-| Selected imports                               | gzip bytes | Brotli bytes |
-| ---------------------------------------------- | ---------: | -----------: |
-| Root                                           |     24,049 |       21,746 |
-| Root + analytics                               |     29,284 |       26,440 |
-| Root + all optional entries                    |     38,487 |       34,380 |
-| Analytics entry alone                          |      6,862 |        6,270 |
-| GDPR entry alone                               |      1,236 |        1,121 |
-| Attributes entry alone                         |      1,239 |        1,122 |
-| Network entry alone                            |      2,714 |        2,467 |
-| Console entry alone                            |      1,546 |        1,401 |
-| Web Vitals entry alone, including `web-vitals` |      4,527 |        4,101 |
-| Performance entry alone                        |      1,793 |        1,631 |
-| Faro entry alone                               |      2,598 |        2,354 |
+| Selected imports     | minified bytes | gzip bytes | Brotli bytes |
+| -------------------- | -------------: | ---------: | -----------: |
+| Local capture root   |         51,403 |     18,910 |       17,255 |
+| Root + OTLP exporter |         73,864 |     26,741 |       24,161 |
 
-Reproduce with `pnpm --filter @reatom/opentelemetry test:bundles`: it builds and
-checks 36 source/dist import graphs, including that only the vitals entry imports
-`web-vitals`. The separate size-limit budget checks use their configured Rolldown
-method and are not represented by this esbuild table.
+Local capture and export are separate import graphs. The root does not include
+the OTLP worker, protocol encoding, retry or unload delivery; `/otlp` adds those
+capabilities. Optional entry bundles are not additive costs: shared code changes
+the combined bundle.
+
+Reproduce with `pnpm --filter @reatom/opentelemetry test:bundles`. The check builds
+40 source/dist graphs using esbuild minified ES2022, with only `@reatom/core`
+external, and reports raw/gzip/Brotli bytes. These are download sizes, not runtime
+speed measurements. Separate size-limit checks use their configured method and
+unchanged budgets; a passing import-graph check does not imply every size budget
+passes. The current separate size-limit checks exceed the root, GDPR, analytics and
+combined caps; Faro remains within its cap. Those configured checks use a
+different method from this esbuild table. Historical pre-split measurements are preserved in the
+[design investigation](./design/size-reduction.md).
 
 ## Verification and boundaries
 

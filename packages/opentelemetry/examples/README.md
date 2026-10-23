@@ -2,14 +2,13 @@
 
 Copy `with-tracing.ts` into an application that depends on `@reatom/core` and
 `@reatom/opentelemetry`. This directory remains a reference snippet, with no
-standalone package or server. It uses the adapter's context and export pipeline.
+standalone package or server. It uses the SDK's context and local capture pipeline; no exporter is installed by default.
 
 ```ts
 import { createTracedCounter } from './with-tracing.ts'
 
 const counter = createTracedCounter({
   name: 'counter-app',
-  endpoint: 'https://collector.example.com',
   serviceName: 'counter-app',
 })
 
@@ -20,7 +19,8 @@ console.log(result.count, result.doubled, result.context)
 const gate = Promise.resolve()
 console.log(await counter.updateAfter(gate))
 
-// Before shutting down; flush completion is not a delivery guarantee.
+// Without an exporter this resolves without sending.
+// An attached exporter's flush completion is not a delivery guarantee.
 await counter.flush()
 counter.dispose()
 ```

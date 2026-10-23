@@ -20,7 +20,6 @@ const captureSearchApp = async () => {
   const otel = context.start(() => {
     const instance = reatomOpentelemetry({
       name: 'mountLogs',
-      endpoint: null,
       serviceName: 'mount-logs',
     })
     const query = atom('', 'search.query')
@@ -40,7 +39,11 @@ const captureSearchApp = async () => {
     return instance
   })
   await settleHooks()
-  return context.start(() => [...otel.records()])
+  return context.start(() => {
+    const records = [...otel.records()]
+    otel.dispose()
+    return records
+  })
 }
 
 const rowsOf = (admin: ReturnType<typeof reatomOtlpAdmin>) => {
@@ -57,7 +60,7 @@ test('mount logs are hidden by default, .set stays, and the toggle reveals them'
   const admin = reatomOtlpAdmin({ sourceId: 'local', resource: {} })
 
   ADMIN_FRAME.run(() => {
-    admin.ingest(records)
+    admin.ingestCaptured(records)
     notify()
 
     const mountLog = { name: 'search.results', kind: 'log', causes: 0 }

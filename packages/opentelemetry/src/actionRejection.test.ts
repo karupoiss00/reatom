@@ -2,8 +2,7 @@ import { action, context } from '@reatom/core'
 import { afterEach, expect, test } from 'vitest'
 
 import type { SpanInput } from './buildSpan.ts'
-import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
-import { createTestWithOTel } from './test-helpers.ts'
+import { createTestWithOTel, reatomTestTelemetry } from './test-helpers.ts'
 
 const cleanups: Array<() => void> = []
 afterEach(() => {
@@ -12,7 +11,7 @@ afterEach(() => {
 
 const start = () => {
   const name = `action-rejection-${Math.random().toString(16).slice(2)}`
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name,
     endpoint: null,
     serviceName: 'p',
@@ -29,10 +28,7 @@ const start = () => {
 type RawSpan = {
   name?: string
   eventName?: string
-  attributes?: ReadonlyArray<{
-    key: string
-    value?: { stringValue?: string }
-  }>
+  attributes?: Record<string, unknown>
 }
 
 const isSpanNamed = (record: unknown, name: string): record is RawSpan =>
@@ -42,8 +38,7 @@ const isSpanNamed = (record: unknown, name: string): record is RawSpan =>
   'name' in record &&
   (record as RawSpan).name === name
 
-const stringAttr = (record: RawSpan, key: string) =>
-  record.attributes?.find((entry) => entry.key === key)?.value?.stringValue
+const stringAttr = (record: RawSpan, key: string) => record.attributes?.[key]
 
 const captureUnhandled = async (run: () => Promise<void> | void) => {
   const unhandled: unknown[] = []

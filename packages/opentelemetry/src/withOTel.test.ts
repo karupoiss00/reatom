@@ -45,7 +45,7 @@ test('async action instrumentation survives minified core middleware names', asy
 
     expect(await context.start(() => increment(41))).toBe(42)
     expect(spans).toHaveLength(1)
-    expect(spans[0]?.attributes).toEqual({ params: '[41]', payload: '42' })
+    expect(spans[0]?.attributes).toEqual({ params: [41], payload: 42 })
   } finally {
     Object.defineProperty(actionMiddleware, 'name', { value: originalName })
   }
@@ -71,7 +71,7 @@ test('sync action records a span with name, params, payload, and unset status', 
   expect(spans[0]).toMatchObject({
     name: 'greet',
     attributes: {
-      params: '["alice"]',
+      params: ['alice'],
       payload: 'hi alice',
     },
   })
@@ -428,7 +428,7 @@ test('bigint payloads stringify to decimal strings without crashing the action',
   const counter = action(async () => 1n, 'counter').extend(withOTel())
 
   await context.start(() => counter())
-  expect(spans[0]!.attributes).toEqual({ params: '[]', payload: '"1"' })
+  expect(spans[0]!.attributes).toEqual({ params: [], payload: 1n })
 })
 
 test('withOTel attributes are written onto the span', () => {
@@ -508,7 +508,7 @@ test('per-target captureValues and serialize override the instance', () => {
 
   expect(spans[0]!.attributes).toBeUndefined()
   expect(spans[1]!.attributes).toEqual({
-    params: '["hidden"]',
+    params: ['hidden'],
     payload: 'card',
   })
 })
@@ -529,7 +529,7 @@ test('per-target captureValues true records values when the instance capture is 
   })
 
   expect(spans[0]!.attributes).toEqual({
-    params: '["ada"]',
+    params: ['ada'],
     payload: 'ada',
   })
 })

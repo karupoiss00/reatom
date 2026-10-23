@@ -1,17 +1,16 @@
 import { action, atom, context, notify, urlAtom, wrap } from '@reatom/core'
 import { afterEach, expect, test, vi } from 'vitest'
 
+import { browserMetadataOf } from '../browserCapture.ts'
 import { reatomGDPR, withGDPR } from '../gdpr/reatomGDPR.ts'
-import { withWarnSpy } from '../test-helpers.ts'
+import { reatomTestTelemetry, withWarnSpy } from '../test-helpers.ts'
+import { sessionStorageKey, visitorStorageKey } from './identity.ts'
+import { withWebAnalytics } from './index.ts'
 import {
   createAnalytics,
   readAnalyticsRecords,
   readAnalyticsStats,
 } from './test-helpers.ts'
-import { reatomOpentelemetry } from '../reatomOpentelemetry.ts'
-import { browserMetadataOf } from '../browserCapture.ts'
-import { withWebAnalytics } from './index.ts'
-import { sessionStorageKey, visitorStorageKey } from './identity.ts'
 
 // F-10 / spec 03 test 4 / WA-4 / R11: omitted or false consent stores nothing
 // and sends no analytics OTLP. Categories toggle synchronously.
@@ -173,7 +172,7 @@ test('spec 03.5: two analytics instances do not share queue, visitor, or session
   expect(host.otel).not.toBe(widget.otel)
   expect(host.visitor).not.toBe(widget.visitor)
   expect(host.session).not.toBe(widget.session)
-  expect(host.otel.stats).not.toBe(widget.otel.stats)
+  expect(host.otel.otlp.stats).not.toBe(widget.otel.otlp.stats)
   expect(readAnalyticsStats(host.otel)).not.toBe(
     readAnalyticsStats(widget.otel),
   )
@@ -500,31 +499,8 @@ const installConsentPage = (): ConsentPage => {
   }
 }
 
-const decodeOtlpValue = (value: unknown): unknown => {
-  if (value === null || typeof value !== 'object') return value
-  const encoded = value as Record<string, unknown>
-  if ('stringValue' in encoded) return encoded.stringValue
-  if ('intValue' in encoded) return encoded.intValue
-  if ('boolValue' in encoded) return encoded.boolValue
-  if ('doubleValue' in encoded) return encoded.doubleValue
-  return value
-}
-
-const attributesOf = (record: object): Record<string, unknown> => {
-  const raw = 'attributes' in record ? record.attributes : undefined
-  if (Array.isArray(raw)) {
-    const out: Record<string, unknown> = {}
-    for (const item of raw) {
-      if (!item || typeof item !== 'object') continue
-      const key = 'key' in item ? item.key : undefined
-      const nested = 'value' in item ? item.value : undefined
-      if (typeof key === 'string') out[key] = decodeOtlpValue(nested)
-    }
-    return out
-  }
-  if (raw && typeof raw === 'object') return raw as Record<string, unknown>
-  return {}
-}
+const attributesOf = (record: object): Record<string, unknown> =>
+  'attributes' in record ? (record.attributes as Record<string, unknown>) : {}
 
 const eventNameOf = (record: object): string | undefined => {
   if ('eventName' in record && typeof record.eventName === 'string') {
@@ -1031,7 +1007,7 @@ test('native extension starts eagerly, exposes stable readonly children, and tog
 test('default submitted GDPR drives eager analytics; draft grant emits no first pageview', async () => {
   installShopWindow()
   await context.start(async () => {
-    const otel = reatomOpentelemetry({
+    const otel = reatomTestTelemetry({
       ...OPTIONS,
       name: 'gdpr-analytics-native',
       endpoint: null,
@@ -1063,7 +1039,7 @@ test('default submitted GDPR drives eager analytics; draft grant emits no first 
 test('owning app records subscriber receives eager analytics captures', () => {
   installShopWindow()
   context.start(() => {
-    const otel = reatomOpentelemetry({
+    const otel = reatomTestTelemetry({
       ...OPTIONS,
       name: 'analytics-subscriber',
       endpoint: null,
@@ -1083,7 +1059,7 @@ test('owning app records subscriber receives eager analytics captures', () => {
 test('reentrant analytics enable keeps only the winning installer and cleans its listeners', () => {
   const shop = installShopWindow()
   context.start(() => {
-    const otel = reatomOpentelemetry({
+    const otel = reatomTestTelemetry({
       ...OPTIONS,
       name: 'analytics-reentrant',
       endpoint: null,
@@ -1187,7 +1163,7 @@ test.each([2, 3, 4, 5, 6, 7])(
     vi.stubGlobal('document', document)
     vi.stubGlobal('location', window.location)
     context.start(() => {
-      const otel = reatomOpentelemetry({
+      const otel = reatomTestTelemetry({
         ...OPTIONS,
         name: `analytics-rollback-${failAt}`,
         endpoint: null,

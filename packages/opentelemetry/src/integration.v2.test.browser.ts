@@ -4,14 +4,14 @@ import { commands } from 'vitest/browser'
 
 import type { CollectorState } from '../browser-test-server.ts'
 import type { ReatomOpentelemetry } from './reatomOpentelemetry.ts'
-import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
+import { reatomTestTelemetry } from './test-helpers.ts'
 
 type V2Adapter = ReatomOpentelemetry & {
   records: () => readonly unknown[]
 }
 
 const nativeFetch = globalThis.fetch
-const adapters = new Set<ReatomOpentelemetry>()
+const adapters = new Set<ReturnType<typeof reatomTestTelemetry>>()
 const control = async (command: 'state' | 'reset' | 'hold' | 'release') => {
   const response = await fetch(
     `${inject('otelCollectorUrl')}/control/${command}`,
@@ -26,7 +26,7 @@ const setup = (
   scenario: string,
   overrides: { endpoint?: string | null } = {},
 ) => {
-  const adapter = reatomOpentelemetry({
+  const adapter = reatomTestTelemetry({
     name: 'browser-synthetic',
     endpoint:
       'endpoint' in overrides
@@ -40,7 +40,7 @@ const setup = (
     maxQueueSize: 40,
     exportTimeoutMs: 10_000,
     retry: { maxRetries: 0 },
-  } as Parameters<typeof reatomOpentelemetry>[0])
+  } as Parameters<typeof reatomTestTelemetry>[0])
   adapters.add(adapter)
   return adapter
 }
@@ -79,7 +79,7 @@ afterEach(async () => {
     for (const adapter of adapters) {
       try {
         await adapter.flush()
-        expect(adapter.stats()).toMatchObject({
+        expect(adapter.otlp.stats()).toMatchObject({
           active: 0,
           queued: 0,
           inFlight: 0,
@@ -103,7 +103,11 @@ afterEach(async () => {
 test('endpoint: null makes no OTLP posts and fills records', async () => {
   const adapter = setup('devtools-only', { endpoint: null })
   expect(emit(['browser.null.first', 'browser.null.second'])).toEqual([0, 1])
-  expect(adapter.stats()).toMatchObject({ queued: 2, exported: 0, dropped: 0 })
+  expect(adapter.otlp.stats()).toMatchObject({
+    queued: 2,
+    exported: 0,
+    dropped: 0,
+  })
   await adapter.flush()
   unload()
   await adapter.flush()
@@ -118,7 +122,7 @@ test('endpoint: null makes no OTLP posts and fills records', async () => {
   expect(state.requests).toEqual([])
   expect(state.records).toEqual([])
   expect(recordsOf(adapter)).toHaveLength(2)
-  expect(adapter.stats()).toMatchObject({
+  expect(adapter.otlp.stats()).toMatchObject({
     exported: 0,
     dropped: 0,
     droppedByReason: { export: 0, oversized: 0, timeout: 0, capacity: 0 },
@@ -147,7 +151,11 @@ test('default path does not patch fetch', async () => {
   } finally {
     globalThis.fetch = nativeFetch
   }
-  expect(adapter.stats()).toMatchObject({ queued: 0, exported: 0, dropped: 0 })
+  expect(adapter.otlp.stats()).toMatchObject({
+    queued: 0,
+    exported: 0,
+    dropped: 0,
+  })
 })
 
 test('mixed logs and traces keepalive stays within the 60 KiB envelope', async () => {
@@ -183,7 +191,7 @@ test('mixed logs and traces keepalive stays within the 60 KiB envelope', async (
   context.start(() => {
     for (const body of logBodies) log(body)
   })
-  expect(adapter.stats()).toMatchObject({ dropped: 0, inFlight: 0 })
+  expect(adapter.otlp.stats()).toMatchObject({ dropped: 0, inFlight: 0 })
   unload()
   await adapter.flush()
 

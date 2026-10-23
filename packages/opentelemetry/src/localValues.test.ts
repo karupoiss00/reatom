@@ -10,8 +10,7 @@ import { afterEach, expect, test, vi } from 'vitest'
 
 import { MAX_RECORD_BYTES } from './buildSpan.ts'
 import type { LocalValues } from './localValues.ts'
-import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
-import { installDomStubs } from './test-helpers.ts'
+import { installDomStubs, reatomTestTelemetry } from './test-helpers.ts'
 
 const cleanups: Array<() => void> = []
 
@@ -20,10 +19,10 @@ afterEach(() => {
 })
 
 const start = (
-  extra: Partial<Parameters<typeof reatomOpentelemetry>[0]> = {},
+  extra: Partial<Parameters<typeof reatomTestTelemetry>[0]> = {},
 ) => {
   const name = `local-values-${Math.random().toString(16).slice(2)}`
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name,
     endpoint: null,
     serviceName: 'local-values',
@@ -41,17 +40,13 @@ const start = (
 type RawRecord = {
   name?: string
   eventName?: string
-  attributes?: ReadonlyArray<{
-    key: string
-    value?: { stringValue?: string; arrayValue?: { values: unknown[] } }
-  }>
+  attributes?: Record<string, unknown>
 }
 
 const isRecord = (value: unknown): value is RawRecord =>
   !!value && typeof value === 'object'
 
-const stringAttr = (record: RawRecord, key: string) =>
-  record.attributes?.find((entry) => entry.key === key)?.value?.stringValue
+const stringAttr = (record: RawRecord, key: string) => record.attributes?.[key]
 
 const spanNamed = (records: readonly unknown[], name: string) =>
   records.find((record) => isRecord(record) && record.name === name)
@@ -87,7 +82,13 @@ const normalizeJson = (value: unknown): unknown => {
       key === 'traceId' ||
       key === 'spanId' ||
       key === 'parentSpanId' ||
-      key.endsWith('UnixNano')
+      key.endsWith('UnixNano') ||
+      key === 'startTimeMs' ||
+      key === 'endTimeMs' ||
+      key === 'timeMs' ||
+      key === 'service.instance.id' ||
+      key === 'reatom.frame.id' ||
+      key === 'reatom.cause.ids'
     ) {
       next[key] = '#'
       continue
@@ -376,7 +377,7 @@ test('an oversized span is stored with values only when localValues is on', () =
       otel,
       payload,
       span: spanNamed(otel.records(), 'lv.oversized'),
-      oversized: otel.stats().droppedByReason.oversized,
+      oversized: otel.otlp.stats().droppedByReason.oversized,
     }
   }
   const off = run(false)
@@ -386,7 +387,7 @@ test('an oversized span is stored with values only when localValues is on', () =
   expect(on.span).toBeDefined()
   expect(on.oversized).toBe(off.oversized)
   expect(on.otel.localValuesOf(on.span)?.payload).toBe(on.payload)
-  expect(on.otel.stats().exported).toBe(0)
+  expect(on.otel.otlp.stats().exported).toBe(0)
 })
 
 test('an oversized log is stored with values only when localValues is on', () => {
@@ -441,7 +442,7 @@ test('a full export queue still stores the refused span locally when localValues
       fetchMock,
       firstSpan: spanNamed(otel.records(), 'lv.cap.first'),
       secondSpan: spanNamed(otel.records(), 'lv.cap.second'),
-      capacity: otel.stats().droppedByReason.capacity,
+      capacity: otel.otlp.stats().droppedByReason.capacity,
     }
   }
   const off = await run(false)
@@ -459,7 +460,7 @@ test('a full export queue still stores the refused span locally when localValues
   expect(String(on.fetchMock.mock.calls[0]?.[1]?.body)).not.toContain(
     'lv.cap.second',
   )
-  expect(on.otel.stats().exported).toBe(0)
+  expect(on.otel.otlp.stats().exported).toBe(0)
 })
 
 test('a full export queue does not store spans without live values locally', async () => {

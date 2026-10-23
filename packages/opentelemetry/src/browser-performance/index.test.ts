@@ -1,15 +1,15 @@
 import { context } from '@reatom/core'
-import { onTestFinished, afterEach, expect, test, vi } from 'vitest'
+import { afterEach, expect, onTestFinished, test, vi } from 'vitest'
+
+import type { BrowserCapture } from '../browserCapture.ts'
 import {
   browserCaptureOf,
   installBrowserCapture,
   setBrowserMetadata,
 } from '../browserCapture.ts'
-import type { BrowserCapture } from '../browserCapture.ts'
 import type { ReatomOpentelemetry } from '../reatomOpentelemetry.ts'
+import { installDomStubs, reatomTestTelemetry } from '../test-helpers.ts'
 import { withBrowserPerformance } from './index.ts'
-import { reatomOpentelemetry } from '../reatomOpentelemetry.ts'
-import { installDomStubs } from '../test-helpers.ts'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -18,7 +18,7 @@ afterEach(() => {
 const setup = () => {
   const dom = installDomStubs()
   onTestFinished(() => dom.restore())
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'browser-performance-observer-spy',
     endpoint: null,
     skipGlobalExtension: true,
@@ -144,7 +144,7 @@ test('real parent toggles and HMR disconnect owned observers; disposed parent ca
       serviceName: 'metrics',
       skipGlobalExtension: true,
     }
-    const otel = reatomOpentelemetry(options)
+    const otel = reatomTestTelemetry(options)
     try {
       const control = applyPerformance(otel, { navigation: false })
       deliver(entry)
@@ -158,7 +158,7 @@ test('real parent toggles and HMR disconnect owned observers; disposed parent ca
       control.setFalse()
       control.setTrue()
       expect(observers[1]!.disconnect).toHaveBeenCalledTimes(1)
-      const replacement = reatomOpentelemetry(options)
+      const replacement = reatomTestTelemetry(options)
       try {
         expect(observers[2]!.disconnect).toHaveBeenCalledTimes(1)
         applyPerformance(replacement)
@@ -220,7 +220,7 @@ test('custom URL exclusion sees full URL, cannot mutate emitted URL, and throwin
 test('real parent stops a delivered batch when ignoreUrl disables or toggles its collector', () => {
   const { observers } = setup()
   context.start(() => {
-    const otel = reatomOpentelemetry({
+    const otel = reatomTestTelemetry({
       name: 'performance-reentrant-disable',
       endpoint: null,
       serviceName: 'metrics',

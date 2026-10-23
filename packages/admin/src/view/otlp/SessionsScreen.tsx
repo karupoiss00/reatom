@@ -1,3 +1,5 @@
+import { stringifyJson } from '../../serialize'
+
 import { computed, effect, peek, wrap } from '@reatom/core'
 import type { OtlpAdmin, AdminRecord } from '../../otlp'
 import {
@@ -158,7 +160,7 @@ export const SessionsScreen = ({ admin }: { admin: OtlpAdmin }) => {
           {record.error?.message ??
             (record.attributes['exception.message'] as string) ??
             (journeySignal(record) === 'measurements'
-              ? `${record.attributes['measurement.type']}: ${JSON.stringify(record.attributes['measurement.values'])}`
+              ? `${record.attributes['measurement.type']}: ${stringifyJson(record.attributes['measurement.values'])}`
               : typeof record.body === 'string'
                 ? record.body
                 : record.body === undefined

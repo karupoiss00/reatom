@@ -1,5 +1,3 @@
-import type { AnalyticsFixtureOptions as WebAnalyticsCreateOptions } from './test-helpers.ts'
-import { createAnalytics, readAnalyticsRecords } from './test-helpers.ts'
 import {
   context,
   notify,
@@ -10,9 +8,10 @@ import {
 } from '@reatom/core'
 import { afterEach, expect, test, vi } from 'vitest'
 
-import { reatomOpentelemetry } from '../reatomOpentelemetry.ts'
-import { parseLogRecords } from '../test-helpers.ts'
+import { parseLogRecords, reatomTestTelemetry } from '../test-helpers.ts'
 import { type NavigationSource } from './connectWebAnalytics.ts'
+import type { AnalyticsFixtureOptions as WebAnalyticsCreateOptions } from './test-helpers.ts'
+import { createAnalytics, readAnalyticsRecords } from './test-helpers.ts'
 
 const ENGAGEMENT_EVENT = 'app.page.engagement'
 const PAGE_VIEW_EVENT = 'app.page_view'
@@ -191,21 +190,8 @@ const asNumber = (value: unknown): number | undefined => {
   return undefined
 }
 
-const attributesOf = (record: object): Record<string, unknown> => {
-  const raw = 'attributes' in record ? record.attributes : undefined
-  if (Array.isArray(raw)) {
-    const out: Record<string, unknown> = {}
-    for (const item of raw) {
-      if (!item || typeof item !== 'object') continue
-      const key = 'key' in item ? item.key : undefined
-      const value = 'value' in item ? decodeOtlpValue(item.value) : undefined
-      if (typeof key === 'string') out[key] = value
-    }
-    return out
-  }
-  if (raw && typeof raw === 'object') return raw as Record<string, unknown>
-  return {}
-}
+const attributesOf = (record: object): Record<string, unknown> =>
+  'attributes' in record ? (record.attributes as Record<string, unknown>) : {}
 
 const eventNameOf = (record: object): string | undefined => {
   if ('eventName' in record && typeof record.eventName === 'string') {
@@ -348,7 +334,7 @@ test('WA-6 / F-08: dispose then reconnect flushes engagement per page instead of
   installPage()
 
   const otel = context.start(() =>
-    reatomOpentelemetry({
+    reatomTestTelemetry({
       name: 'engagement-reconnect-skip',
       endpoint: null,
       serviceName: 'shop-web',

@@ -46,7 +46,6 @@ export function analyticsExtensionInference(): WebAnalytics {
   }
   const otel = reatomOpentelemetry({
     name: 'site',
-    endpoint: null,
     serviceName: 'site-web',
     sampling: { ratio: 0.2, errors: 'always' },
   })
@@ -82,7 +81,6 @@ export function analyticsExtensionInference(): WebAnalytics {
 export function invalidAnalyticsOptions() {
   reatomOpentelemetry({
     name: 'site',
-    endpoint: null,
     serviceName: 'site',
     // @ts-expect-error Tracer sampling.errors is not an analytics exception ratio.
     sampling: { errors: 0.5 },

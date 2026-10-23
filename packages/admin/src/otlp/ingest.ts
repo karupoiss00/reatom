@@ -6,6 +6,8 @@ import {
   reatomLinkedList,
 } from '@reatom/core'
 
+import { stringifyJson } from '../serialize'
+
 const PREFIX = '_Admin.otlp'
 
 const ATOMS_WITH_NAME = new Set(['action', 'atom', 'computed', 'effect'])
@@ -56,6 +58,30 @@ export interface AdminLocalValues {
   state?: unknown
   error?: unknown
 }
+
+/** Structural safe capture contract, independent of the telemetry runtime. */
+interface AdminCapturedBase {
+  traceId: string
+  spanId: string
+  attributes: Readonly<Record<string, unknown>>
+  resourceAttributes: Readonly<Record<string, unknown>>
+  scope: { name: string; version?: string }
+  parentSpanId?: string
+  kind?: string
+  status?: { code: 'unset' | 'ok' | 'error'; message?: string }
+  links?: readonly {
+    traceId: string
+    spanId: string
+    attributes?: Readonly<Record<string, unknown>>
+  }[]
+  body?: unknown
+}
+
+export type AdminCapturedRecord = AdminCapturedBase &
+  (
+    | { type: 'span'; name: string; startTimeMs: number; endTimeMs: number }
+    | { type: 'log'; eventName: string; timeMs: number }
+  )
 
 export interface AdminRecord {
   id: string
@@ -246,18 +272,27 @@ export function reatomOtlpStore(options: OtlpStoreOptions) {
   const recordsFromIncoming = (
     incoming: readonly unknown[],
     existing?: readonly AdminRecord[],
+    captured = false,
   ) => {
     const batch: AdminRecord[] = []
     for (const item of incoming) {
-      const record = isAdminRecord(item)
-        ? copyAdminRecord(item)
-        : toAdminRecord(
-            item,
+      const record = captured
+        ? capturedToAdminRecord(
+            item as AdminCapturedRecord,
             sourceId,
             resource,
             nextSeq,
             takeLocalValues(item),
           )
+        : isAdminRecord(item)
+          ? copyAdminRecord(item)
+          : toAdminRecord(
+              item,
+              sourceId,
+              resource,
+              nextSeq,
+              takeLocalValues(item),
+            )
       if (record) {
         if (
           record.kind === 'log' &&
@@ -289,6 +324,12 @@ export function reatomOtlpStore(options: OtlpStoreOptions) {
     appendRecords(batch)
     publishContent()
   }, `${PREFIX}.ingest`)
+
+  const ingestCaptured = action((incoming: readonly AdminCapturedRecord[]) => {
+    if (paused()) return
+    appendRecords(recordsFromIncoming(incoming, undefined, true))
+    publishContent()
+  }, `${PREFIX}.ingestCaptured`)
 
   const replace = action((incoming: readonly unknown[]) => {
     recordEpoch.set((value) => value + 1)
@@ -387,6 +428,7 @@ export function reatomOtlpStore(options: OtlpStoreOptions) {
 
   return {
     ingest,
+    ingestCaptured,
     replace,
     restoreRecords,
     setResource,
@@ -538,7 +580,11 @@ export function errorFromExceptionLog(record: AdminRecord): AdminRecordError {
   const stack = record.attributes['exception.stacktrace']
   const error: AdminRecordError = {}
   if (typeof type === 'string') error.type = type
-  if (typeof message === 'string') error.message = message
+  if (message !== undefined)
+    error.message =
+      typeof message === 'string'
+        ? message
+        : (stringifyJson(message) ?? String(message))
   if (typeof stack === 'string') error.stack = stack
   return error
 }
@@ -793,4 +839,79 @@ function capturedFailure(
     stringField(payload, 'title') ?? stringField(payload, 'message')
   if (!message) return undefined
   return { message, type: 'failed' }
+}
+
+/** Project safe records directly; no OTLP AnyValue or nanosecond conversion. */
+function capturedToAdminRecord(
+  item: AdminCapturedRecord,
+  sourceId: string,
+  resource: Record<string, unknown>,
+  seq: number,
+  localValues?: AdminLocalValues,
+): AdminRecord {
+  const attributes = { ...item.attributes }
+  const reatomKind = attributes['reatom.kind'] as AdminReatomKind | undefined
+  const frameId =
+    typeof attributes['reatom.frame.id'] === 'string'
+      ? attributes['reatom.frame.id']
+      : undefined
+  const reatomName =
+    typeof attributes['reatom.name'] === 'string'
+      ? attributes['reatom.name']
+      : undefined
+  const start = item.type === 'span' ? item.startTimeMs : item.timeMs
+  const eventName = item.type === 'log' ? item.eventName : undefined
+  const record: AdminRecord = {
+    id: `${sourceId}:${item.type}:${item.spanId}:${frameId ?? start}:${eventName ?? ''}:${seq}`,
+    sourceId,
+    kind: item.type,
+    traceId: item.traceId,
+    spanId: item.spanId,
+    name: item.type === 'span' ? item.name : (reatomName ?? eventName ?? ''),
+    start,
+    attributes,
+    resource: { ...resource, ...item.resourceAttributes },
+    links: (item.links ?? []).map((link) => {
+      const reason = link.attributes?.['reatom.link.reason']
+      const frameId = link.attributes?.['reatom.frame.id']
+      return {
+        traceId: link.traceId,
+        spanId: link.spanId,
+        ...(reason === 'computed.dependency' || reason === 'route.page'
+          ? { reason }
+          : {}),
+        ...(typeof frameId === 'string' ? { frameId } : {}),
+      }
+    }),
+    causeIds: asStringArray(attributes['reatom.cause.ids']),
+    ...(item.parentSpanId ? { parentSpanId: item.parentSpanId } : {}),
+    ...(item.type === 'span'
+      ? { end: item.endTimeMs }
+      : { eventName, ...('body' in item ? { body: item.body } : {}) }),
+    ...(reatomKind ? { reatomKind } : {}),
+    ...(frameId ? { frameId } : {}),
+    ...(reatomName !== undefined && ATOMS_WITH_NAME.has(reatomKind ?? '')
+      ? { atomName: reatomName }
+      : {}),
+    ...(localValues !== undefined ? { [LOCAL_VALUES]: localValues } : {}),
+  }
+  const outcome = attributes['reatom.outcome']
+  if (typeof outcome === 'string' && OUTCOMES.has(outcome))
+    record.outcome = outcome as AdminRecordOutcome
+  if (item.status?.code === 'error') {
+    record.outcome ??= 'error'
+    record.error = { message: item.status.message }
+  }
+  if (
+    !record.error &&
+    record.outcome !== 'abort' &&
+    record.outcome !== 'suspense'
+  ) {
+    const failure = capturedFailure(record)
+    if (failure) {
+      record.outcome = 'error'
+      record.error = failure
+    }
+  }
+  return record
 }

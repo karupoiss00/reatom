@@ -9,15 +9,14 @@ import {
 } from '@reatom/core'
 import { expect, test } from 'vitest'
 
-import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
-import { parseSpans } from './test-helpers.ts'
+import { parseSpans, reatomTestTelemetry } from './test-helpers.ts'
 
 const runInStore = () => context.start(() => bind(<T>(fn: () => T) => fn()))
 const make = (
-  options: Partial<Parameters<typeof reatomOpentelemetry>[0]> = {},
+  options: Partial<Parameters<typeof reatomTestTelemetry>[0]> = {},
 ) => {
   const bodies: string[] = []
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'noCore',
     endpoint: 'http://collector.invalid',
     serviceName: 'no-core',
@@ -60,7 +59,7 @@ test('sync root/action nesting exports actual spans and preserves values and ide
     expect(spans.every((s) => s.startTimeUnixNano <= s.endTimeUnixNano)).toBe(
       true,
     )
-    expect(otel.stats()).toMatchObject({
+    expect(otel.otlp.stats()).toMatchObject({
       exported: 2,
       dropped: 0,
       active: 0,
@@ -141,7 +140,7 @@ test('opt-in capture, admission and subsequent export reuse the actual queue', a
     await otel.flush()
     expect(bodies.flatMap(parseSpans)).toHaveLength(1)
     expect(bodies.join('')).toContain('captured')
-    expect(otel.stats()).toMatchObject({
+    expect(otel.otlp.stats()).toMatchObject({
       exported: 1,
       dropped: 1,
       active: 0,
@@ -151,7 +150,7 @@ test('opt-in capture, admission and subsequent export reuse the actual queue', a
     expect(run(() => send(value))).toBe(value)
     await otel.flush()
     expect(bodies.flatMap(parseSpans)).toHaveLength(2)
-    expect(otel.stats()).toMatchObject({ exported: 2, dropped: 1 })
+    expect(otel.otlp.stats()).toMatchObject({ exported: 2, dropped: 1 })
   } finally {
     otel.dispose()
   }

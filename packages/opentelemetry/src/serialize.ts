@@ -1,5 +1,5 @@
 import type { OtlpAttrValue } from './toOtlpValue.ts'
-import { nonFiniteString } from './toOtlpValue.ts'
+import { nonFiniteString } from './nonFiniteString.ts'
 
 export type CaptureValuesOptions =
   false | { redact?: (key: string, value: unknown) => unknown }

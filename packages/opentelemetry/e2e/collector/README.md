@@ -1,5 +1,10 @@
 # Real applications and an OTLP Collector
 
+The current SDK captures canonical records locally by default. Collector-bound
+applications explicitly apply `withOTLP` from `@reatom/opentelemetry/otlp` before
+the operations they want exported. Export settings and delivery stats belong to
+`.otlp`; root stats describe local capture. See the [current setup](../../README.md).
+
 This separate suite runs the original tree, tic-tac-toe and React search
 applications as minified production builds. A test bootstrap creates a named
 `reatomOpentelemetry` instance (`traceVar` on the Reatom frame) before importing

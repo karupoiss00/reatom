@@ -1,14 +1,13 @@
 import { action, context } from '@reatom/core'
 import { expect, test, vi } from 'vitest'
 
-import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
-import { parseSpans } from './test-helpers.ts'
+import { parseSpans, reatomTestTelemetry } from './test-helpers.ts'
 
 test('poisoned then cancelling its reservation must not capture on late settlement', async () => {
   const fetchMock = vi.fn<typeof globalThis.fetch>(
     async () => new Response(null, { status: 200 }),
   )
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'subscriptionFailure',
     endpoint: 'http://collector.invalid',
     serviceName: 'test',
@@ -42,7 +41,7 @@ test('poisoned then cancelling its reservation must not capture on late settleme
     expect(liveReads).toBeGreaterThan(0)
     await otel.flush()
     expect(fetchMock).toHaveBeenCalledTimes(1)
-    expect(otel.stats().exported).toBe(1)
+    expect(otel.otlp.stats().exported).toBe(1)
     expect(
       parseSpans(String(fetchMock.mock.calls[0]![1]!.body)).map(
         (span) => span.name,
@@ -93,24 +92,24 @@ test('poisoned then cancelling its reservation must not capture on late settleme
     expect(returned === native).toBe(true)
 
     // The reservation was cancelled once the poisoned then threw.
-    expect(otel.stats()).toMatchObject({
+    expect(otel.otlp.stats()).toMatchObject({
       active: 0,
       queued: 0,
       inFlight: 0,
       droppedByReason: { observation: 1 },
     })
 
-    const cancelled = otel.stats()
+    const cancelled = otel.otlp.stats()
     expect(observation).toBeInstanceOf(Promise)
     expect(lateReads).toBe(0)
     // Await the actual registered observer chain without calling the tainted then.
     resolveNative(lateValue)
     await observation
-    expect(otel.stats()).toEqual(cancelled)
+    expect(otel.otlp.stats()).toEqual(cancelled)
     expect(lateReads).toBe(0)
     // No span/fetch may appear from the cancelled observation.
     expect(fetchMock).not.toHaveBeenCalled()
-    expect(otel.stats()).toMatchObject({
+    expect(otel.otlp.stats()).toMatchObject({
       active: 0,
       queued: 0,
       inFlight: 0,

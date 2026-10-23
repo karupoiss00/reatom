@@ -1,9 +1,12 @@
 import { action, bind, context } from '@reatom/core'
 import { expect, test } from 'vitest'
 
-import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
 import { resourceAttributesVar } from './resourceAttributesVar.ts'
-import { parsePayload, parseSpans } from './test-helpers.ts'
+import {
+  parsePayload,
+  parseSpans,
+  reatomTestTelemetry,
+} from './test-helpers.ts'
 
 const createRun = () =>
   context.start(() => bind(<T>(callback: () => T) => callback()))
@@ -17,7 +20,7 @@ test('R12 shares ambient resource override across adapters but owns both resourc
     factory: string,
     bodies: string[],
   ) =>
-    reatomOpentelemetry({
+    reatomTestTelemetry({
       name: serviceName,
       endpoint: 'https://collector.invalid',
       serviceName,
@@ -100,7 +103,7 @@ test('R12 shares ambient resource override across adapters but owns both resourc
 test('auto instrumentation skips hidden names while explicit withOTel opts in once', async () => {
   const bodies: string[] = []
   const run = createRun()
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'resourcePolicy',
     endpoint: 'https://collector.invalid',
     serviceName: 'resource-policy-hidden',

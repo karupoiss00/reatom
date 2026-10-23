@@ -4,7 +4,7 @@ import * as pkg from './index.ts'
 
 test('exposes the high-level factory and its types', () => {
   expect(typeof pkg.reatomOpentelemetry).toBe('function')
-  expect(typeof pkg.otlpTransport).toBe('function')
+  expect('otlpTransport' in pkg).toBe(false)
 })
 
 test('does not export v1 resource override or writable trace IDs', () => {
@@ -21,7 +21,6 @@ test('does not export connectWebAnalytics from the root barrel', () => {
 test('instance exposes traceVar instead of the v1 context helpers', () => {
   const otel = pkg.reatomOpentelemetry({
     name: 'index',
-    endpoint: 'https://collector.invalid',
     serviceName: 'api',
   })
   try {

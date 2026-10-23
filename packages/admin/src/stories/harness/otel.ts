@@ -8,6 +8,5 @@ import { reatomOpentelemetry } from '@reatom/opentelemetry'
 export const storyOtel = reatomOpentelemetry({
   name: 'admin-stories',
   serviceName: 'admin-stories',
-  endpoint: null,
-  maxQueueSize: 5000,
+  recordLimit: 5000,
 })

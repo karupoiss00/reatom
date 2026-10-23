@@ -1,10 +1,12 @@
 import { action, atom, context } from '@reatom/core'
 import { expect, test } from 'vitest'
+
 import { featureControl } from './feature.ts'
 import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
+import { reatomTestTelemetry } from './test-helpers.ts'
 
 test('feature controls eagerly install, synchronously toggle, reject duplicates and end with parent', () => {
-  const otel = reatomOpentelemetry({ name: 'feature-controls', endpoint: null })
+  const otel = reatomTestTelemetry({ name: 'feature-controls', endpoint: null })
   let installed = 0,
     stopped = 0
   const control = featureControl(otel, 'fixture', () => {
@@ -42,7 +44,7 @@ test('feature setup and teardown bind the attachment context and discard reentra
   let stopped = 0
   const owned = context.start(() => {
     contextValue.set('owner')
-    const otel = reatomOpentelemetry({ name: 'feature-owner', endpoint: null })
+    const otel = reatomTestTelemetry({ name: 'feature-owner', endpoint: null })
     const control = featureControl(otel, 'fixture', () => {
       contexts.push(contextValue())
       return {
@@ -59,7 +61,7 @@ test('feature setup and teardown bind the attachment context and discard reentra
   owned.otel.dispose()
   expect(contexts).toEqual(['owner', 'owner', 'owner', 'owner'])
   expect(stopped).toBe(2)
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'feature-reentrant',
     endpoint: null,
   })
@@ -78,7 +80,7 @@ test('feature setup and teardown bind the attachment context and discard reentra
 })
 
 test('aggregate observable view updates from isolated capture roots while isolated streams stay disjoint', async () => {
-  const otel = reatomOpentelemetry({ name: 'observable-roots', endpoint: null })
+  const otel = reatomTestTelemetry({ name: 'observable-roots', endpoint: null })
   const observed: number[] = []
   const stop = otel.records.subscribe((records) =>
     observed.push(records.length),
@@ -107,7 +109,7 @@ test('cross-context writes drive one requested lifecycle and synchronize known n
     stops = 0
   const owner = context.start()
   const owned = owner.run(() => {
-    const otel = reatomOpentelemetry({
+    const otel = reatomTestTelemetry({
       name: 'cross-context-feature-control',
       endpoint: null,
     })
@@ -139,4 +141,46 @@ test('cross-context writes drive one requested lifecycle and synchronize known n
   expect(stops).toBe(3)
   expect(owner.run(() => owned.control())).toBe(false)
   expect(fresh.run(() => owned.control())).toBe(false)
+})
+
+test('native capture snapshots stay stable between writes and replace synchronously across roots', () => {
+  const otel = reatomOpentelemetry({
+    name: 'snapshot-stability',
+    serviceName: 'test',
+    skipGlobalExtension: true,
+  })
+  try {
+    const empty = otel.records()
+    const initialStats = otel.stats()
+    expect(otel.records()).toBe(empty)
+    expect(otel.stats()).toBe(initialStats)
+    const run = action(() => 'ok', 'snapshot.work').extend(otel.withOTel())
+    const firstRoot = context.start()
+    firstRoot.run(run)
+    const first = otel.records()
+    expect(first).toHaveLength(1)
+    expect(first).not.toBe(empty)
+    expect(empty).toEqual([])
+    expect(otel.records()).toBe(first)
+    const firstStats = otel.stats()
+    expect(firstStats).toMatchObject({ active: 0, captured: 1, retained: 1 })
+    expect(otel.stats()).toBe(firstStats)
+    const secondRoot = context.start()
+    secondRoot.run(run)
+    const second = otel.records()
+    expect(second).toHaveLength(2)
+    expect(second).not.toBe(first)
+    expect(first).toHaveLength(1)
+    expect(otel.records()).toBe(second)
+    expect(firstRoot.run(otel.records)).toHaveLength(1)
+    expect(secondRoot.run(otel.records)).toHaveLength(1)
+    otel.clearRecords()
+    const cleared = otel.records()
+    expect(cleared).toEqual([])
+    expect(otel.records()).toBe(cleared)
+    expect(second).toHaveLength(2)
+    expect(otel.stats()).toMatchObject({ active: 0, captured: 2, retained: 0 })
+  } finally {
+    otel.dispose()
+  }
 })

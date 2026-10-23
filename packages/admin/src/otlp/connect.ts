@@ -11,7 +11,11 @@ import { canPersistToLocalStorage } from '../filters/persistence'
 import { ADMIN_FRAME } from '../root'
 import { registerLocalWorkOption } from '../view/settings'
 import { reatomOtlpAdmin, type OtlpAdmin } from './chrome'
-import type { AdminLocalValues, AdminRecord } from './ingest'
+import type {
+  AdminCapturedRecord,
+  AdminLocalValues,
+  AdminRecord,
+} from './ingest'
 
 export const ADMIN_CLEAR_UNDO_MS = 8_000
 
@@ -22,7 +26,6 @@ const WARN_CONTEXT_LOSS_KEY = `_Admin.settings.tracing.${WARN_CONTEXT_LOSS_ID}.v
 const SPLIT_LONG_TRACES_KEY = `_Admin.settings.tracing.${SPLIT_LONG_TRACES_ID}.v1`
 
 export interface AdminOtelOptionsSnapshot {
-  endpoint: string | null
   keepRecords?: boolean
   /** `true` keeps live references subject to opt-out. `'all'` ignores opt-out. */
   localValues?: boolean | 'all'
@@ -41,6 +44,15 @@ export interface AdminOtelOptionsSnapshot {
 }
 
 export interface AdminOtelStats {
+  active: number
+  captured: number
+  retained: number
+  invalidParent: number
+  dropped: number
+  droppedByReason: Readonly<Record<string, number>>
+}
+
+export interface AdminOtelDeliveryStats {
   queued: number
   inFlight: number
   exported: number
@@ -57,20 +69,28 @@ export interface AdminOtelStats {
 export interface AdminOtelInstance {
   (): AdminOtelOptionsSnapshot
   set(
-    update:
-      | AdminOtelOptionsSnapshot
-      | ((current: AdminOtelOptionsSnapshot) => AdminOtelOptionsSnapshot),
+    update: (current: AdminOtelOptionsSnapshot) => AdminOtelOptionsSnapshot,
   ): unknown
+  set(update: AdminOtelOptionsSnapshot): unknown
   readonly resource: Readonly<Record<string, unknown>>
   readonly recordLimit: number
   records: {
-    (): readonly unknown[]
-    subscribe(listener: (records: readonly unknown[]) => void): () => void
+    (): readonly AdminCapturedRecord[]
+    subscribe(
+      listener: (records: readonly AdminCapturedRecord[]) => void,
+    ): () => void
   }
   clearRecords(): void
   stats: {
     (): AdminOtelStats
     subscribe?(listener: (stats: AdminOtelStats) => void): () => void
+  }
+  /** Optional delivery extension; local capture works without it. */
+  otlp?: {
+    stats: {
+      (): AdminOtelDeliveryStats
+      subscribe?(listener: (stats: AdminOtelDeliveryStats) => void): () => void
+    }
   }
   /**
    * Live references for a raw record from `records()`. Absent on older
@@ -110,6 +130,7 @@ export interface AdminConnection {
   canUndo: Atom<boolean>
   olderRecordsDropped: Atom<boolean>
   stats: Atom<AdminOtelStats | null>
+  deliveryStats: Atom<AdminOtelDeliveryStats | null>
   refreshStats: () => void
   /** Mode forwarded to `otel().localValues`. Bind this from settings. */
   localValues: Atom<boolean | 'all'>
@@ -137,9 +158,8 @@ export interface AdminConnection {
  * (or `setHost` later) so Escape inside that element is `preventDefault`ed
  * during capture. Headless connects skip the listener until a host is passed.
  *
- * When `endpoint` is not `null`, `keepRecords` is turned on before subscribe
- * and restored on dispose. Records that were dropped while `keepRecords` was
- * off are not backfilled. `endpoint: null` already keeps its window.
+ * Local retention is enabled while connected when explicitly disabled, then
+ * restored on dispose. Existing records are not backfilled.
  *
  * `localValues` (default `true`) is written to `otel().localValues` whenever
  * that atom changes, including the initial value, and the previous option is
@@ -171,7 +191,7 @@ export function connectAdmin(
   let active = true
   let otelRef: AdminOtelInstance | undefined = otel
   const initial = runInAppFrame(() => otel())
-  const restoreKeepRecords = initial.endpoint !== null
+  const restoreKeepRecords = initial.keepRecords === false
   const previousKeepRecords = initial.keepRecords
   const previousLocalValues = initial.localValues
   const previousWarnContextLoss = initial.warnContextLoss
@@ -217,6 +237,10 @@ export function connectAdmin(
       olderRecordsDropped: atom(false, '_Admin.connect.olderRecordsDropped'),
       canUndo: atom(false, '_Admin.connect.canUndo'),
       stats: atom<AdminOtelStats | null>(null, '_Admin.connect.stats'),
+      deliveryStats: atom<AdminOtelDeliveryStats | null>(
+        null,
+        '_Admin.connect.deliveryStats',
+      ),
       localValues: atom<boolean | 'all'>(
         options.localValues ?? true,
         '_Admin.connect.localValues',
@@ -226,8 +250,8 @@ export function connectAdmin(
     }
   })
 
-  let last: unknown = null
-  let latestWindow: readonly unknown[] | null = null
+  let last: AdminCapturedRecord | null = null
+  let latestWindow: readonly AdminCapturedRecord[] | null = null
   let pausedFlag = false
   let cancelScheduled: (() => void) | undefined
   let undoSnapshot: AdminRecord[] | null = null
@@ -243,7 +267,7 @@ export function connectAdmin(
       : DEFAULT_MAX_QUEUE_SIZE
   }
 
-  const deltaOf = (windowRecords: readonly unknown[]) => {
+  const deltaOf = (windowRecords: readonly AdminCapturedRecord[]) => {
     if (last === null) {
       return { records: [...windowRecords], dropped: false }
     }
@@ -266,7 +290,11 @@ export function connectAdmin(
   const refreshStats = () => {
     if (!active || otelRef === undefined) return
     const next = runInAppFrame(() => otelRef!.stats())
-    ADMIN_FRAME.run(() => controls.stats.set(next))
+    const delivery = runInAppFrame(() => otelRef!.otlp?.stats() ?? null)
+    ADMIN_FRAME.run(() => {
+      controls.stats.set(next)
+      controls.deliveryStats.set(delivery)
+    })
   }
 
   const flushNow = () => {
@@ -285,11 +313,11 @@ export function connectAdmin(
     const ingested = ADMIN_FRAME.run(() => {
       if (admin.paused()) return false
       admin.setResource(nextResource)
-      admin.ingest(delta.records)
+      admin.ingestCaptured(delta.records)
       return true
     })
     if (!ingested) return
-    last = delta.records[delta.records.length - 1]
+    last = delta.records[delta.records.length - 1]!
     publishWaiting()
     refreshStats()
   }
@@ -321,7 +349,7 @@ export function connectAdmin(
     cancelScheduled?.()
   }
 
-  const onWindow = (windowRecords: readonly unknown[]) => {
+  const onWindow = (windowRecords: readonly AdminCapturedRecord[]) => {
     if (!active) return
     latestWindow = windowRecords
     if (windowRecords.length === 0) last = null
@@ -510,6 +538,15 @@ export function connectAdmin(
         }),
       )
     : undefined
+  const deliveryStats = otel.otlp?.stats
+  const unsubscribeDeliveryStats = deliveryStats?.subscribe
+    ? runInAppFrame(() =>
+        deliveryStats.subscribe!((snapshot) => {
+          if (active)
+            ADMIN_FRAME.run(() => controls.deliveryStats.set(snapshot))
+        }),
+      )
+    : undefined
   listen()
 
   const dispose = () => {
@@ -520,6 +557,7 @@ export function connectAdmin(
     for (const unregister of unregisterTracing) unregister()
     runInAppFrame(unsubscribe)
     if (unsubscribeStats) runInAppFrame(unsubscribeStats)
+    if (unsubscribeDeliveryStats) runInAppFrame(unsubscribeDeliveryStats)
     cancelBatch()
     unlisten()
     if (otelRef) {
@@ -566,6 +604,7 @@ export function connectAdmin(
     canUndo: controls.canUndo,
     olderRecordsDropped: controls.olderRecordsDropped,
     stats: controls.stats,
+    deliveryStats: controls.deliveryStats,
     refreshStats,
     localValues: controls.localValues,
     localValuesTrimmed: admin.localValuesTrimmed,

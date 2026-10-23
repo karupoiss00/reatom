@@ -1,15 +1,10 @@
-import type { AnalyticsFixtureOptions as WebAnalyticsCreateOptions } from './test-helpers.ts'
-import {
-  createAnalytics,
-  readAnalyticsRecords,
-  readAnalyticsStats,
-} from './test-helpers.ts'
 import { action, context } from '@reatom/core'
 import { afterEach, expect, test, vi } from 'vitest'
 
-import { reatomOpentelemetry } from '../reatomOpentelemetry.ts'
-import { parseLogRecords } from '../test-helpers.ts'
+import { parseLogRecords, reatomTestTelemetry } from '../test-helpers.ts'
 import {} from './connectWebAnalytics.ts'
+import type { AnalyticsFixtureOptions as WebAnalyticsCreateOptions } from './test-helpers.ts'
+import { createAnalytics, readAnalyticsStats } from './test-helpers.ts'
 
 type WindowListener = (event: unknown) => void
 
@@ -393,7 +388,7 @@ test('T-050 / R22: rateLimit.errorsPerMin 0 means no client cap', async () => {
 test('T-050: dispose then reconnect does not stack rate-limit stats', async () => {
   const shop = installWindow()
   const otel = context.start(() =>
-    reatomOpentelemetry({
+    reatomTestTelemetry({
       name: 'errors-reconnect',
       endpoint: 'https://collector.test',
       serviceName: 'site-web',
@@ -416,19 +411,19 @@ test('T-050: dispose then reconnect does not stack rate-limit stats', async () =
     )
 
   const first = connect()
-  const statsFn = otel.stats
+  const statsFn = otel.otlp.stats
   for (let index = 0; index < 15; index++) {
     shop.fire('error', new TypeError('x'))
   }
   expect(readAnalyticsStats(otel).droppedByReason.rateLimit).toBe(5)
   context.start(() => first.dispose())
-  expect(otel.stats).toBe(statsFn)
+  expect(otel.otlp.stats).toBe(statsFn)
   expect(readAnalyticsStats(otel).droppedByReason.rateLimit).toBeUndefined()
 
   first.enable()
   const second = first
   cleanups.push(() => second.dispose())
-  expect(otel.stats).toBe(statsFn)
+  expect(otel.otlp.stats).toBe(statsFn)
   for (let index = 0; index < 12; index++) {
     shop.fire('error', new TypeError('y'))
   }

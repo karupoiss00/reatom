@@ -1,15 +1,18 @@
 import { bind } from '@reatom/core'
+
+import type { OTLPInput } from '../otlp/index.ts'
 import {
-  reatomOpentelemetry,
   type ReatomOpentelemetry,
   type ReatomOpentelemetryInput,
 } from '../reatomOpentelemetry.ts'
+import { reatomTestTelemetry } from '../test-helpers.ts'
 import {
-  withWebAnalytics,
   type WebAnalyticsOptions,
+  withWebAnalytics,
 } from './connectWebAnalytics.ts'
 
 export type AnalyticsFixtureOptions = ReatomOpentelemetryInput &
+  OTLPInput &
   WebAnalyticsOptions
 
 const statsReaders = new WeakMap<
@@ -25,12 +28,14 @@ export const readAnalyticsRecords = (
 
 /** Fixture groups the explicitly created parent and its native extension. */
 export const createAnalytics = (
-  input: ReatomOpentelemetry | (ReatomOpentelemetryInput & WebAnalyticsOptions),
+  input:
+    | ReatomOpentelemetry
+    | (ReatomOpentelemetryInput & OTLPInput & WebAnalyticsOptions),
   options?: WebAnalyticsOptions,
 ) => {
   const owned = typeof input !== 'function'
   const otel = owned
-    ? reatomOpentelemetry({
+    ? reatomTestTelemetry({
         ...input,
         skipGlobalExtension: input.skipGlobalExtension ?? true,
       })

@@ -1,10 +1,10 @@
-import type { AnalyticsFixtureOptions as WebAnalyticsCreateOptions } from './test-helpers.ts'
-import { createAnalytics, readAnalyticsRecords } from './test-helpers.ts'
 import { context, noop, reatomRoute, urlAtom, wrap } from '@reatom/core'
 import { afterEach, expect, test, vi } from 'vitest'
 
-import { reatomOpentelemetry } from '../reatomOpentelemetry.ts'
+import { reatomTestTelemetry } from '../test-helpers.ts'
 import {} from './connectWebAnalytics.ts'
+import type { AnalyticsFixtureOptions as WebAnalyticsCreateOptions } from './test-helpers.ts'
+import { createAnalytics, readAnalyticsRecords } from './test-helpers.ts'
 
 const LANDING = 'https://shop.test/home?utm_source=google&gclid=abc#promo'
 const STRIPPED_FULL = 'https://shop.test/home'
@@ -167,21 +167,8 @@ const decodeOtlpValue = (value: unknown): unknown => {
   return value
 }
 
-const attrsOf = (record: object): Record<string, unknown> => {
-  const raw = 'attributes' in record ? record.attributes : undefined
-  if (Array.isArray(raw)) {
-    const out: Record<string, unknown> = {}
-    for (const item of raw) {
-      if (!item || typeof item !== 'object') continue
-      const key = 'key' in item ? item.key : undefined
-      const value = 'value' in item ? item.value : undefined
-      if (typeof key === 'string') out[key] = decodeOtlpValue(value)
-    }
-    return out
-  }
-  if (raw && typeof raw === 'object') return raw as Record<string, unknown>
-  return {}
-}
+const attrsOf = (record: object): Record<string, unknown> =>
+  'attributes' in record ? (record.attributes as Record<string, unknown>) : {}
 
 const eventNameOf = (record: object): string | undefined => {
   const fromField =
@@ -483,7 +470,7 @@ test('F-08: dispose then reconnect on the same path records one app.page_view; a
   const shop = installShopWindow()
 
   const otel = context.start(() =>
-    reatomOpentelemetry({
+    reatomTestTelemetry({
       name: 'page-view-strict-mode',
       endpoint: null,
       serviceName: 'site-web',
@@ -536,7 +523,7 @@ test('WA-2 / F-08: consented page view joins the route watershed traceId', async
     urlAtom.sync.set(() => noop)
     urlAtom.set(new URL('http://localhost/'))
 
-    const otel = reatomOpentelemetry({
+    const otel = reatomTestTelemetry({
       name: 'page-view-route',
       endpoint: null,
       serviceName: 'site-web',

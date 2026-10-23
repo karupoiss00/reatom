@@ -7,6 +7,7 @@ import type { SpanKind } from './buildSpan.ts'
 export type CaptureSnapshot = {
   context: SpanContext
   attributes: Record<string, OtlpAttrValue>
+  resourceAttributes?: Record<string, OtlpAttrValue>
 }
 export type BrowserCapture = {
   preflightConsent(): void

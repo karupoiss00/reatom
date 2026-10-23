@@ -12,14 +12,15 @@ import { afterEach, expect, test, vi } from 'vitest'
 import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
 import type { TransportBatch } from './sendTraces.ts'
 import { otlpTransport } from './sendTraces.ts'
+import { reatomTestTelemetry } from './test-helpers.ts'
 import { installDomStubs, withWarnSpy } from './test-helpers.ts'
 
-type V2FactoryInput = Parameters<typeof reatomOpentelemetry>[0] & {
+type V2FactoryInput = Parameters<typeof reatomTestTelemetry>[0] & {
   name: string
   endpoint: string | null
 }
 
-type V2Instance = ReturnType<typeof reatomOpentelemetry> & {
+type V2Instance = ReturnType<typeof reatomTestTelemetry> & {
   records: () => readonly unknown[]
 }
 
@@ -32,7 +33,7 @@ const start = (overrides: Partial<V2FactoryInput> = {}) => {
   const fetchMock = vi.fn<typeof globalThis.fetch>(
     async () => new Response('{}', { status: 200 }),
   )
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'instance-v2',
     endpoint: null,
     serviceName: 'instance-v2',
@@ -42,12 +43,14 @@ const start = (overrides: Partial<V2FactoryInput> = {}) => {
     fetch: fetchMock,
     useBeacon: false,
     ...overrides,
-  } as Parameters<typeof reatomOpentelemetry>[0]) as V2Instance
+  } as Parameters<typeof reatomTestTelemetry>[0]) as V2Instance
   cleanups.push(() => context.start(() => otel.dispose()))
   return { otel, fetchMock }
 }
 
-const readRecords = (otel: V2Instance): readonly unknown[] => {
+const readRecords = (
+  otel: Pick<ReturnType<typeof reatomOpentelemetry>, 'records'>,
+): readonly unknown[] => {
   expect(typeof otel.records).toBe('function')
   const snapshot = otel.records()
   expect(Array.isArray(snapshot)).toBe(true)
@@ -86,24 +89,8 @@ const recordNames = (records: readonly unknown[]): string[] => {
 const disjointIds = (left: Set<string>, right: Set<string>) =>
   [...left].filter((id) => right.has(id))
 
-const otlpStringAttrs = (span: object): Record<string, string> => {
-  const raw = 'attributes' in span ? span.attributes : undefined
-  if (!Array.isArray(raw)) return {}
-  const out: Record<string, string> = {}
-  for (const item of raw) {
-    if (!item || typeof item !== 'object') continue
-    const key = 'key' in item ? item.key : undefined
-    const value = 'value' in item ? item.value : undefined
-    const stringValue =
-      value && typeof value === 'object' && 'stringValue' in value
-        ? value.stringValue
-        : undefined
-    if (typeof key === 'string' && typeof stringValue === 'string') {
-      out[key] = stringValue
-    }
-  }
-  return out
-}
+const capturedStringAttrs = (span: object): Record<string, string> =>
+  'attributes' in span ? (span.attributes as Record<string, string>) : {}
 
 const successSpanFrom = (records: readonly unknown[]): object | undefined => {
   let found: object | undefined
@@ -111,7 +98,7 @@ const successSpanFrom = (records: readonly unknown[]): object | undefined => {
     if (found) return
     const spanId = 'spanId' in record ? record.spanId : undefined
     if (typeof spanId !== 'string') return
-    const attrs = otlpStringAttrs(record)
+    const attrs = capturedStringAttrs(record)
     if (attrs['reatom.outcome'] === 'ok') found = record
   })
   return found
@@ -124,20 +111,36 @@ const storageKeyList = (store: Storage | undefined) => {
 
 test('F-01: missing name throws a config error', () => {
   expect(() =>
-    reatomOpentelemetry({
+    reatomTestTelemetry({
       endpoint: null,
       serviceName: 'missing-name',
-    } as Parameters<typeof reatomOpentelemetry>[0]),
+    } as Parameters<typeof reatomTestTelemetry>[0]),
   ).toThrow(/name/)
 })
 
-test('F-01: missing endpoint throws a config error', () => {
-  expect(() =>
-    reatomOpentelemetry({
-      name: 'shop',
-      serviceName: 'missing-endpoint',
-    } as Parameters<typeof reatomOpentelemetry>[0]),
-  ).toThrow(/endpoint/)
+test('F-01: local capture does not require an endpoint or exporter', () => {
+  const otel = reatomOpentelemetry({
+    name: 'shop',
+    serviceName: 'local',
+    skipGlobalExtension: true,
+  })
+  try {
+    otel.log('local.without-endpoint')
+    expect('otlp' in otel).toBe(false)
+    expect(otel.records()).toHaveLength(2)
+    expect(otel.records()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: 'span', name: 'app.session' }),
+        expect.objectContaining({
+          type: 'log',
+          eventName: 'local.without-endpoint',
+        }),
+      ]),
+    )
+    expect(otel.stats()).toMatchObject({ captured: 2, retained: 2 })
+  } finally {
+    otel.dispose()
+  }
 })
 
 test('F-01: two unspecialized instances keep disjoint records and stats', () => {
@@ -159,8 +162,8 @@ test('F-01: two unspecialized instances keep disjoint records and stats', () => 
     const widgetRecords = readRecords(widget.otel)
     const hostIds = recordSpanIds(hostRecords)
     const widgetIds = recordSpanIds(widgetRecords)
-    const hostStats = host.otel.stats()
-    const widgetStats = widget.otel.stats()
+    const hostStats = host.otel.otlp.stats()
+    const widgetStats = widget.otel.otlp.stats()
 
     expect(hostIds.size).toBeGreaterThan(0)
     expect(widgetIds.size).toBeGreaterThan(0)
@@ -179,7 +182,7 @@ test('F-01: two unspecialized instances keep disjoint records and stats', () => 
     const widgetExported = widgetStats.exported
     const widgetDropped = widgetStats.dropped
     host.otel.dispose()
-    expect(widget.otel.stats()).toMatchObject({
+    expect(widget.otel.otlp.stats()).toMatchObject({
       queued: widgetQueued,
       exported: widgetExported,
       dropped: widgetDropped,
@@ -196,11 +199,17 @@ test('F-01: two unspecialized instances keep disjoint records and stats', () => 
   )
 })
 
-test('F-01: endpoint null makes no network calls and fills records', async () => {
-  const { otel, fetchMock } = start({
+test('F-01: local capture makes no network calls and fills records', async () => {
+  const fetchMock = vi.spyOn(globalThis, 'fetch')
+  const otel = reatomOpentelemetry({
     name: 'devtools',
-    endpoint: null,
+    serviceName: 'devtools',
   })
+  cleanups.push(() => {
+    otel.dispose()
+    fetchMock.mockRestore()
+  })
+  expect('otlp' in otel).toBe(false)
   const ping = action(() => 'pong', 'devtools.ping')
 
   context.start(() => {
@@ -209,7 +218,7 @@ test('F-01: endpoint null makes no network calls and fills records', async () =>
     expect(recordSpanIds(readRecords(otel)).size).toBeGreaterThan(0)
     const success = successSpanFrom(readRecords(otel))
     expect(success).toBeDefined()
-    expect(otlpStringAttrs(success!)).toMatchObject({
+    expect(capturedStringAttrs(success!)).toMatchObject({
       'reatom.name': 'devtools.ping',
       'reatom.kind': 'action',
       'reatom.outcome': 'ok',
@@ -390,17 +399,17 @@ test('F-07: dispose with a full queue does not throw into the app', async () => 
       expect(ping()).toBe('queued')
       expect(ping()).toBe('queued')
       expect(ping()).toBe('queued')
-      expect(otel.stats().queued).toBe(4)
+      expect(otel.otlp.stats().queued).toBe(4)
       expect(recordSpanIds(readRecords(otel)).size).toBe(4)
     })
     expect(fetchMock).not.toHaveBeenCalled()
     expect(() => context.start(() => otel.dispose())).not.toThrow()
     expect(readRecords(otel)).toEqual([])
-    expect(otel.stats()).toMatchObject({
+    expect(otel.otlp.stats()).toMatchObject({
       queued: 0,
       inFlight: 0,
     })
-    expect(otel.stats().droppedByReason.disposed).toBeGreaterThanOrEqual(4)
+    expect(otel.otlp.stats().droppedByReason.disposed).toBeGreaterThanOrEqual(4)
     expect(context.start(() => work())).toBe('app-ok')
     await Promise.resolve()
     await Promise.resolve()
@@ -434,7 +443,7 @@ test('F-07: offline pauses OTLP posts and coming online resumes', async () => {
     await Promise.resolve()
     await Promise.resolve()
     expect(fetchMock).not.toHaveBeenCalled()
-    expect(otel.stats().queued).toBeGreaterThan(0)
+    expect(otel.otlp.stats().queued).toBeGreaterThan(0)
 
     setOnline(true)
     await context.start(() => otel.flush())
@@ -544,36 +553,36 @@ test('F-11: transports fan-out next to the default fetch', async () => {
   expect(secondaryCalls).toContain('traces')
 })
 
-type WireRecord = {
+type LocalRecord = {
   name?: string
   eventName?: string
   traceId?: string
   spanId?: string
   parentSpanId?: string
-  attributes?: Array<{ key: string; value?: { stringValue?: string } }>
+  attributes?: Record<string, unknown>
   links?: Array<{
     traceId: string
     spanId: string
-    attributes?: Array<{ key: string; value?: { stringValue?: string } }>
+    attributes?: Record<string, unknown>
   }>
 }
 
-const wireRecords = (otel: V2Instance): WireRecord[] =>
+const localRecords = (otel: V2Instance): LocalRecord[] =>
   readRecords(otel).filter(
-    (record): record is WireRecord => !!record && typeof record === 'object',
+    (record): record is LocalRecord => !!record && typeof record === 'object',
   )
 
-const stringAttr = (record: WireRecord, key: string) =>
-  record.attributes?.find((item) => item.key === key)?.value?.stringValue
+const stringAttr = (record: LocalRecord, key: string) =>
+  record.attributes?.[key]
 
-const spanNamed = (records: readonly WireRecord[], name: string) =>
+const spanNamed = (records: readonly LocalRecord[], name: string) =>
   records.find((record) => record.name === name)
 
-const spansNamed = (records: readonly WireRecord[], name: string) =>
+const spansNamed = (records: readonly LocalRecord[], name: string) =>
   records.filter((record) => record.name === name)
 
 const updateNamed = (
-  records: readonly WireRecord[],
+  records: readonly LocalRecord[],
   eventName: string,
   atomName: string,
 ) =>
@@ -583,10 +592,8 @@ const updateNamed = (
       stringAttr(record, 'reatom.name') === atomName,
   )
 
-const linkReasonOf = (record: WireRecord) =>
-  record.links?.[0]?.attributes?.find(
-    (item) => item.key === 'reatom.link.reason',
-  )?.value?.stringValue
+const linkReasonOf = (record: LocalRecord) =>
+  record.links?.[0]?.attributes?.['reatom.link.reason']
 
 test('a computed pulled by a traced reader joins that reader trace', async () => {
   const { otel } = start({
@@ -604,7 +611,7 @@ test('a computed pulled by a traced reader joins that reader trace', async () =>
   })
   await otel.flush()
 
-  const records = wireRecords(otel)
+  const records = localRecords(otel)
   const readerSpan = spanNamed(records, 'probe.reader')
   const doubled = updateNamed(
     records,
@@ -637,7 +644,7 @@ test('an effect created inside an action stays on that action trace', async () =
   })
   await otel.flush()
 
-  const records = wireRecords(otel)
+  const records = localRecords(otel)
   const runSpan = spanNamed(records, 'probe.effectRun')
   const effectUpdate = updateNamed(
     records,
@@ -668,7 +675,7 @@ test('nested actions record call and a manual trace records explicit', async () 
     expect(marked()).toBe('marked')
   })
 
-  const records = wireRecords(otel)
+  const records = localRecords(otel)
   expect(
     stringAttr(
       spanNamed(records, 'probe.reason.outer')!,
@@ -706,7 +713,7 @@ test('a computed outside any reader records session', async () => {
   })
   await otel.flush()
 
-  const records = wireRecords(otel)
+  const records = localRecords(otel)
   const update = updateNamed(records, 'reatom.computed.update', 'probe.orphan')
   expect(stringAttr(update!, 'reatom.parent.reason')).toBe('session')
   const session = spanNamed(records, 'app.session')
@@ -741,7 +748,7 @@ test('the 1001st span of a trace starts a linked continuation', () => {
     parent()
   })
 
-  const records = wireRecords(otel)
+  const records = localRecords(otel)
   const parentSpan = spanNamed(records, 'budget.count.parent')!
   const children = spansNamed(records, 'budget.count.child')
   expect(children).toHaveLength(1000)
@@ -783,7 +790,7 @@ test('a full trace reuses one continuation until that continuation fills', () =>
     parent()
   })
 
-  const records = wireRecords(otel)
+  const records = localRecords(otel)
   const parentSpan = spanNamed(records, 'budget.reuse.parent')!
   const children = spansNamed(records, 'budget.reuse.child')
   expect(children).toHaveLength(4)
@@ -844,7 +851,7 @@ test('maxTraceMs starts a continuation after the trace age and Infinity disables
     await vi.advanceTimersByTimeAsync(1)
     await pending
 
-    const records = wireRecords(otel)
+    const records = localRecords(otel)
     const parentSpan = spanNamed(records, 'budget.time.parent')!
     expect(spanNamed(records, 'budget.time.onTime')).toMatchObject({
       traceId: parentSpan.traceId,
@@ -889,7 +896,7 @@ test('Infinity disables the span budget', async () => {
     await vi.advanceTimersByTimeAsync(120_000)
     await pending
 
-    const records = wireRecords(otel)
+    const records = localRecords(otel)
     const parentSpan = spanNamed(records, 'budget.infinity.parent')!
     const children = spansNamed(records, 'budget.infinity.child')
     expect(children).toHaveLength(5)
@@ -925,7 +932,7 @@ test('options.set changes the span budget for later spans', () => {
     parent()
   })
 
-  const records = wireRecords(otel)
+  const records = localRecords(otel)
   const parentSpan = spanNamed(records, 'budget.runtime.parent')!
   const children = spansNamed(records, 'budget.runtime.child')
   expect(children).toHaveLength(2)

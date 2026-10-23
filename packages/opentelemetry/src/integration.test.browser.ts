@@ -4,8 +4,7 @@ import { commands } from 'vitest/browser'
 
 import type { CollectorRecord, CollectorState } from '../browser-test-server.ts'
 import type { buildExportPayload } from './buildExportPayload.ts'
-import type { ReatomOpentelemetry } from './reatomOpentelemetry.ts'
-import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
+import { reatomTestTelemetry } from './test-helpers.ts'
 
 declare module 'vitest/browser' {
   interface BrowserCommands {
@@ -14,7 +13,7 @@ declare module 'vitest/browser' {
   }
 }
 
-const adapters = new Set<ReatomOpentelemetry>()
+const adapters = new Set<ReturnType<typeof reatomTestTelemetry>>()
 const control = async (command: 'state' | 'reset' | 'hold' | 'release') => {
   const response = await fetch(
     `${inject('otelCollectorUrl')}/control/${command}`,
@@ -26,7 +25,7 @@ const control = async (command: 'state' | 'reset' | 'hold' | 'release') => {
   return (await response.json()) as CollectorState
 }
 const setup = (scenario: string, cors: 'allow' | 'deny' = 'allow') => {
-  const adapter = reatomOpentelemetry({
+  const adapter = reatomTestTelemetry({
     name: 'browser-synthetic',
     endpoint: `${inject('otelCollectorUrl')}/collector/${cors}/${scenario}`,
     serviceName: 'browser-synthetic',
@@ -79,7 +78,7 @@ afterEach(async () => {
     for (const adapter of adapters) {
       try {
         await adapter.flush()
-        expect(adapter.stats()).toMatchObject({
+        expect(adapter.otlp.stats()).toMatchObject({
           active: 0,
           queued: 0,
           inFlight: 0,
@@ -116,7 +115,11 @@ test('ordinary native export preserves application results and passes real CORS 
     expect(second(6)).toBe(7)
   })
   expect(calls).toBe(2)
-  expect(adapter.stats()).toMatchObject({ queued: 2, exported: 0, dropped: 0 })
+  expect(adapter.otlp.stats()).toMatchObject({
+    queued: 2,
+    exported: 0,
+    dropped: 0,
+  })
   await adapter.flush()
 
   const state = await control('state')
@@ -154,7 +157,7 @@ test('ordinary native export preserves application results and passes real CORS 
     expect(span.attributes).toEqual([])
   }
   expect(record.body).not.toContain('private-result')
-  expect(adapter.stats()).toMatchObject({
+  expect(adapter.otlp.stats()).toMatchObject({
     exported: 2,
     dropped: 0,
     inFlight: 0,
@@ -168,14 +171,22 @@ test('repeated hidden and pagehide retain one occupied native transport slot and
   expect(emit(['browser.lifecycle.first'])).toEqual([0])
   unload()
   await expect.poll(async () => (await control('state')).held).toBe(1)
-  expect(adapter.stats()).toMatchObject({ inFlight: 1, queued: 0, exported: 0 })
+  expect(adapter.otlp.stats()).toMatchObject({
+    inFlight: 1,
+    queued: 0,
+    exported: 0,
+  })
 
   expect(emit(['browser.lifecycle.second'])).toEqual([0])
   unload()
   unload()
   const pending = await control('state')
   expect(pending).toMatchObject({ posts: 1, acceptedPosts: 1, held: 1 })
-  expect(adapter.stats()).toMatchObject({ inFlight: 1, queued: 1, dropped: 0 })
+  expect(adapter.otlp.stats()).toMatchObject({
+    inFlight: 1,
+    queued: 1,
+    dropped: 0,
+  })
   let flushed = false
   const flushing = adapter.flush().then(() => {
     flushed = true
@@ -194,7 +205,7 @@ test('repeated hidden and pagehide retain one occupied native transport slot and
     'browser.lifecycle.first',
     'browser.lifecycle.second',
   ])
-  expect(adapter.stats()).toMatchObject({
+  expect(adapter.otlp.stats()).toMatchObject({
     exported: 2,
     dropped: 0,
     inFlight: 0,
@@ -210,7 +221,11 @@ test('native keepalive selects newest multibyte records within the full 60 KiB e
   )
   expect(emit(names)).toEqual([0, 1, 2, 3, 4, 5, 6, 7])
   // All records were admitted individually; losses below must come from unload selection.
-  expect(adapter.stats()).toMatchObject({ queued: 8, dropped: 0, inFlight: 0 })
+  expect(adapter.otlp.stats()).toMatchObject({
+    queued: 8,
+    dropped: 0,
+    inFlight: 0,
+  })
   expect(new TextEncoder().encode(names.join('')).length).toBeGreaterThan(
     60 * 1024,
   )
@@ -231,7 +246,7 @@ test('native keepalive selects newest multibyte records within the full 60 KiB e
       16_384,
     )
   }
-  expect(adapter.stats()).toMatchObject({
+  expect(adapter.otlp.stats()).toMatchObject({
     exported: 4,
     dropped: 4,
     droppedByReason: { oversized: 4, export: 0, timeout: 0, capacity: 0 },
@@ -258,7 +273,7 @@ test('native CORS denial rejects preflight with no accepted POST or retry', asyn
     method: 'OPTIONS',
     requestedMethod: 'POST',
   })
-  expect(adapter.stats()).toMatchObject({
+  expect(adapter.otlp.stats()).toMatchObject({
     exported: 0,
     dropped: 1,
     droppedByReason: { export: 1, oversized: 0, timeout: 0 },

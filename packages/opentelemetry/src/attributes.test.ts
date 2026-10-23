@@ -9,15 +9,15 @@ import {
   wrap,
 } from '@reatom/core'
 import { expect, test } from 'vitest'
-import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
+
 import { withAttributes } from './attributes/index.ts'
 import { browserCaptureOf } from './browserCapture.ts'
-import { attrsOf } from './test-helpers.ts'
+import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
+import { reatomTestTelemetry } from './test-helpers.ts'
 
 test('real atom settings, observable records, stats and disposal retain native identities', async () => {
   const otel = reatomOpentelemetry({
     name: 'real-atom',
-    endpoint: null,
     serviceName: 'shop',
   })
   expect(otel.name).toBe('otel.real-atom')
@@ -53,7 +53,7 @@ test('operation identity is immutable across account switch and inherited by nes
     { 'user.id': 'A', 'user.roles': ['reader'], 'app.tenant': 'first' },
     'auth.user',
   )
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'principal-operation',
     endpoint: null,
   }).extend(withAttributes(computed(() => user(), 'auth.attributes')))
@@ -79,29 +79,35 @@ test('operation identity is immutable across account switch and inherited by nes
   release()
   expect(await pending).toBe('result')
   const records = otel.records() as any[]
-  for (const record of records.filter(
+  const inherited = records.filter(
     (record) =>
       record.name === 'app.pending-principal' ||
       record.name === 'HTTP' ||
       record.eventName === 'nested.manual' ||
       record.eventName === 'reatom.log',
-  ))
-    expect(attrsOf(record)['user.id']).toBe('A')
+  )
+  expect(inherited).toHaveLength(4)
+  expect(
+    inherited.map((record) => record.name ?? record.eventName).sort(),
+  ).toEqual(
+    ['HTTP', 'app.pending-principal', 'nested.manual', 'reatom.log'].sort(),
+  )
+  for (const record of inherited) expect(record.attributes['user.id']).toBe('A')
   otel.log('independent.B')
   expect(
-    attrsOf(
+    (
       otel
         .records()
-        .find((record: any) => record.eventName === 'independent.B') as any,
-    )['user.id'],
+        .find((record: any) => record.eventName === 'independent.B') as any
+    ).attributes['user.id'],
   ).toBe('B')
   otel.attributesVar.run({}, () => otel.log('explicit.empty'))
   expect(
-    attrsOf(
+    (
       otel
         .records()
-        .find((record: any) => record.eventName === 'explicit.empty') as any,
-    )['user.id'],
+        .find((record: any) => record.eventName === 'explicit.empty') as any
+    ).attributes['user.id'],
   ).toBeUndefined()
   otel.dispose()
 })
@@ -110,14 +116,14 @@ test('attribute sources bind to their attachment context, fail closed and preser
   const user = atom('global', 'context.auth')
   const first = context.start(() => {
     user.set('first')
-    return reatomOpentelemetry({
+    return reatomTestTelemetry({
       name: 'principal-context-one',
       endpoint: null,
     }).extend(withAttributes(() => ({ 'user.id': user() })))
   })
   const second = context.start(() => {
     user.set('second')
-    return reatomOpentelemetry({
+    return reatomTestTelemetry({
       name: 'principal-context-two',
       endpoint: null,
     }).extend(withAttributes(() => ({ 'user.id': user() })))
@@ -125,19 +131,18 @@ test('attribute sources bind to their attachment context, fail closed and preser
   first.log('one')
   second.log('two')
   expect(
-    attrsOf(first.records().find((r: any) => r.eventName === 'one') as any)[
+    (first.records().find((r: any) => r.eventName === 'one') as any).attributes[
       'user.id'
     ],
   ).toBe('first')
   expect(
-    attrsOf(second.records().find((r: any) => r.eventName === 'two') as any)[
-      'user.id'
-    ],
+    (second.records().find((r: any) => r.eventName === 'two') as any)
+      .attributes['user.id'],
   ).toBe('second')
   first.dispose()
   second.dispose()
   let source: any = { 'user.id': 'owned', 'user.roles': ['one'] }
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'principal-source-failure',
     endpoint: null,
   }).extend(withAttributes(() => source))
@@ -152,7 +157,7 @@ test('attribute sources bind to their attachment context, fail closed and preser
   source = null
   pending.finish({ endTimeMs: 2 })
   expect(
-    attrsOf(otel.records().find((r: any) => r.name === 'pending') as any)[
+    (otel.records().find((r: any) => r.name === 'pending') as any).attributes[
       'user.id'
     ],
   ).toBe('owned')
@@ -166,8 +171,8 @@ test('attribute sources bind to their attachment context, fail closed and preser
   const failed = otel
     .records()
     .find((r: any) => r.eventName === 'source.failure') as any
-  expect(attrsOf(failed)['user.id']).toBeUndefined()
-  expect(attrsOf(failed)['reatom.attributes_error']).toBe('TypeError')
+  expect(failed.attributes['user.id']).toBeUndefined()
+  expect(failed.attributes['reatom.attributes_error']).toBe('TypeError')
   expect(JSON.stringify(failed)).not.toContain('secret marker')
   otel.dispose()
 })
@@ -180,7 +185,7 @@ test('readonly attributes observe the attachment source reactively across consum
     change = bind((value: string) => {
       user.set(value)
     })
-    return reatomOpentelemetry({
+    return reatomTestTelemetry({
       name: 'public-bound-attributes',
       endpoint: null,
     }).extend(withAttributes(() => ({ 'user.id': user() })))
@@ -201,7 +206,7 @@ test('readonly attributes observe the attachment source reactively across consum
 test('deferred reactive updates keep complete common snapshots including anonymous and explicit empty scopes', () => {
   const { otel, source, changed } = (() => {
     let source: Record<string, string> | null = null
-    const otel = reatomOpentelemetry({
+    const otel = reatomTestTelemetry({
       name: 'deferred-common-identity',
       endpoint: null,
     }).extend(withAttributes(() => source))
@@ -227,7 +232,7 @@ test('deferred reactive updates keep complete common snapshots including anonymo
     (record) => record.eventName === 'reatom.atom.update',
   )
   expect(updates).not.toHaveLength(0)
-  expect(attrsOf(updates.at(-1))['user.id']).toBeUndefined()
+  expect(updates.at(-1).attributes['user.id']).toBeUndefined()
   source({ 'user.id': 'A' })
   changed()
   source({ 'user.id': 'B', 'user.email': 'b@example.test' })
@@ -235,20 +240,20 @@ test('deferred reactive updates keep complete common snapshots including anonymo
   updates = (otel.records() as any[]).filter(
     (record) => record.eventName === 'reatom.atom.update',
   )
-  expect(attrsOf(updates.at(-1))['user.id']).toBe('A')
-  expect(attrsOf(updates.at(-1))['user.email']).toBeUndefined()
+  expect(updates.at(-1).attributes['user.id']).toBe('A')
+  expect(updates.at(-1).attributes['user.email']).toBeUndefined()
   otel.attributesVar.run({}, changed)
   notify()
   updates = (otel.records() as any[]).filter(
     (record) => record.eventName === 'reatom.atom.update',
   )
-  expect(attrsOf(updates.at(-1))['user.id']).toBeUndefined()
+  expect(updates.at(-1).attributes['user.id']).toBeUndefined()
   otel.dispose()
 })
 
 test('computed diamond identity is captured before deferred hooks and never augmented by later login', () => {
   let user: Record<string, string> | null = { 'user.id': 'A' }
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'diamond-identity',
     endpoint: null,
   }).extend(withAttributes(() => user))
@@ -273,15 +278,15 @@ test('computed diamond identity is captured before deferred hooks and never augm
     (record) => record.name === 'review.total',
   )
   expect(diamonds).toHaveLength(1)
-  expect(attrsOf(diamonds[0])['user.id']).toBe('A')
-  expect(attrsOf(diamonds[0])['user.email']).toBeUndefined()
+  expect(diamonds[0].attributes['user.id']).toBe('A')
+  expect(diamonds[0].attributes['user.email']).toBeUndefined()
   stop()
   otel.dispose()
 })
 
 test('attribute extension reserves its member before readers execute and releases the only subscription', () => {
   const user = atom('A', 'reentrant.attribute.user')
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'reentrant-attributes',
     endpoint: null,
   })

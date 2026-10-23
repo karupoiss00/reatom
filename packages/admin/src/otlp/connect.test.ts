@@ -16,29 +16,38 @@ import {
   ADMIN_CLEAR_UNDO_MS,
   connectAdmin,
   type AdminOtelInstance,
+  type AdminOtelDeliveryStats,
   type AdminOtelOptionsSnapshot,
   type AdminOtelStats,
 } from './connect'
-import { localValuesOf, type AdminLocalValues } from './ingest.ts'
+import {
+  localValuesOf,
+  type AdminCapturedRecord,
+  type AdminLocalValues,
+} from './ingest.ts'
 
 const WARN_CONTEXT_LOSS_KEY = '_Admin.settings.tracing.otel.warnContextLoss.v1'
 const SPLIT_LONG_TRACES_KEY = '_Admin.settings.tracing.otel.splitLongTraces.v1'
 
 const emptyStats = (): AdminOtelStats => ({
-  queued: 1,
-  inFlight: 2,
-  exported: 3,
+  active: 0,
+  captured: 7,
+  retained: 3,
+  invalidParent: 0,
   dropped: 4,
   droppedByReason: { capacity: 1 },
-  transportQuarantined: false,
 })
 
-const span = (name: string, spanId: string) => ({
+const span = (name: string, spanId: string): AdminCapturedRecord => ({
+  type: 'span',
+  attributes: {},
+  resourceAttributes: {},
+  scope: { name: 'test' },
   traceId: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
   spanId,
   name,
-  startTimeUnixNano: '1000000000000000',
-  endTimeUnixNano: '1000000001000000',
+  startTimeMs: 1000000000,
+  endTimeMs: 1000000001,
 })
 
 type FakeOptions = AdminOtelOptionsSnapshot & {
@@ -53,7 +62,7 @@ function createFake(
   init: Partial<FakeOptions> = {},
   localValuesOfRecord?: (record: unknown) => AdminLocalValues | undefined,
 ) {
-  let windowRecords: unknown[] = []
+  let windowRecords: AdminCapturedRecord[] = []
   const {
     serviceName = 'demo',
     serviceVersion,
@@ -62,10 +71,10 @@ function createFake(
     maxQueueSize: recordLimit = 1000,
     ...live
   } = init
-  let options: AdminOtelOptionsSnapshot = { endpoint: null, ...live }
+  let options: AdminOtelOptionsSnapshot = { ...live }
   let currentStats = emptyStats()
   const statsListeners = new Set<(stats: AdminOtelStats) => void>()
-  const listeners = new Set<(records: readonly unknown[]) => void>()
+  const listeners = new Set<(records: readonly AdminCapturedRecord[]) => void>()
   const calls: string[] = []
   const roots: object[] = []
   const note = (name: string) => {
@@ -84,7 +93,7 @@ function createFake(
     },
     recordLimit,
     records: Object.assign(() => windowRecords.slice(), {
-      subscribe(listener: (records: readonly unknown[]) => void) {
+      subscribe(listener: (records: readonly AdminCapturedRecord[]) => void) {
         note('subscribe')
         listeners.add(listener)
         listener(windowRecords)
@@ -141,11 +150,11 @@ function createFake(
     },
     calls,
     roots,
-    push(...items: unknown[]) {
+    push(...items: AdminCapturedRecord[]) {
       windowRecords = [...windowRecords, ...items]
       emit()
     },
-    replace(next: unknown[]) {
+    replace(next: AdminCapturedRecord[]) {
       windowRecords = next
       emit()
     },
@@ -232,7 +241,7 @@ test('binds otel calls to the caller frame and batches the identity delta', () =
   expect(stats).toEqual(emptyStats())
 })
 
-test('turns keepRecords on only when an endpoint is set, without backfilling', () => {
+test('temporarily enables explicitly disabled local retention without backfilling', () => {
   vi.useFakeTimers()
   const kept = createFake()
   const prior = span('already', 'old')
@@ -247,7 +256,6 @@ test('turns keepRecords on only when an endpoint is set, without backfilling', (
   expect(names(live)).toEqual(['already'])
 
   const exported = createFake({
-    endpoint: 'https://collector.example/v1/traces',
     serviceVersion: '1.2.3',
     keepRecords: false,
   })
@@ -259,7 +267,6 @@ test('turns keepRecords on only when an endpoint is set, without backfilling', (
   expect(exported.calls[3]).toBe('subscribe')
   expect(exported.options.keepRecords).toBe(true)
   expect(exported.options.localValues).toBe(true)
-  expect(exported.options.endpoint).toBe('https://collector.example/v1/traces')
   expect(exported.otel.resource['service.version']).toBe('1.2.3')
   expect(exported.window).toEqual(before)
   connection.dispose()
@@ -268,22 +275,21 @@ test('turns keepRecords on only when an endpoint is set, without backfilling', (
   expect(exported.calls).toContain('unsubscribe')
 })
 
-test('subscribes to delivery stats without waiting for another record', () => {
+test('subscribes to capture stats without waiting for another record', () => {
   const fake = createFake()
   const connection = connect(fake)
-  const delivered = { ...emptyStats(), queued: 0, exported: 12 }
+  const delivered = { ...emptyStats(), retained: 0, captured: 12 }
   fake.setStats(delivered)
   expect(ADMIN_FRAME.run(() => connection.stats())).toEqual(delivered)
   connection.dispose()
   expect(fake.calls).toContain('stats.unsubscribe')
-  fake.setStats({ ...delivered, exported: 20 })
+  fake.setStats({ ...delivered, captured: 20 })
   expect(ADMIN_FRAME.run(() => connection.stats())).toEqual(delivered)
 })
 
 test('connects a native telemetry atom and follows its readonly record stream', async () => {
   const otel = reatomOpentelemetry({
     name: 'admin-native-atom',
-    endpoint: null,
     serviceName: 'native-app',
   })
   const connection = connectAdmin(otel, { tracingSettings: false })
@@ -312,7 +318,16 @@ test('pause holds the window and resume ingests it; replay still ingests', () =>
   flush()
   expect(names(connection)).toEqual([])
   expect(ADMIN_FRAME.run(() => connection.waiting())).toBe(1)
-  ADMIN_FRAME.run(() => connection.admin.ingest([span('replay', 'r')]))
+  ADMIN_FRAME.run(() =>
+    connection.admin.ingest([
+      {
+        traceId: 'replay-trace',
+        spanId: 'r',
+        name: 'replay',
+        startTimeUnixNano: '1000000',
+      },
+    ]),
+  )
   expect(names(connection)).toEqual(['replay'])
   expect(ADMIN_FRAME.run(() => connection.waiting())).toBe(1)
   connection.resume()
@@ -775,4 +790,41 @@ test('disposing an older connection keeps the newer tracing switches', () => {
   expect(newer.options.warnContextLoss).toBe(true)
   expect(newer.options.maxSpansPerTrace).toBe(8)
   expect(newer.options.maxTraceMs).toBe(9)
+})
+
+test('optional OTLP delivery stats remain separate from local capture and disconnect cleanly', () => {
+  const fake = createFake()
+  const delivery: AdminOtelDeliveryStats = {
+    queued: 1,
+    inFlight: 0,
+    exported: 2,
+    dropped: 3,
+    droppedByReason: { capacity: 3 },
+    transportQuarantined: false,
+  }
+  let listener: ((value: AdminOtelDeliveryStats) => void) | undefined
+  let stopped = false
+  Object.assign(fake.otel, {
+    otlp: {
+      stats: Object.assign(() => delivery, {
+        subscribe(next: (value: AdminOtelDeliveryStats) => void) {
+          listener = next
+          next(delivery)
+          return () => {
+            stopped = true
+            listener = undefined
+          }
+        },
+      }),
+    },
+  })
+  const connection = connect(fake)
+  expect(ADMIN_FRAME.run(() => connection.stats())).toEqual(emptyStats())
+  expect(ADMIN_FRAME.run(() => connection.deliveryStats())).toEqual(delivery)
+  const updated = { ...delivery, exported: 9 }
+  listener?.(updated)
+  expect(ADMIN_FRAME.run(() => connection.deliveryStats())).toEqual(updated)
+  expect(ADMIN_FRAME.run(() => connection.stats())).toEqual(emptyStats())
+  connection.dispose()
+  expect(stopped).toBe(true)
 })

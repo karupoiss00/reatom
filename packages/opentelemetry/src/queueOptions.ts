@@ -30,20 +30,13 @@ const isValidDurationMs = (value: unknown): value is number =>
   value > 0 &&
   value <= MAX_TIMER_MS
 
-const resolveCount = (supplied: unknown, name: keyof QueueOptions): number => {
-  if (supplied === undefined) return DEFAULTS[name]
-  if (!isPositiveSafeInteger(supplied)) {
-    throw new RangeError(`Invalid queue option ${name}: ${String(supplied)}`)
-  }
-  return supplied
-}
-
-const resolveDuration = (
+const resolveOption = (
   supplied: unknown,
   name: keyof QueueOptions,
+  valid: (value: unknown) => value is number,
 ): number => {
   if (supplied === undefined) return DEFAULTS[name]
-  if (!isValidDurationMs(supplied)) {
+  if (!valid(supplied)) {
     throw new RangeError(`Invalid queue option ${name}: ${String(supplied)}`)
   }
   return supplied
@@ -57,8 +50,24 @@ const resolveDuration = (
 export const resolveQueueOptions = (
   input: Partial<QueueOptions> = {},
 ): QueueOptions => ({
-  batchInterval: resolveDuration(input.batchInterval, 'batchInterval'),
-  maxBatchSize: resolveCount(input.maxBatchSize, 'maxBatchSize'),
-  maxQueueSize: resolveCount(input.maxQueueSize, 'maxQueueSize'),
-  exportTimeoutMs: resolveDuration(input.exportTimeoutMs, 'exportTimeoutMs'),
+  batchInterval: resolveOption(
+    input.batchInterval,
+    'batchInterval',
+    isValidDurationMs,
+  ),
+  maxBatchSize: resolveOption(
+    input.maxBatchSize,
+    'maxBatchSize',
+    isPositiveSafeInteger,
+  ),
+  maxQueueSize: resolveOption(
+    input.maxQueueSize,
+    'maxQueueSize',
+    isPositiveSafeInteger,
+  ),
+  exportTimeoutMs: resolveOption(
+    input.exportTimeoutMs,
+    'exportTimeoutMs',
+    isValidDurationMs,
+  ),
 })

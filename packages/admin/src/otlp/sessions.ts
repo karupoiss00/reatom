@@ -1,3 +1,5 @@
+import { stringifyJson } from '../serialize'
+
 import { recordHasError } from './bind.ts'
 import type { AdminRecord } from './ingest.ts'
 
@@ -23,7 +25,7 @@ function stable(value: unknown): string {
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([k, v]) => [k, stable(v)]),
     )
-  return JSON.stringify(value) ?? 'undefined'
+  return stringifyJson(value) ?? 'undefined'
 }
 
 /** Resource identity is conservative: never join sources or distinct resources. */

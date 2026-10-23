@@ -1,8 +1,7 @@
 import { action, bind, context, wrap } from '@reatom/core'
 import { expect, test } from 'vitest'
 
-import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
-import { parseSpans } from './test-helpers.ts'
+import { parseSpans, reatomTestTelemetry } from './test-helpers.ts'
 
 const createRun = () =>
   context.start(() => bind(<T>(callback: () => T) => callback()))
@@ -20,7 +19,7 @@ const policyInput = {
 test('R05 captures sync action params before its body and owns the completed payload', async () => {
   const bodies: string[] = []
   const run = createRun()
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'capturePolicy',
     ...policyInput,
     fetch: async (_url, init) => {
@@ -66,7 +65,7 @@ test('R05 captures sync action params before its body and owns the completed pay
 test('R05 async action retains its original promise and owns begin and completion snapshots', async () => {
   const bodies: string[] = []
   const run = createRun()
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'capturePolicy',
     ...policyInput,
     fetch: async (_url, init) => {
@@ -98,7 +97,7 @@ test('R05 async action retains its original promise and owns begin and completio
     // the derived promise settles after that handler records the snapshots.
     expect(await applicationPromise).toBe(output)
     await Promise.resolve()
-    expect(otel.stats()).toMatchObject({ active: 0, queued: 1 })
+    expect(otel.otlp.stats()).toMatchObject({ active: 0, queued: 1 })
     params.value = 'R05_async_late_input'
     output.result = 'R05_async_late_payload'
 
@@ -124,7 +123,7 @@ test('R05 async action retains its original promise and owns begin and completio
 test('R06 uses key-aware redaction in the final OTLP body without changing the app result', async () => {
   const bodies: string[] = []
   const run = createRun()
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'capturePolicy',
     ...policyInput,
     captureValues: {
@@ -158,7 +157,7 @@ test('R06 uses key-aware redaction in the final OTLP body without changing the a
 test('R06 a throwing redaction records [Failed] for that value and keeps the span', async () => {
   const bodies: string[] = []
   const run = createRun()
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'capturePolicy',
     ...policyInput,
     captureValues: {
@@ -181,7 +180,7 @@ test('R06 a throwing redaction records [Failed] for that value and keeps the spa
     ])
     expect(run(controlTarget)).toBe(control)
     expect(run(target)).toBe(privateOutput)
-    expect(otel.stats()).toMatchObject({
+    expect(otel.otlp.stats()).toMatchObject({
       active: 0,
       queued: 2,
       droppedByReason: { observation: 0 },
@@ -222,7 +221,7 @@ test('R04 only admitted records traverse, redact, and export values', async () =
         },
       },
     )
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'capturePolicy',
     ...policyInput,
     maxQueueSize: 1,
@@ -254,12 +253,12 @@ test('R04 only admitted records traverse, redact, and export values', async () =
     expect(admittedValue).toBe(admittedOriginal)
     expect(traversal.ownKeys + traversal.descriptors).toBeGreaterThan(0)
     expect(traversal.redact).toBeGreaterThan(0)
-    expect(otel.stats()).toMatchObject({ queued: 1 })
+    expect(otel.otlp.stats()).toMatchObject({ queued: 1 })
 
     traversal.ownKeys = traversal.descriptors = traversal.redact = 0
     const rejectedValue = run(rejected)
     expect(rejectedValue).toBe(rejectedOriginal)
-    expect(otel.stats()).toMatchObject({
+    expect(otel.otlp.stats()).toMatchObject({
       queued: 1,
       droppedByReason: { capacity: 1 },
     })
@@ -288,7 +287,7 @@ test('R04 filter and dispose skip value traversal and preserve the returned obje
     },
   )
   const create = (filter?: () => boolean) =>
-    reatomOpentelemetry({
+    reatomTestTelemetry({
       name: 'capturePolicy',
       ...policyInput,
       filter,

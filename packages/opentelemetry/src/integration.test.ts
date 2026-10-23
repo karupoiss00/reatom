@@ -12,7 +12,6 @@ import {
 } from 'vitest'
 
 import type { OtlpSpan } from './buildSpan.ts'
-import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
 import { resourceAttributesVar } from './resourceAttributesVar.ts'
 import type { ParsedSpan } from './test-helpers.ts'
 import {
@@ -23,6 +22,7 @@ import {
   parseLogRecords,
   parsePayload,
   parseSpans,
+  reatomTestTelemetry,
   withWarnSpy,
 } from './test-helpers.ts'
 
@@ -96,9 +96,9 @@ afterEach(() => {
 })
 
 const start = (
-  overrides: Partial<Parameters<typeof reatomOpentelemetry>[0]> = {},
+  overrides: Partial<Parameters<typeof reatomTestTelemetry>[0]> = {},
 ) => {
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'integration',
     endpoint,
     serviceName: 'integration-svc',
@@ -274,7 +274,7 @@ test('persistent retryable failures retry and eventually succeed', async () => {
   const accepted = parseSpans(payloads[2])
   expect(accepted).toHaveLength(1)
   expect(accepted[0]!.name).toBe('integration.retry')
-  expect(otel.stats()).toMatchObject({ exported: 1, dropped: 0 })
+  expect(otel.otlp.stats()).toMatchObject({ exported: 1, dropped: 0 })
 })
 
 test('persistent HTTP failure warns once with the reason and the dropped-span count', async () => {

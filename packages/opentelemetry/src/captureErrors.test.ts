@@ -1,15 +1,18 @@
 import { action, bind, context } from '@reatom/core'
 import { expect, test } from 'vitest'
 
-import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
-import { parseLogRecords, parseSpans } from './test-helpers.ts'
+import {
+  parseLogRecords,
+  parseSpans,
+  reatomTestTelemetry,
+} from './test-helpers.ts'
 
 test.each([false, true])(
   'exception capture does not invoke accessors (opt-in=%s)',
   async (capture: boolean) => {
     const bodies: string[] = []
     const run = context.start(() => bind(<T>(callback: () => T) => callback()))
-    const otel = reatomOpentelemetry({
+    const otel = reatomTestTelemetry({
       name: 'captureErrors',
       endpoint: 'https://collector.invalid',
       serviceName: 'error-capture',
@@ -74,7 +77,7 @@ test.each(['named', 'native'])(
   async (kind: string) => {
     const bodies: string[] = []
     const run = context.start(() => bind(<T>(callback: () => T) => callback()))
-    const otel = reatomOpentelemetry({
+    const otel = reatomTestTelemetry({
       name: 'captureErrors',
       endpoint: 'https://collector.invalid',
       serviceName: 'error-capture',

@@ -1,3 +1,5 @@
+import { stringifyJson } from '../serialize'
+
 import type { FilterMode } from '../types'
 
 export function formatTimestamp(timestamp: number): string {
@@ -26,7 +28,7 @@ export function formatJson(value: unknown): string {
   if (value instanceof URL) return value.href
 
   try {
-    return JSON.stringify(value, null, 2)
+    return stringifyJson(value, 2)!
   } catch {
     return String(value)
   }
@@ -39,7 +41,7 @@ function isCompactPreview(value: unknown): boolean {
 
 function compactJson(value: unknown): string {
   try {
-    return JSON.stringify(value, null, 1)
+    return stringifyJson(value, 1)!
       .replace(/[[{]\n\s*/g, (segment) => segment.charAt(0))
       .replace(/\n\s*[\]}]/g, (segment) => segment.slice(-1))
       .replace(/\n\s*/g, ' ')

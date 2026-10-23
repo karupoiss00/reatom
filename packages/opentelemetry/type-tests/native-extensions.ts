@@ -20,9 +20,8 @@ declare function expectNever<Check extends never>(_check?: Check): void
 export function nativeRoot() {
   const otel = reatomOpentelemetry({
     name: 'native',
-    endpoint: null,
     serviceName: 'web',
-    maxQueueSize: 100,
+    recordLimit: 100,
     resourceAttributes: { 'app.region': 'eu' },
   })
   const configuration: Atom<ReturnType<typeof otel>> = otel
@@ -37,12 +36,11 @@ export function nativeRoot() {
   const state = otel()
   otel.set({
     ...state,
-    endpoint: 'https://collector.example/otel',
     keepRecords: true,
   })
-  otel.set((current) => ({ ...current, endpoint: null }))
+  otel.set((current) => ({ ...current, keepRecords: true }))
   const extended = otel.extend((target) => ({
-    isLocal: computed(() => target().endpoint === null, 'types.local'),
+    isLocal: computed(() => target().keepRecords !== false, 'types.local'),
     stopLocalCapture: action(
       () => target.set((current) => ({ ...current, keepRecords: false })),
       'types.stopLocalCapture',
@@ -124,7 +122,6 @@ export function attributesExtension() {
   }, 'types.attributes')
   const otel = reatomOpentelemetry({
     name: 'attributes',
-    endpoint: null,
     serviceName: 'web',
   }).extend(withAttributes(source))
   const current: Readonly<Record<string, OtlpAttrValue>> = otel.attributes()

@@ -1,3 +1,5 @@
+import { stringifyJson } from '../../serialize'
+
 import type { AdminRecord } from '../../otlp'
 import {
   errorFromExceptionLog,
@@ -187,7 +189,7 @@ function formatEventAttribute(key: string, value: unknown): string {
   if (value === null) return 'null'
   if (value === undefined) return 'undefined'
   try {
-    return JSON.stringify(value)
+    return stringifyJson(value)!
   } catch {
     return Object.prototype.toString.call(value)
   }

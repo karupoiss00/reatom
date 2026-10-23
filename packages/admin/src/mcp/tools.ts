@@ -1,3 +1,5 @@
+import { toJsonValue } from '../serialize'
+
 import { wrap } from '@reatom/core'
 
 import { recordHasError, recordLabel, recordTimeRange } from '../otlp/bind.ts'
@@ -265,7 +267,7 @@ function toStateRow(node: OtlpStateNode): AdminMcpStateNode {
     ...(node.sourceId !== undefined ? { sourceId: node.sourceId } : {}),
     ...(node.recordId !== undefined ? { recordId: node.recordId } : {}),
     ...(node.frameId !== undefined ? { frameId: node.frameId } : {}),
-    ...(node.value !== undefined ? { value: node.value } : {}),
+    ...(node.value !== undefined ? { value: toJsonValue(node.value) } : {}),
   }
 }
 
@@ -560,8 +562,8 @@ function toRecordData(
       start: record.start,
       ...(record.end !== undefined ? { end: record.end } : {}),
       attributes: copyAttributes(record.attributes),
-      ...(record.body !== undefined ? { body: record.body } : {}),
-      resource: { ...record.resource },
+      ...(record.body !== undefined ? { body: toJsonValue(record.body) } : {}),
+      resource: copyAttributes(record.resource),
       links: record.links.map((link) => ({ ...link })),
       ...(record.reatomKind !== undefined
         ? { reatomKind: record.reatomKind }

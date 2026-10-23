@@ -12,6 +12,7 @@ const esbuildRequire = createRequire(viteRequire.resolve('vite'))
 const { build } = esbuildRequire('esbuild')
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const names = {
+  otlp: 'withOTLP, otlpTransport',
   'web-analytics': 'withWebAnalytics',
   gdpr: 'withGDPR, reatomGDPR',
   attributes: 'withAttributes',
@@ -90,6 +91,15 @@ for (const mode of ['source', 'package']) {
         `${name}: ${plugin} isolation`,
       )
     }
+    if (mode === 'source' && !allowed.includes('otlp')) {
+      const exportRuntime =
+        /src\/(?:buildSpan|buildLogRecord|buildExportPayload|toOtlpValue|retryWithBackoff|createBatchQueue|createExportWorker|sendTraces|parseExportResponse|flushWithBeacon|selectUnloadBatch|unloadBudget)\.ts$/
+      assert.deepEqual(
+        contributed.filter((file) => exportRuntime.test(file)),
+        [],
+        `${name}: capture graph excludes wire/export runtime`,
+      )
+    }
     const includesVitals = contributed.some((file) =>
       /node_modules\/.*web-vitals\//.test(file),
     )
@@ -99,6 +109,22 @@ for (const mode of ['source', 'package']) {
       `${name}: optional upstream web-vitals runtime`,
     )
     const code = result.outputFiles[0].contents
+    if (name === 'root') {
+      const bundled = new TextDecoder().decode(code)
+      for (const wireField of [
+        'resourceSpans',
+        'resourceLogs',
+        'startTimeUnixNano',
+        'timeUnixNano',
+        'sendBeacon',
+        'Retry-After',
+      ])
+        assert.equal(
+          bundled.includes(wireField),
+          false,
+          `${mode}: base excludes ${wireField}`,
+        )
+    }
     reports.push({
       entry: `${mode}:${name}`,
       bytes: code.length,

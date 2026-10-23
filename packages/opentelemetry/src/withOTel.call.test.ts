@@ -10,8 +10,7 @@ import { afterEach, expect, test } from 'vitest'
 
 import type { LogRecordInput } from './buildLogRecord.ts'
 import type { SpanInput } from './buildSpan.ts'
-import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
-import { createTestWithOTel } from './test-helpers.ts'
+import { createTestWithOTel, reatomTestTelemetry } from './test-helpers.ts'
 
 const cleanups: Array<() => void> = []
 afterEach(() => {
@@ -31,10 +30,10 @@ const collect = () => {
 }
 
 const start = (
-  extra: Partial<Parameters<typeof reatomOpentelemetry>[0]> = {},
+  extra: Partial<Parameters<typeof reatomTestTelemetry>[0]> = {},
 ) => {
   const name = `otel-call-${Math.random().toString(16).slice(2)}`
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name,
     endpoint: null,
     serviceName: 'p',
@@ -52,17 +51,13 @@ const start = (
 type RawRecord = {
   name?: string
   eventName?: string
-  attributes?: ReadonlyArray<{
-    key: string
-    value?: { stringValue?: string }
-  }>
+  attributes?: Record<string, unknown>
 }
 
 const isRecord = (value: unknown): value is RawRecord =>
   !!value && typeof value === 'object'
 
-const stringAttr = (record: RawRecord, key: string) =>
-  record.attributes?.find((entry) => entry.key === key)?.value?.stringValue
+const stringAttr = (record: RawRecord, key: string) => record.attributes?.[key]
 
 const spanNamed = (records: readonly unknown[], name: string) =>
   records.find(
@@ -117,8 +112,8 @@ test('throwing per-target serialize keeps sibling fields and never writes the ra
 
   expect(spans).toHaveLength(1)
   expect(spans[0]!.attributes).toEqual({
-    params: '[]',
-    payload: '{"public":"visible-sentinel","note":"[Failed]"}',
+    params: [],
+    payload: { public: 'visible-sentinel', note: '[Failed]' },
   })
   expect(JSON.stringify(spans[0]!.attributes)).not.toContain(hidden)
   expect(JSON.stringify(spans[0]!.attributes)).not.toContain('mapper')
@@ -145,9 +140,10 @@ test('throwing instance redact records the span with [Failed] for that value', (
 
   const span = spanNamed(otel.records(), 'probe.instance')
   expect(span).toBeDefined()
-  expect(stringAttr(span!, 'reatom.payload')).toBe(
-    '{"public":"visible-sentinel","note":"[Failed]"}',
-  )
+  expect(span!.attributes?.['reatom.payload']).toEqual({
+    public: 'visible-sentinel',
+    note: '[Failed]',
+  })
   expect(JSON.stringify(span)).not.toContain(hidden)
   expect(JSON.stringify(span)).not.toContain('instance-mapper')
   expect(stringAttr(span!, 'reatom.outcome')).toBe('ok')

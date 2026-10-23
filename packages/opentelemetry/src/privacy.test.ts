@@ -10,9 +10,13 @@ import {
 import { afterEach, expect, test, vi } from 'vitest'
 
 import { createValueCapture } from './captureValues.ts'
-import { withGDPR, type ReatomGDPR } from './gdpr/reatomGDPR.ts'
-import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
-import { installDomStubs, parseLogRecords, parseSpans } from './test-helpers.ts'
+import { type ReatomGDPR, withGDPR } from './gdpr/reatomGDPR.ts'
+import {
+  installDomStubs,
+  parseLogRecords,
+  parseSpans,
+  reatomTestTelemetry,
+} from './test-helpers.ts'
 
 const cleanups: Array<() => void> = []
 
@@ -21,7 +25,7 @@ afterEach(() => {
 })
 
 const start = (
-  extra: Partial<Parameters<typeof reatomOpentelemetry>[0]> = {},
+  extra: Partial<Parameters<typeof reatomTestTelemetry>[0]> = {},
 ) => {
   const calls: Array<{ url: string; body: string }> = []
   const fetchMock = vi.fn<typeof globalThis.fetch>(async (url, init) => {
@@ -29,7 +33,7 @@ const start = (
     return new Response('{}', { status: 200 })
   })
   const name = `privacy-${Math.random().toString(16).slice(2)}`
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name,
     endpoint: 'https://collector.invalid',
     serviceName: 'privacy',
@@ -273,24 +277,24 @@ test('withGDPR denies diagnostics before submit while explicit public facts stay
 test('native settings validation errors recover on a valid write and keep the exporter usable', async () => {
   const { otel, wire } = start()
   try {
-    const saved = otel()
+    const saved = otel.otlp()
     expect(() =>
-      otel.set((current) => ({ ...current, endpoint: '/otel' })),
-    ).toThrow(/absolute http\(s\) URL/)
+      otel.otlp.set((current) => ({ ...current, endpoint: '/otel' })),
+    ).toThrow(/absolute HTTP\(S\) endpoint/)
     // Native atoms retain their error until another successful write.
-    expect(() => otel()).toThrow(/absolute http\(s\) URL/)
-    otel.set(saved)
-    expect(otel().endpoint).toBe('https://collector.invalid')
+    expect(() => otel.otlp()).toThrow(/absolute HTTP\(S\) endpoint/)
+    otel.otlp.set(saved)
+    expect(otel.otlp().endpoint).toBe('https://collector.invalid')
     otel.log('exporter.after-valid-recovery')
     await otel.flush()
     expect(wire()).toContain('exporter.after-valid-recovery')
     expect(() =>
-      reatomOpentelemetry({
+      reatomTestTelemetry({
         name: `privacy-bad-${Math.random().toString(16).slice(2)}`,
         endpoint: '/otel',
         serviceName: 'privacy',
       }),
-    ).toThrow(/absolute http\(s\) URL/)
+    ).toThrow(/absolute HTTP\(S\) endpoint/)
   } finally {
     otel.dispose()
   }
@@ -372,7 +376,7 @@ test('withdrawing diagnostics drops queued tracer records and does not export th
       action(() => 'granted-secret', 'privacy.granted')()
       otel.log('app.page_view', { 'url.path': '/keep-analytics' })
     })
-    expect(otel.stats().queued).toBeGreaterThan(0)
+    expect(otel.otlp.stats().queued).toBeGreaterThan(0)
 
     await root.run(async () => {
       consent!.fields.diagnostics.change(false)

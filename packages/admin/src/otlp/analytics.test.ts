@@ -274,7 +274,6 @@ describe('sessions', () => {
 
     const otel = reatomOpentelemetry({
       name: 'admin-analytics-round-trip',
-      endpoint: null,
       serviceName: 'shop-web',
       skipGlobalExtension: true,
     }).extend(withWebAnalytics({ consent: true, navigation: 'popstate' }))
@@ -296,7 +295,7 @@ describe('sessions', () => {
       const store = ADMIN_FRAME.run(() =>
         reatomOtlpStore({ sourceId: 'local', resource: {} }),
       )
-      ADMIN_FRAME.run(() => store.ingest(exported))
+      ADMIN_FRAME.run(() => store.ingestCaptured(exported))
       const records = ADMIN_FRAME.run(() => store.records())
 
       const navigationFlush = records.find(

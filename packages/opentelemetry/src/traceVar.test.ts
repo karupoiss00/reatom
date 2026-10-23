@@ -1,11 +1,13 @@
 import { action, bind, context, wrap } from '@reatom/core'
 import { expect, test, vi } from 'vitest'
 
+import { type ReatomOpentelemetryInput } from './reatomOpentelemetry.ts'
 import {
-  reatomOpentelemetry,
-  type ReatomOpentelemetryInput,
-} from './reatomOpentelemetry.ts'
-import { type ParsedSpan, parseSpans, withWarnSpy } from './test-helpers.ts'
+  type ParsedSpan,
+  parseSpans,
+  reatomTestTelemetry,
+  withWarnSpy,
+} from './test-helpers.ts'
 
 type SetupOptions = Partial<ReatomOpentelemetryInput> & {
   warnContextLoss?: boolean
@@ -13,7 +15,7 @@ type SetupOptions = Partial<ReatomOpentelemetryInput> & {
 
 const setup = (options: SetupOptions = {}) => {
   const spans: ParsedSpan[] = []
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'traceVar',
     endpoint: 'https://collector.invalid',
     serviceName: 'trace-var',

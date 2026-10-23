@@ -23,8 +23,7 @@ import {
 } from '@reatom/core'
 import { expect, test } from 'vitest'
 
-import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
-import { parseSpans } from './test-helpers.ts'
+import { parseSpans, reatomTestTelemetry } from './test-helpers.ts'
 
 test.each(['capture', 'throw', 'filtered'] as const)(
   'observer reads do not become application dependencies (%s)',
@@ -52,7 +51,7 @@ test.each(['capture', 'throw', 'filtered'] as const)(
     })
     const reads: number[] = []
     const bodies: string[] = []
-    const otel = reatomOpentelemetry({
+    const otel = reatomTestTelemetry({
       name: 'coreCompatibility',
       endpoint: 'https://collector.invalid',
       serviceName: 'compat',
@@ -119,7 +118,7 @@ test.each(['capture', 'throw', 'filtered'] as const)(
       expect(bodies.flatMap(parseSpans).map((span) => span.name)).toEqual(
         mode === 'filtered' ? [] : ['compat.traced', 'compat.traced'],
       )
-      expect(otel.stats().droppedByReason.observation).toBe(0)
+      expect(otel.otlp.stats().droppedByReason.observation).toBe(0)
     } finally {
       run(() => {
         unsubscribeRaw()
@@ -137,7 +136,7 @@ const runSyncParity = async (traced: boolean) => {
   const run = context.start(() => bind(<T>(callback: () => T) => callback()))
   const bodies: string[] = []
   const otel = traced
-    ? reatomOpentelemetry({
+    ? reatomTestTelemetry({
         name: 'coreCompatibility',
         endpoint: 'http://collector.invalid',
         serviceName: 'core-compatibility',
@@ -353,7 +352,7 @@ const runAsyncParity = async (traced: boolean) => {
   const run = context.start(() => bind(<T>(callback: () => T) => callback()))
   const bodies: string[] = []
   const otel = traced
-    ? reatomOpentelemetry({
+    ? reatomTestTelemetry({
         name: 'coreCompatibility',
         endpoint: 'http://collector.invalid',
         serviceName: 'core-compatibility',
@@ -558,7 +557,7 @@ const runAbortAndResetParity = async (traced: boolean) => {
   const run = context.start(() => bind(<T>(callback: () => T) => callback()))
   const bodies: string[] = []
   const otel = traced
-    ? reatomOpentelemetry({
+    ? reatomTestTelemetry({
         name: 'coreCompatibility',
         endpoint: 'http://collector.invalid',
         serviceName: 'core-compatibility',
@@ -702,7 +701,7 @@ const runPolicyParity = async (traced: boolean) => {
   const application: string[] = []
   const manualBodies: string[] = []
   const manualOtel = traced
-    ? reatomOpentelemetry({
+    ? reatomTestTelemetry({
         name: 'coreCompatibility',
         endpoint: 'http://collector.invalid',
         serviceName: 'core-compatibility',
@@ -777,7 +776,7 @@ const runPolicyParity = async (traced: boolean) => {
 
     const reattachedBodies: string[] = []
     const reattachedOtel = traced
-      ? reatomOpentelemetry({
+      ? reatomTestTelemetry({
           name: 'coreCompatibility',
           endpoint: 'http://collector.invalid',
           serviceName: 'core-compatibility',
@@ -810,7 +809,7 @@ const runPolicyParity = async (traced: boolean) => {
 
   const capacityBodies: string[] = []
   const capacityOtel = traced
-    ? reatomOpentelemetry({
+    ? reatomTestTelemetry({
         name: 'coreCompatibility',
         endpoint: 'http://collector.invalid',
         serviceName: 'core-compatibility',
@@ -834,7 +833,7 @@ const runPolicyParity = async (traced: boolean) => {
     expect(run(() => capacity(first))).toBe(first)
     expect(run(() => capacity(second))).toBe(second)
     if (capacityOtel) {
-      expect(capacityOtel.stats()).toMatchObject({
+      expect(capacityOtel.otlp.stats()).toMatchObject({
         active: 0,
         queued: 1,
         exported: 0,
@@ -845,7 +844,7 @@ const runPolicyParity = async (traced: boolean) => {
       expect(
         capacityBodies.flatMap(parseSpans).map((span) => span.name),
       ).toEqual(['r14.policy.capacity'])
-      expect(capacityOtel.stats()).toMatchObject({
+      expect(capacityOtel.otlp.stats()).toMatchObject({
         active: 0,
         queued: 0,
         inFlight: 0,

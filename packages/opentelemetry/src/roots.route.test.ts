@@ -9,23 +9,23 @@ import {
 } from '@reatom/core'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
-import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
 import {
   HEX_SPAN_ID,
   HEX_TRACE_ID,
   type ParsedSpan,
   parseSpans,
+  reatomTestTelemetry,
 } from './test-helpers.ts'
 
 type RootKind = 'route' | 'mount' | 'action' | 'atom'
 
-type V2FactoryInput = Parameters<typeof reatomOpentelemetry>[0] & {
+type V2FactoryInput = Parameters<typeof reatomTestTelemetry>[0] & {
   name?: string
   roots?: ReadonlyArray<RootKind>
   route?: 'child' | 'link'
 }
 
-type V2Instance = ReturnType<typeof reatomOpentelemetry> & {
+type V2Instance = ReturnType<typeof reatomTestTelemetry> & {
   createTrace: (options?: { name?: string }) => unknown
   traceVar: { set: (value: unknown) => void }
 }
@@ -58,7 +58,7 @@ const setup = (overrides: Partial<V2FactoryInput> = {}) => {
     bodies.push(String(init?.body))
     return new Response('{}', { status: 200 })
   })
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'roots.route',
     endpoint: 'https://traces.example.com',
     serviceName: 'route-watershed',
@@ -69,7 +69,7 @@ const setup = (overrides: Partial<V2FactoryInput> = {}) => {
     fetch: fetchMock,
     useBeacon: false,
     ...overrides,
-  } as Parameters<typeof reatomOpentelemetry>[0])
+  } as Parameters<typeof reatomTestTelemetry>[0])
   cleanups.push(otel.dispose)
   return { otel: otel as V2Instance, bodies, fetchMock }
 }

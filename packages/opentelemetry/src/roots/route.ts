@@ -20,7 +20,7 @@ export type TracePair = { traceId: string; spanId: string }
 export type OtlpSpanLink = {
   traceId: string
   spanId: string
-  attributes?: Array<{ key: string; value: { stringValue?: string } }>
+  attributes?: Record<string, OtlpAttrValue>
 }
 
 export const ROUTE_PAGE_LINK_REASON = 'route.page'
@@ -28,12 +28,7 @@ export const ROUTE_PAGE_LINK_REASON = 'route.page'
 export const routePageLink = (page: TracePair): OtlpSpanLink => ({
   traceId: page.traceId,
   spanId: page.spanId,
-  attributes: [
-    {
-      key: 'reatom.link.reason',
-      value: { stringValue: ROUTE_PAGE_LINK_REASON },
-    },
-  ],
+  attributes: { 'reatom.link.reason': ROUTE_PAGE_LINK_REASON },
 })
 
 export type RouteLike = AtomLike & {

@@ -14,15 +14,13 @@ type Equal<Left, Right> =
 
 declare function expectExact<Check extends true>(_check?: Check): void
 
-export function missingEndpointKey() {
-  // @ts-expect-error missing endpoint
+export function localCaptureWithoutEndpoint() {
   reatomOpentelemetry({ name: 'type-consumer', serviceName: 'type-consumer' })
 }
 
 export function misspelledSpanKind() {
   const otel = reatomOpentelemetry({
     name: 'type-consumer',
-    endpoint: 'http://collector.invalid',
     serviceName: 'type-consumer',
   })
   // @ts-expect-error kind: 'clinet'
@@ -32,7 +30,6 @@ export function misspelledSpanKind() {
 export function unguardedParseTraceparent(header: string | null) {
   const otel = reatomOpentelemetry({
     name: 'type-consumer',
-    endpoint: null,
     serviceName: 'type-consumer',
   })
   // @ts-expect-error parseTraceparent into traceVar.set
@@ -73,7 +70,6 @@ export function verifyV1InstanceMethodsAbsent(otel: ReatomOpentelemetry) {
 export function verifyTypes() {
   const otel = reatomOpentelemetry({
     name: 'type-consumer',
-    endpoint: 'http://collector.invalid',
     serviceName: 'type-consumer',
   })
   expectExact<Equal<typeof otel, ReatomOpentelemetry>>()

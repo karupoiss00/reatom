@@ -1,8 +1,11 @@
 import { action, atom, bind, computed, context } from '@reatom/core'
 import { expect, test, vi } from 'vitest'
 
-import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
-import { type ParsedSpan, parseSpans } from './test-helpers.ts'
+import {
+  type ParsedSpan,
+  parseSpans,
+  reatomTestTelemetry,
+} from './test-helpers.ts'
 
 const setup = () => {
   const batches: ParsedSpan[][] = []
@@ -10,7 +13,7 @@ const setup = () => {
     batches.push(parseSpans(String(init?.body)))
     return new Response('{}', { status: 200 })
   })
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'manualOptIn',
     endpoint: 'http://collector.invalid',
     serviceName: 'manual-opt-in',

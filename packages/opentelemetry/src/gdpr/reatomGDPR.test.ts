@@ -1,7 +1,7 @@
 import { action, context, wrap } from '@reatom/core'
 import { afterEach, expect, test } from 'vitest'
 
-import { reatomOpentelemetry } from '../reatomOpentelemetry.ts'
+import { reatomTestTelemetry } from '../test-helpers.ts'
 import { reatomGDPR, withGDPR } from './index.ts'
 
 const cleanups: Array<() => void> = []
@@ -9,7 +9,7 @@ afterEach(() => {
   while (cleanups.length) context.start(cleanups.pop()!)
 })
 const start = () => {
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: `gdpr-${Math.random()}`,
     endpoint: null,
     serviceName: 'gdpr',

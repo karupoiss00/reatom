@@ -14,9 +14,8 @@ const SPAN_KIND = {
 
 const STATUS_CODE = { unset: 0, ok: 1, error: 2 } as const
 
-export const MAX_RECORD_BYTES = 16_384
-
-export const REATOM_NAME_DUP_MAX_UTF8 = 1920
+export { MAX_RECORD_BYTES, REATOM_NAME_DUP_MAX_UTF8 } from './captureLimits.ts'
+import { REATOM_NAME_DUP_MAX_UTF8 } from './captureLimits.ts'
 
 const nameEncoder = new TextEncoder()
 
@@ -47,7 +46,7 @@ export interface SpanInput {
   extraAttributes?: Record<string, OtlpAttrValue>
   events?: SpanEventInput[]
   status?: { code: StatusCode; message?: string }
-  links?: SpanLink[]
+  links?: import('./records.ts').CapturedLink[]
 }
 
 export interface OtlpSpan {
@@ -126,7 +125,11 @@ export const buildSpan = (input: SpanInput): OtlpSpan => {
     })),
   }
   if (input.parentSpanId) span.parentSpanId = input.parentSpanId
-  if (input.links?.length) span.links = input.links
+  if (input.links?.length)
+    span.links = input.links.map((link) => ({
+      ...link,
+      attributes: toOtlpAttributes(link.attributes),
+    }))
   if (input.status) {
     const code = STATUS_CODE[input.status.code]
     span.status =

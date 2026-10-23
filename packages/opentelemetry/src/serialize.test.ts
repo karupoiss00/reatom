@@ -1,10 +1,9 @@
 import { action, bind, context } from '@reatom/core'
 import { expect, test } from 'vitest'
 
-import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
-import { parseSpans } from './test-helpers.ts'
+import { parseSpans, reatomTestTelemetry } from './test-helpers.ts'
 
-type FactoryInput = Parameters<typeof reatomOpentelemetry>[0] & {
+type FactoryInput = Parameters<typeof reatomTestTelemetry>[0] & {
   name?: string
   serialize?: (value: unknown, key: string) => unknown
 }
@@ -12,7 +11,7 @@ type FactoryInput = Parameters<typeof reatomOpentelemetry>[0] & {
 const start = (extra: Partial<FactoryInput> = {}) => {
   const bodies: string[] = []
   const run = context.start(() => bind(<T>(callback: () => T) => callback()))
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'serialize-f05',
     endpoint: 'https://collector.invalid',
     serviceName: 'serialize-f05',
@@ -24,7 +23,7 @@ const start = (extra: Partial<FactoryInput> = {}) => {
       return new Response(null)
     },
     ...extra,
-  } as Parameters<typeof reatomOpentelemetry>[0])
+  } as Parameters<typeof reatomTestTelemetry>[0])
   const wire = () => bodies.join('')
   const spans = () => bodies.flatMap(parseSpans)
   return { run, otel, bodies, wire, spans }
@@ -106,7 +105,7 @@ test('oversized capture still produces a record or dropped.oversized; app result
     expect(run(target)).toBe(output)
     await otel.flush()
     const truncated = wire().includes('[Truncated]')
-    const droppedOversized = otel.stats().droppedByReason.oversized > 0
+    const droppedOversized = otel.otlp.stats().droppedByReason.oversized > 0
     expect(truncated || droppedOversized).toBe(true)
     if (!droppedOversized) {
       expect(spans().map((span) => span.name)).toEqual(['serialize.oversized'])
@@ -128,7 +127,7 @@ test('throwing custom serializer records [Failed] and does not throw into the ap
       action(() => output, 'serialize.throwing-serializer'),
     )
     expect(run(target)).toBe(output)
-    expect(otel.stats()).toMatchObject({
+    expect(otel.otlp.stats()).toMatchObject({
       droppedByReason: { observation: 0 },
     })
     await otel.flush()

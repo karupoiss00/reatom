@@ -1,9 +1,9 @@
 import { context, isAtom } from '@reatom/core'
 import { afterEach, expect, test, vi } from 'vitest'
 
-import { reatomOpentelemetry } from '../reatomOpentelemetry.ts'
 import { withBrowserNetworkMonkeypatch } from '../browser-network/index.ts'
 import { withBrowserPerformance } from '../browser-performance/index.ts'
+import { reatomTestTelemetry } from '../test-helpers.ts'
 import { withWebVitals } from '../web-vitals/index.ts'
 import { withBrowserConsoleMonkeypatch } from './index.ts'
 
@@ -24,7 +24,7 @@ test('feature factories are inert until applied; SSR retains genuine requested-e
   expect(globalThis.fetch).toBe(nativeFetch)
   expect(console.warn).toBe(nativeWarn)
   expect(observer).not.toHaveBeenCalled()
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: 'ssr-browser-features',
     endpoint: null,
     skipGlobalExtension: true,
@@ -32,7 +32,7 @@ test('feature factories are inert until applied; SSR retains genuine requested-e
   try {
     expect(isAtom(otel)).toBe(true)
     expect(otel.instanceName).toBe('ssr-browser-features')
-    expect(otel().endpoint).toBeNull()
+    expect(otel.otlp().endpoint).toBeNull()
     otel.set((config) => ({ ...config, signals: { logs: false } }))
     expect(otel().signals?.logs).toBe(false)
     for (const control of [

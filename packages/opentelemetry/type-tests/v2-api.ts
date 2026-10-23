@@ -4,20 +4,17 @@ import { reatomOpentelemetry } from '../src/reatomOpentelemetry.ts'
 export function v2Construction() {
   return reatomOpentelemetry({
     name: 'shop',
-    endpoint: null,
     serviceName: 'shop-web',
   })
 }
 
-export function missingEndpointKey() {
-  // @ts-expect-error missing endpoint key
+export function localCaptureWithoutEndpoint() {
   reatomOpentelemetry({ name: 'shop', serviceName: 'shop-web' })
 }
 
 export function missingNameKey() {
   // @ts-expect-error missing name key
   reatomOpentelemetry({
-    endpoint: 'http://collector.invalid',
     serviceName: 'shop-web',
   })
 }
@@ -25,7 +22,6 @@ export function missingNameKey() {
 export function misspelledSpanKind() {
   const otel = reatomOpentelemetry({
     name: 'shop',
-    endpoint: 'http://collector.invalid',
     serviceName: 'shop-web',
   })
   // @ts-expect-error kind does not include the misspelling 'clinet'

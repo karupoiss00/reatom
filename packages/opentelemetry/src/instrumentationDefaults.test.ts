@@ -1,8 +1,7 @@
 import { action, atom, computed, context } from '@reatom/core'
 import { afterEach, expect, test, vi } from 'vitest'
 
-import { reatomOpentelemetry } from './reatomOpentelemetry.ts'
-import { withWarnSpy } from './test-helpers.ts'
+import { reatomTestTelemetry, withWarnSpy } from './test-helpers.ts'
 
 const cleanups: Array<() => void> = []
 
@@ -12,9 +11,9 @@ afterEach(() => {
 })
 
 const start = (
-  overrides: Partial<Parameters<typeof reatomOpentelemetry>[0]> = {},
+  overrides: Partial<Parameters<typeof reatomTestTelemetry>[0]> = {},
 ) => {
-  const otel = reatomOpentelemetry({
+  const otel = reatomTestTelemetry({
     name: `defaults-${Math.random().toString(16).slice(2)}`,
     endpoint: null,
     serviceName: 'defaults',
@@ -29,21 +28,11 @@ const start = (
 }
 
 const stringAttr = (record: object, key: string): string | undefined => {
-  if (!('attributes' in record) || !Array.isArray(record.attributes)) return
-  for (const entry of record.attributes) {
-    if (!entry || typeof entry !== 'object' || !('key' in entry)) continue
-    if (entry.key !== key) continue
-    const value = 'value' in entry ? entry.value : undefined
-    if (
-      value &&
-      typeof value === 'object' &&
-      'stringValue' in value &&
-      typeof value.stringValue === 'string'
-    ) {
-      return value.stringValue
-    }
-  }
-  return
+  const value =
+    'attributes' in record
+      ? (record.attributes as Record<string, unknown>)[key]
+      : undefined
+  return typeof value === 'string' ? value : undefined
 }
 
 const spanNames = (records: readonly unknown[]): string[] => {
@@ -169,12 +158,12 @@ test('explicit withOTel still records when skipGlobalExtension is set', async ()
 test('a relative endpoint throws at construction and warns in development', async () => {
   await withWarnSpy(async (warn) => {
     expect(() =>
-      reatomOpentelemetry({
+      reatomTestTelemetry({
         name: 'relative',
         endpoint: '/otel',
         serviceName: 'relative',
       }),
-    ).toThrow(/absolute http\(s\) URL/)
+    ).toThrow(/absolute HTTP\(S\) endpoint/)
     expect(warn).toHaveBeenCalled()
   })
 })
@@ -183,12 +172,12 @@ test('a relative endpoint still throws in production and does not warn', async (
   vi.stubEnv('NODE_ENV', 'production')
   await withWarnSpy(async (warn) => {
     expect(() =>
-      reatomOpentelemetry({
+      reatomTestTelemetry({
         name: 'relative-prod',
         endpoint: 'otel',
         serviceName: 'relative-prod',
       }),
-    ).toThrow(/absolute http\(s\) URL/)
+    ).toThrow(/absolute HTTP\(S\) endpoint/)
     expect(warn).not.toHaveBeenCalled()
   })
 })
