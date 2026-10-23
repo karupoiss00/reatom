@@ -677,12 +677,7 @@ describe('event logs', () => {
   test('infers analytics and manual logs from the wire', () => {
     expect(
       isEventLog(
-        analyticsLog(
-          'app.page_view',
-          T0,
-          { 'url.path': '/' },
-          'page',
-        ),
+        analyticsLog('app.page_view', T0, { 'url.path': '/' }, 'page'),
       ),
     ).toBe(true)
     expect(
