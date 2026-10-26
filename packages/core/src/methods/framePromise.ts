@@ -1,4 +1,4 @@
-import { _enqueue, isAction, top } from '../core'
+import { _enqueue, isAction, pendingCalls, top } from '../core'
 import { schedule } from './schedule'
 
 /**
@@ -78,10 +78,18 @@ import { schedule } from './schedule'
 export let framePromise = (): Promise<unknown> => {
   let frame = top()
   let state: unknown
+  // calls of one tick share the log, so an in-flight call resolves through
+  // its own call object; outside a payload (after an `await`) read the log
+  let isAct = isAction(frame.atom)
+  let call = isAct && pendingCalls.at(-1)
 
   // enqueue separate hook to get an actions state before cleanup
   _enqueue(() => {
-    state = isAction(frame.atom) ? frame.state.at(-1)?.payload : frame.state
+    state = call
+      ? call.payload
+      : isAct
+        ? frame.state.at(-1)?.payload
+        : frame.state
   }, 'hook')
 
   return schedule(() => {

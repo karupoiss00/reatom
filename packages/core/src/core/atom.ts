@@ -674,6 +674,19 @@ export function assertFn(fn: unknown): asserts fn is Fn {
   }
 }
 
+/**
+ * Action call logs referenced only by their action frames, mapped to the frames
+ * to reset after the tick. Such a log is appended in place, because copying it
+ * on every call is quadratic in the number of calls per tick.
+ */
+let ownedCalls = _createGlobal(
+  'ownedCalls',
+  () => new WeakMap<ActionState, Frame[]>(),
+)
+
+/** @internal calls in flight, innermost last; for `framePromise` */
+export let pendingCalls: ActionState = []
+
 export let _trackAction = (target: Action, parentFrame: Frame): Frame => {
   let targetFrame = _getFrame(target, parentFrame.root)
 
@@ -690,6 +703,9 @@ export let _trackAction = (target: Action, parentFrame: Frame): Frame => {
     }
     _setFrame(targetFrame)
   }
+
+  // the reader may keep the log snapshot
+  ownedCalls.delete(targetFrame.state)
 
   if (parentFrame.atom.__reatom.linking) parentFrame.pubs.push(targetFrame)
 
@@ -984,13 +1000,48 @@ export function computedMiddleware(next: Fn, ...args: any[]) {
  * `computedMiddleware`
  */
 export function actionMiddleware(next: Fn, ...params: any[]) {
-  let frame = STACK[STACK.length - 1]!
+  let frame = STACK.at(-1)!
+  let calls: ActionState = frame.state
+  let { middlewares } = frame.atom.__reatom
+  // middlewares above this one may keep the log snapshot; subscribers are
+  // re-checked after the payload, they can appear inside the call
+  let frames =
+    middlewares.at(-2) === actionMiddleware &&
+    middlewares.at(-1) === cacheMiddleware &&
+    ownedCalls.get(calls)
 
-  frame.pubs = [STACK[STACK.length - 2]!]
+  frame.pubs = [STACK.at(-2)!]
 
-  _enqueue(() => (frame.state = []), 'cleanup')
+  if (frames) {
+    frames.push(frame)
+  } else {
+    frames = [frame]
+    _enqueue(() => {
+      for (let tickFrame of frames as Frame[]) tickFrame.state = []
+    }, 'cleanup')
+  }
 
-  return (frame.state = [...frame.state, { params, payload: next(...params) }])
+  // the log is shared between the calls of one tick, so the call object is
+  // published before the payload runs and `framePromise` resolves through it
+  let call = { params, payload: null }
+  pendingCalls.push(call)
+  try {
+    call.payload = next(...params)
+  } finally {
+    pendingCalls.pop()
+  }
+
+  // a subscription or a `notify` reset inside the call cancels the ownership
+  if (frames && frame.subs.length === 0 && frame.state === calls) {
+    if (ownedCalls.get(calls) === frames) {
+      calls.push(call)
+      return calls
+    }
+    ownedCalls.set((calls = [...calls, call]), frames)
+    return (frame.state = calls)
+  }
+
+  return (frame.state = [...calls, call])
 }
 
 /** @internal recompile the middleware chain after middlewares change */
