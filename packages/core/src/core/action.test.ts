@@ -1,7 +1,13 @@
 import { catalog, expect, subscribe, test } from 'test'
 
 import { addCallHook } from '../extensions'
-import { framePromise, getCalls, getStackTrace, wrap } from '../methods'
+import {
+  framePromise,
+  getCalls,
+  getStackTrace,
+  schedule,
+  wrap,
+} from '../methods'
 import { sleep } from '../utils'
 import type { Frame } from './'
 import { _read, action, computed, notify, withMiddleware } from './'
@@ -126,6 +132,13 @@ test('calls per tick scale linearly, not quadratically', () => {
   expect(time(20_000)).toBeLessThan(time(5_000) * 8)
 })
 
+// logs past 256 calls in a tick are appended in place, fill past that
+const fill = (act: (n: number) => unknown) => {
+  let filled = Array.from({ length: 300 }, (_, i) => i - 300)
+  filled.forEach((n) => act(n))
+  return filled
+}
+
 test('calls log snapshots between calls in one tick', async () => {
   const act = action((n: number) => {
     framePromise().then((payload) => resolved.push(payload))
@@ -137,71 +150,85 @@ test('calls log snapshots between calls in one tick', async () => {
     'callsSnapshots.log',
   )
 
-  act(1)
-  act(2)
+  const filled = fill(act)
+  act(10)
+  act(11)
   const first = getCalls(act)
-  expect(log()).toEqual([1, 2])
-  act(3)
-  act(4)
-  expect(log()).toEqual([3, 4])
-  expect(first.map(({ payload }) => payload)).toEqual([1, 2])
-  expect(getCalls(act).map(({ payload }) => payload)).toEqual([1, 2, 3, 4])
+  expect(log()).toEqual([...filled, 10, 11])
+  act(12)
+  act(13)
+  expect(log()).toEqual([12, 13])
+  expect(first.map(({ payload }) => payload)).toEqual([...filled, 10, 11])
+  expect(getCalls(act).map(({ payload }) => payload)).toEqual([
+    ...filled,
+    10,
+    11,
+    12,
+    13,
+  ])
 
   await wrap(sleep())
-  expect(resolved).toEqual([1, 2, 3, 4])
+  expect(resolved).toEqual([...filled, 10, 11, 12, 13])
 
-  act(5)
-  expect(log()).toEqual([5])
+  act(14)
+  expect(log()).toEqual([14])
 })
 
 test('reentrant calls: framePromise and log order', async () => {
   const resolved: number[] = []
   const act = action((n: number) => {
-    if (n === 1) {
+    if (n === 11) {
       framePromise().then((payload) => resolved.push(payload as number))
-      act(2)
+      act(12)
     }
     return n
   }, 'reentrant.act')
 
-  act(0)
-  act(1)
+  const filled = fill(act)
+  act(10)
+  act(11)
 
   // the log keeps every call in completion order: the nested call lands
   // before the outer call that started it
-  expect(getCalls(act).map(({ payload }) => payload)).toEqual([0, 2, 1])
+  expect(getCalls(act).map(({ payload }) => payload)).toEqual([
+    ...filled,
+    10,
+    12,
+    11,
+  ])
 
   await wrap(sleep())
   // the promise belongs to its own call, not to a log position
-  expect(resolved).toEqual([1])
+  expect(resolved).toEqual([11])
 })
 
 test('subscribe inside a call', async () => {
   const payloads: number[] = []
   const act = action((n: number) => {
-    if (n === 1) act.subscribe((payload) => payloads.push(payload))
+    if (n === 11) act.subscribe((payload) => payloads.push(payload))
     return n
   }, 'subInside.act')
 
-  act(0)
-  act(1)
-  act(2)
+  const filled = fill(act)
+  act(10)
+  act(11)
+  act(12)
   // a subscriber added mid-call is not notified within the current tick
   expect(payloads).toEqual([])
 
   await wrap(sleep())
   // the flush delivers the log captured at subscribe time
-  expect(payloads).toEqual([0, 1, 2])
+  expect(payloads).toEqual([...filled, 10, 11, 12])
 
-  act(3)
+  act(13)
   await wrap(sleep())
-  expect(payloads).toEqual([0, 1, 2, 3])
+  expect(payloads).toEqual([...filled, 10, 11, 12, 13])
 })
 
 test('notify inside a call', async () => {
   const resolved: unknown[] = []
   const act = action((n: number) => {
-    if (n === 1) {
+    if (n === 10) {
       framePromise().then((payload) => resolved.push(payload))
       // notify() flushes hooks synchronously, before this payload exists
       notify()
@@ -209,13 +236,14 @@ test('notify inside a call', async () => {
     return n
   }, 'notifyInside.act')
 
-  act(1)
+  const filled = fill(act)
+  act(10)
 
-  expect(getCalls(act).map(({ payload }) => payload)).toEqual([1])
+  expect(getCalls(act).map(({ payload }) => payload)).toEqual([...filled, 10])
 
   await wrap(sleep())
-  // the hook ran before the payload existed and read the empty log
-  expect(resolved).toEqual([undefined])
+  // the hook ran before the payload existed and read the previous call
+  expect(resolved).toEqual([-1])
 })
 
 test('framePromise in a middleware after a nested call', async () => {
@@ -230,12 +258,13 @@ test('framePromise in a middleware after a nested call', async () => {
       return state
     }),
   )
-  const outer = action(() => {
-    inner(1)
+  const outer = action((n: number) => {
+    if (n === 10) inner(1)
     return 'outer'
   }, 'nestedMiddleware.outer')
 
-  outer()
+  fill(outer)
+  outer(10)
 
   await wrap(sleep())
   expect(resolved).toBe('inner1')
@@ -246,10 +275,30 @@ test('a removed call hook keeps its calls log snapshot', async () => {
   const act = action((n: number) => n, 'removedHook.act')
   const stop = addCallHook(act, (payload) => payloads.push(payload))
 
-  act(1)
+  const filled = fill(act)
   stop()
-  act(2)
+  act(10)
+  act(11)
 
   await wrap(sleep())
-  expect(payloads).toEqual([1])
+  expect(payloads).toEqual(filled)
+})
+
+test('framePromise after the payload of a call sharing the log', async () => {
+  const later: Array<Promise<unknown>> = []
+  let bound: () => Promise<unknown> = () => Promise.resolve()
+  const act = action((n: number) => {
+    if (n === 10) {
+      later.push(schedule(() => framePromise(), 'hook'))
+      bound = wrap(() => framePromise())
+    }
+    return n
+  }, 'afterPayload.act')
+
+  fill(act)
+  act(10)
+  act(11)
+  later.push(bound())
+
+  expect(await wrap(Promise.all(later))).toEqual([10, 10])
 })

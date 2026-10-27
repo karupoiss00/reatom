@@ -678,8 +678,8 @@ export function assertFn(fn: unknown): asserts fn is Fn {
  * @internal Maps an action calls log referenced only by its action frames to
  *   the frames to reset after the tick. Such a log is appended in place,
  *   because copying it on every call is quadratic in the number of calls per
- *   tick. Also maps each call frame to its own call for `framePromise`, as the
- *   shared log's last entry may belong to a later call.
+ *   tick. Also maps each frame sharing such a log to its own call for
+ *   `framePromise`, as the log's last entry may belong to a later call.
  */
 export let _actionCalls = _createGlobal(
   'actionCalls',
@@ -1002,8 +1002,10 @@ export function actionMiddleware(next: Fn, ...params: any[]) {
   let frame = STACK.at(-1)!
   let calls: ActionState = frame.state
   let { middlewares } = frame.atom.__reatom
-  // middlewares above this one may keep the log snapshot
+  // copying a short log is cheaper than tracking it, and middlewares above
+  // this one may keep the log snapshot
   let isPrivate =
+    calls.length > 256 &&
     middlewares.at(-2) === actionMiddleware &&
     middlewares.at(-1) === cacheMiddleware
   let frames = isPrivate
@@ -1025,16 +1027,19 @@ export function actionMiddleware(next: Fn, ...params: any[]) {
   }
 
   let call = { params, payload: next(...params) }
-  _actionCalls.set(frame, call)
 
-  // a subscription or a `notify` reset inside the call cancels the ownership
-  if (isPrivate && frame.subs.length === 0 && frame.state === calls) {
-    if (_actionCalls.get(calls) === frames) {
-      calls.push(call)
-      return calls
+  if (isPrivate) {
+    // the frame may share the log with later calls
+    _actionCalls.set(frame, call)
+    // a subscription or a `notify` reset inside the call cancels the ownership
+    if (frame.subs.length === 0 && frame.state === calls) {
+      if (_actionCalls.get(calls) === frames) {
+        calls.push(call)
+        return calls
+      }
+      _actionCalls.set((calls = [...calls, call]), frames)
+      return (frame.state = calls)
     }
-    _actionCalls.set((calls = [...calls, call]), frames)
-    return (frame.state = calls)
   }
 
   return (frame.state = [...calls, call])
