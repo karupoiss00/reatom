@@ -1,5 +1,6 @@
 import { catalog, expect, subscribe, test } from 'test'
 
+import { addCallHook } from '../extensions'
 import { framePromise, getCalls, getStackTrace, wrap } from '../methods'
 import { sleep } from '../utils'
 import type { Frame } from './'
@@ -175,7 +176,7 @@ test('reentrant calls: framePromise and log order', async () => {
   expect(resolved).toEqual([1])
 })
 
-test('subscribe inside a call delivers like v1001', async () => {
+test('subscribe inside a call', async () => {
   const payloads: number[] = []
   const act = action((n: number) => {
     if (n === 1) act.subscribe((payload) => payloads.push(payload))
@@ -197,7 +198,7 @@ test('subscribe inside a call delivers like v1001', async () => {
   expect(payloads).toEqual([0, 1, 2, 3])
 })
 
-test('notify inside a call keeps the log and the pending call', async () => {
+test('notify inside a call', async () => {
   const resolved: unknown[] = []
   const act = action((n: number) => {
     if (n === 1) {
@@ -213,6 +214,42 @@ test('notify inside a call keeps the log and the pending call', async () => {
   expect(getCalls(act).map(({ payload }) => payload)).toEqual([1])
 
   await wrap(sleep())
-  // matches v1001: the hook ran before the payload was set
-  expect(resolved).toEqual([null])
+  // the hook ran before the payload existed and read the empty log
+  expect(resolved).toEqual([undefined])
+})
+
+test('framePromise in a middleware after a nested call', async () => {
+  let resolved: unknown
+  const inner = action(
+    (n: number) => `inner${n}`,
+    'nestedMiddleware.inner',
+  ).extend(
+    withMiddleware(() => (next, ...params) => {
+      const state = next(...params)
+      framePromise().then((payload) => (resolved = payload))
+      return state
+    }),
+  )
+  const outer = action(() => {
+    inner(1)
+    return 'outer'
+  }, 'nestedMiddleware.outer')
+
+  outer()
+
+  await wrap(sleep())
+  expect(resolved).toBe('inner1')
+})
+
+test('a removed call hook keeps its calls log snapshot', async () => {
+  const payloads: number[] = []
+  const act = action((n: number) => n, 'removedHook.act')
+  const stop = addCallHook(act, (payload) => payloads.push(payload))
+
+  act(1)
+  stop()
+  act(2)
+
+  await wrap(sleep())
+  expect(payloads).toEqual([1])
 })

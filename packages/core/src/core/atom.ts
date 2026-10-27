@@ -1,7 +1,7 @@
 import type { AbortExt } from '../extensions'
 import type { ReatomAbortController } from '../methods'
 import { type Fn, isAbort, type Rec, type Unsubscribe } from '../utils'
-import type { Action, ActionState, Ext } from './'
+import type { Action, ActionCall, ActionState, Ext } from './'
 import { _enqueue, type Extend, extend, isAction, notify } from './'
 import { _createGlobal, ensureReatomGlobal, VERSION } from './globalStore'
 
@@ -675,17 +675,16 @@ export function assertFn(fn: unknown): asserts fn is Fn {
 }
 
 /**
- * Action call logs referenced only by their action frames, mapped to the frames
- * to reset after the tick. Such a log is appended in place, because copying it
- * on every call is quadratic in the number of calls per tick.
+ * @internal Maps an action calls log referenced only by its action frames to
+ *   the frames to reset after the tick. Such a log is appended in place,
+ *   because copying it on every call is quadratic in the number of calls per
+ *   tick. Also maps each call frame to its own call for `framePromise`, as the
+ *   shared log's last entry may belong to a later call.
  */
-let ownedCalls = _createGlobal(
-  'ownedCalls',
-  () => new WeakMap<ActionState, Frame[]>(),
+export let _actionCalls = _createGlobal(
+  'actionCalls',
+  () => new WeakMap<ActionState | Frame, Frame[] | ActionCall>(),
 )
-
-/** @internal calls in flight, innermost last; for `framePromise` */
-export let pendingCalls: ActionState = []
 
 export let _trackAction = (target: Action, parentFrame: Frame): Frame => {
   let targetFrame = _getFrame(target, parentFrame.root)
@@ -705,7 +704,7 @@ export let _trackAction = (target: Action, parentFrame: Frame): Frame => {
   }
 
   // the reader may keep the log snapshot
-  ownedCalls.delete(targetFrame.state)
+  _actionCalls.delete(targetFrame.state)
 
   if (parentFrame.atom.__reatom.linking) parentFrame.pubs.push(targetFrame)
 
@@ -1003,41 +1002,38 @@ export function actionMiddleware(next: Fn, ...params: any[]) {
   let frame = STACK.at(-1)!
   let calls: ActionState = frame.state
   let { middlewares } = frame.atom.__reatom
-  // middlewares above this one may keep the log snapshot; subscribers are
-  // re-checked after the payload, they can appear inside the call
-  let frames =
+  // middlewares above this one may keep the log snapshot
+  let isPrivate =
     middlewares.at(-2) === actionMiddleware &&
-    middlewares.at(-1) === cacheMiddleware &&
-    ownedCalls.get(calls)
+    middlewares.at(-1) === cacheMiddleware
+  let frames = isPrivate
+    ? (_actionCalls.get(calls) as undefined | Frame[])
+    : undefined
 
   frame.pubs = [STACK.at(-2)!]
 
   if (frames) {
     frames.push(frame)
   } else {
-    frames = [frame]
+    let tickFrames = (frames = [frame])
     _enqueue(() => {
-      for (let tickFrame of frames as Frame[]) tickFrame.state = []
+      for (let tickFrame of tickFrames) {
+        _actionCalls.delete(tickFrame)
+        tickFrame.state = []
+      }
     }, 'cleanup')
   }
 
-  // the log is shared between the calls of one tick, so the call object is
-  // published before the payload runs and `framePromise` resolves through it
-  let call = { params, payload: null }
-  pendingCalls.push(call)
-  try {
-    call.payload = next(...params)
-  } finally {
-    pendingCalls.pop()
-  }
+  let call = { params, payload: next(...params) }
+  _actionCalls.set(frame, call)
 
   // a subscription or a `notify` reset inside the call cancels the ownership
-  if (frames && frame.subs.length === 0 && frame.state === calls) {
-    if (ownedCalls.get(calls) === frames) {
+  if (isPrivate && frame.subs.length === 0 && frame.state === calls) {
+    if (_actionCalls.get(calls) === frames) {
       calls.push(call)
       return calls
     }
-    ownedCalls.set((calls = [...calls, call]), frames)
+    _actionCalls.set((calls = [...calls, call]), frames)
     return (frame.state = calls)
   }
 
